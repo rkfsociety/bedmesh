@@ -1,12 +1,15 @@
 import streamlit as st
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 import re
+import io
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer", layout="wide")
+st.set_page_config(page_title="Bed Mesh Dual View", layout="wide")
 
-st.title("🔄 Интерактивный Bed Mesh Visualizer")
+st.title("🔄 Двойной Bed Mesh Visualizer (3D & 2D)")
 
 # --- БОКОВАЯ ПАНЕЛЬ (НАСТРОЙКИ) ---
 st.sidebar.header("⚙️ Настройки")
@@ -26,13 +29,13 @@ origin_choice = st.sidebar.selectbox(
     ]
 )
 
-# Чекбокс для сглаживания
-smooth = st.sidebar.checkbox("Включить сглаживание (Klipper Style)", value=True)
+# Чекбокс для сглаживания 3D
+smooth_3d = st.sidebar.checkbox("Включить сглаживание 3D", value=True)
 
 # --- ОСНОВНАЯ ЧАСТЬ ---
-data_input = st.text_area("Вставьте данные калибровки:", height=200, placeholder="0.150, 0.025, -0.010...")
+data_input = st.text_area("Вставьте данные калибровки (консоль принтера):", height=150, placeholder="0.150, 0.025, -0.010...")
 
-if st.button("ПОСТРОИТЬ 3D КАРТУ"):
+if st.button("ПОСТРОИТЬ ОБЕ КАРТЫ"):
     if data_input:
         # Извлекаем числа
         raw_nums = re.findall(r"[-+]?\d*\.\d+|\d+", data_input)
@@ -42,45 +45,98 @@ if st.button("ПОСТРОИТЬ 3D КАРТУ"):
         if len(nums) < total:
             st.error(f"Ошибка! Для сетки {grid_x}x{grid_y} нужно {total} точек, найдено только {len(nums)}.")
         else:
-            # Создаем матрицу
+            # Создаем базовую матрицу (Y - строки, X - столбцы)
             matrix = np.array(nums[:total]).reshape((grid_y, grid_x))
             
             # --- ЛОГИКА ОРИЕНТАЦИИ (ОТЗЕРКАЛИВАНИЕ) ---
+            # Применяем трансформации, чтобы горб был там, где он на столе
             if origin_choice == "Левый-ближний угол":
+                # Klipper standard: first row is Y-max
                 matrix = np.flipud(matrix) 
             elif origin_choice == "Правый-ближний угол":
                 matrix = np.flipud(np.fliplr(matrix))
             elif origin_choice == "Правый-дальний угол":
                 matrix = np.fliplr(matrix)
-            # "Левый-дальний" остается без изменений (стандарт для reshape)
+            # "Левый-дальний" остается без изменений
 
-            # --- ПОСТРОЕНИЕ ГРАФИКА ---
-            fig = go.Figure(data=[go.Surface(
-                z=matrix,
-                colorscale='RdYlBu_r',
-                # Включаем сглаживание, если выбран чекбокс
-                contours_z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True),
-                surfacecolor=matrix,
-                reversescale=False,
-                connectgaps=True
-            )])
+            # Создаем вкладки для переключения видов
+            tab1, tab2 = st.tabs(["📊 3D Интерактивный вид", "🗺️ 2D Вид сверху (со значениями)"])
 
-            # Настройка сглаживания в Plotly
-            if smooth:
-                fig.update_traces(contours_z=dict(show=True, usecolormap=True, project_z=True))
-            
-            fig.update_layout(
-                title=f'Визуализация: {grid_x}x{grid_y} ({origin_choice})',
-                scene=dict(
-                    xaxis_title='Ось X',
-                    yaxis_title='Ось Y',
-                    zaxis_title='Высота Z (мм)',
-                    aspectratio=dict(x=1, y=1, z=0.5)
-                ),
-                width=900,
-                height=800
-            )
+            # --- ТАБ 1: 3D ИНТЕРАКТИВНЫЙ ВИД (PLOTLY) ---
+            with tab1:
+                # Включаем сглаживание
+                z_smooth = 'best' if smooth_3d else False
+                
+                fig_3d = go.Figure(data=[go.Surface(
+                    z=matrix,
+                    colorscale='RdYlBu_r',  # Klipper Style
+                    reversescale=False,
+                    colorbar=dict(title='Z (мм)', tickformat=".3f"),
+                    # Настройка сглаживания
+                    contours_z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True),
+                    opacity=0.9
+                )])
 
-            st.plotly_chart(fig, use_container_width=True)
+                fig_3d.update_layout(
+                    title=f'3D Карта: {grid_x}x{grid_y} ({origin_choice})',
+                    scene=dict(
+                        xaxis_title='Ось X (точки)',
+                        yaxis_title='Ось Y (точки)',
+                        zaxis_title='Высота Z (мм)',
+                        aspectratio=dict(x=1, y=1, z=0.5) # Приплюснем по Z
+                    ),
+                    width=900,
+                    height=800,
+                    margin=dict(l=0, r=0, b=0, t=40)
+                )
+
+                st.plotly_chart(fig_3d, use_container_width=True)
+
+            # --- ТАБ 2: 2D ВИД СВЕРХУ (MATPLOTLIB) ---
+            with tab2:
+                # Создаем график matplotlib
+                fig_2d, ax = plt.figure(figsize=(10, 8), dpi=100), plt.gca()
+                
+                # 'bicubic' делает плавные переходы цветов, 'nearest' - четкие квадраты
+                im = ax.imshow(matrix, cmap='RdYlBu_r', interpolation='bicubic')
+                
+                # Добавляем цветовую панель
+                fig_2d.colorbar(im, label='Отклонение Z (мм)')
+                
+                # Настройка осей
+                ax.set_title(f"2D Карта (Вид сверху, 0,0: {origin_choice})")
+                ax.set_xticks(np.arange(grid_x))
+                ax.set_yticks(np.arange(grid_y))
+                
+                # Подписи осей X и Y (как точки калибровки)
+                ax.set_xticklabels([f"X{i}" for i in range(grid_x)])
+                ax.set_yticklabels([f"Y{grid_y-1-i}" for i in range(grid_y)]) # Y переворачиваем для наглядности
+                
+                ax.set_xlabel("Ось X")
+                ax.set_ylabel("Ось Y")
+
+                # --- ДОБАВЛЯЕМ ЦИФРЫ ВНУТРЬ КВАДРАТОВ ---
+                # Определяем пороговое значение для смены цвета текста (чтобы было видно на темном)
+                # Вычисляем среднее, чтобы понять, какой текст лучше
+                thresh = (matrix.max() + matrix.min()) / 2
+                
+                for i in range(grid_y):
+                    for j in range(grid_x):
+                        # Цвет текста зависит от высоты: белый на темном, черный на светлом
+                        color = "white" if matrix[i, j] < thresh else "black"
+                        
+                        # Рисуем текст
+                        text = ax.text(j, i, f"{matrix[i, j]:.3f}",
+                                      ha="center", va="center", color=color,
+                                      fontweight='bold', fontsize=8)
+
+                # Сетка
+                ax.set_xticks(np.arange(grid_x+1)-.5, minor=True)
+                ax.set_yticks(np.arange(grid_y+1)-.5, minor=True)
+                ax.grid(which="minor", color="black", linestyle='-', linewidth=0.5)
+                ax.tick_params(which="minor", bottom=False, left=False)
+
+                # Вывод в Streamlit
+                st.pyplot(fig_2d)
     else:
-        st.warning("Поле пустое. Скопируйте данные из консоли принтера.")
+        st.warning("Пожалуйста, вставьте данные.")
