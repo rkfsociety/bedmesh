@@ -9,10 +9,10 @@ import json
 # Настройка страницы
 st.set_page_config(page_title="Bed Mesh Visualizer", layout="wide")
 
-# Название зафиксировано, меняется только версия
-st.title("📏 Bed Mesh Visualizer v4.2")
+# Название и версия
+st.title("📏 Bed Mesh Visualizer v4.3")
 
-# Инициализация хранилища данных (чтобы данные не пропадали при переключении кнопок)
+# Инициализация состояния сессии
 if 'analyzed' not in st.session_state:
     st.session_state.analyzed = False
 if 'matrix' not in st.session_state:
@@ -22,7 +22,6 @@ if 'matrix' not in st.session_state:
 st.sidebar.header("📂 Загрузка конфигурации")
 uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
-# Настройки по умолчанию
 default_vals = {
     "grid_x": 5, "grid_y": 5,
     "min_x": 10.0, "max_x": 240.0,
@@ -30,7 +29,6 @@ default_vals = {
     "points": ""
 }
 
-# Парсинг файла
 if uploaded_file is not None:
     try:
         raw_content = uploaded_file.read().decode("utf-8")
@@ -61,21 +59,18 @@ if uploaded_file is not None:
     except Exception as e:
         st.sidebar.error(f"Ошибка чтения: {str(e)}")
 
-st.sidebar.header("1. Физические параметры")
+st.sidebar.header("1. Параметры стола")
 bed_x = st.sidebar.number_input("Размер стола X", value=250)
 bed_y = st.sidebar.number_input("Размер стола Y", value=250)
 
 st.sidebar.header("2. Настройки сетки")
 gx = st.sidebar.number_input("Точек по X", value=default_vals["grid_x"])
 gy = st.sidebar.number_input("Точек по Y", value=default_vals["grid_y"])
-mx_min = st.sidebar.number_input("Min X", value=default_vals["min_x"])
-mx_max = st.sidebar.number_input("Max X", value=default_vals["max_x"])
-my_min = st.sidebar.number_input("Min Y", value=default_vals["min_y"])
-my_max = st.sidebar.number_input("Max Y", value=default_vals["max_y"])
+mx_min, mx_max = st.sidebar.number_input("Min X", value=default_vals["min_x"]), st.sidebar.number_input("Max X", value=default_vals["max_x"])
+my_min, my_max = st.sidebar.number_input("Min Y", value=default_vals["min_y"]), st.sidebar.number_input("Max Y", value=default_vals["max_y"])
 
 origin = st.sidebar.selectbox("Начало координат (0,0)", ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"])
 
-# --- ВВОД ДАННЫХ ---
 data_input = st.text_area("Данные точек:", value=default_vals["points"], height=150)
 
 if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
@@ -83,15 +78,13 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
         raw_nums = re.findall(r"[-+]?\d*\.\d+|\d+", data_input)
         nums = [float(n) for n in raw_nums]
         if len(nums) >= (gx * gy):
-            # Сохраняем результат в состояние сессии
             st.session_state.matrix = np.array(nums[-(gx*gy):]).reshape((gy, gx))
             st.session_state.analyzed = True
         else:
             st.error(f"Недостаточно данных: найдено {len(nums)} из {gx*gy}.")
 
-# --- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ ---
+# --- ОТОБРАЖЕНИЕ ---
 if st.session_state.analyzed:
-    # Подготовка матрицы с учетом ориентации
     display_matrix = st.session_state.matrix.copy()
     if origin == "Левый-дальний угол": display_matrix = np.flipud(display_matrix)
     elif origin == "Правый-ближний угол": display_matrix = np.fliplr(display_matrix)
@@ -117,7 +110,6 @@ if st.session_state.analyzed:
         st.pyplot(fig2)
 
     with tab3:
-        # Теперь переключение этих кнопок не сбрасывает графики выше
         method = st.radio("Метод регулировки:", ["Винты (пружины)", "Валы (моторы Z)"], key="corr_method")
         
         if method == "Винты (пружины)":
@@ -129,16 +121,29 @@ if st.session_state.analyzed:
                 diff = val - base
                 with cols[i%2]:
                     st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм")
-                    if abs(diff) > 0.01: 
-                        st.write(f"🔧 Крутить: **{abs(diff)/pitch:.2f}** об. ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
+                    if abs(diff) > 0.01: st.write(f"🔧 Обороты: **{abs(diff)/pitch:.2f}** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
         
         else:
-            z_mode = st.selectbox("Конфигурация Z:", [2, 3, 4], key="z_count")
+            z_mode = st.selectbox("Кол-во валов Z:", [2, 3, 4], key="z_count")
+            pts = {}
+            
             if z_mode == 2:
-                pts = {"Левый вал": np.mean(display_matrix[:,0]), "Правый вал": np.mean(display_matrix[:,-1])}
+                pts = {"Левый вал (среднее по X-min)": np.mean(display_matrix[:,0]), 
+                       "Правый вал (среднее по X-max)": np.mean(display_matrix[:,-1])}
             elif z_mode == 3:
-                pts = {"Перед (центр)": display_matrix[0, gx//2], "Зад-Лево": display_matrix[-1,0], "Зад-Право": display_matrix[-1,-1]}
-            else:
+                layout_3z = st.selectbox("Расположение валов:", [
+                    "2 Спереди + 1 Сзади (центр)", 
+                    "1 Спереди (центр) + 2 Сзади",
+                    "Лево + Право + Сзади (центр)"
+                ])
+                if layout_3z == "2 Спереди + 1 Сзади (центр)":
+                    pts = {"Перед-Лево": display_matrix[0,0], "Перед-Право": display_matrix[0,-1], "Зад-Центр": display_matrix[-1, gx//2]}
+                elif layout_3z == "1 Спереди (центр) + 2 Сзади":
+                    pts = {"Перед-Центр": display_matrix[0, gx//2], "Зад-Лево": display_matrix[-1,0], "Зад-Право": display_matrix[-1,-1]}
+                else: # Лево + Право + Сзади
+                    pts = {"Лево-Центр": display_matrix[gy//2, 0], "Право-Центр": display_matrix[gy//2, -1], "Зад-Центр": display_matrix[-1, gx//2]}
+            
+            elif z_mode == 4:
                 pts = {"П-Л": display_matrix[0,0], "П-П": display_matrix[0,-1], "З-Л": display_matrix[-1,0], "З-П": display_matrix[-1,-1]}
             
             avg = np.mean(list(pts.values()))
@@ -149,4 +154,4 @@ if st.session_state.analyzed:
                     st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм")
                     st.write(f"⚙️ Сдвиг: **{abs(diff):.3f} мм** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
 else:
-    st.info("Загрузите файл или вставьте данные, затем нажмите кнопку анализа.")
+    st.info("Загрузите файл или вставьте данные точек.")
