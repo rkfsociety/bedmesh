@@ -10,7 +10,7 @@ import json
 st.set_page_config(page_title="Bed Mesh Visualizer", layout="wide")
 
 # Название и версия
-st.title("📏 Bed Mesh Visualizer v4.6")
+st.title("📏 Bed Mesh Visualizer v4.7")
 
 # Инициализация состояния сессии
 if 'analyzed' not in st.session_state:
@@ -24,12 +24,18 @@ if 'last_file_id' not in st.session_state:
 st.sidebar.header("📂 Загрузка конфигурации")
 uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
+# Счётчик посетителей 
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "![Посетители](https://visitor-badge.laobi.icu/badge?page_id=bed-mesh-viz-online)"
+)
+
 # Логика сброса при удалении файла
 if uploaded_file is None and st.session_state.last_file_id is not None:
     st.session_state.analyzed = False
     st.session_state.matrix = None
     st.session_state.last_file_id = None
-    st.rerun() # Полный сброс интерфейса
+    st.rerun()
 
 default_vals = {
     "grid_x": 10, "grid_y": 10,
@@ -137,7 +143,7 @@ if st.session_state.analyzed:
             for i, (name, val) in enumerate(crn.items()):
                 diff = val - target
                 with cols[i]:
-                    st.metric(name, f"{val:.2f}", f"{diff:+.3f} мм")
+                    st.metric(name, f"{val:.2f}", f"{diff:+.2f} мм")
                     if abs(diff) > 0.01: st.write(f"**{abs(diff)/p:.2f}** об. ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
         else:
             z_mode = st.selectbox("Валов Z:", [2, 3, 4])
@@ -154,7 +160,7 @@ if st.session_state.analyzed:
             for i, (name, val) in enumerate(pts.items()):
                 diff = val - avg
                 with cols[i]:
-                    st.metric(name, f"{val:.2f}", f"{diff:+.3f} мм")
+                    st.metric(name, f"{val:.2f}", f"{diff:+.2f} мм")
                     st.write(f"**{abs(diff):.3f} мм** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
 else:
     st.info("Загрузите конфигурацию или введите данные.")
