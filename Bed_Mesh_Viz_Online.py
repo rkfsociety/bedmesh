@@ -4,15 +4,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 import numpy as np
 import re
+import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Master v3.8", layout="wide")
+st.set_page_config(page_title="Bed Mesh Master v3.9", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer + Авто-парсинг CFG")
+st.title("📏 Bed Mesh Visualizer")
 
 # --- БОКОВАЯ ПАНЕЛЬ ---
 st.sidebar.header("📂 Загрузка конфигурации")
-# Изменил текст здесь:
 uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
 # Переменные по умолчанию
@@ -24,27 +24,42 @@ default_vals = {
 }
 
 if uploaded_file is not None:
-    content = uploaded_file.read().decode("utf-8")
+    raw_content = uploaded_file.read().decode("utf-8")
     
     try:
-        def find_val(pattern, text, default):
-            match = re.search(pattern, text)
-            return match.group(1) if match else default
+        # Проверка: является ли файл JSON (как в вашем случае)
+        if raw_content.strip().startswith('{'):
+            data = json.loads(raw_content)
+            # Ищем данные в секции "bed_mesh default"
+            mesh_data = data.get("bed_mesh default", {})
+            
+            if mesh_data:
+                default_vals["grid_x"] = int(mesh_data.get("x_count", 5))
+                default_vals["grid_y"] = int(mesh_data.get("y_count", 5))
+                default_vals["min_x"] = float(mesh_data.get("min_x", 5))
+                default_vals["max_x"] = float(mesh_data.get("max_x", 245))
+                default_vals["min_y"] = float(mesh_data.get("min_y", 5))
+                default_vals["max_y"] = float(mesh_data.get("max_y", 245))
+                default_vals["points"] = mesh_data.get("points", "").strip()
+                st.sidebar.success("✅ Данные JSON загружены!")
+        else:
+            # Если это обычный текстовый CFG Klipper
+            def find_val(pattern, text, default):
+                match = re.search(pattern, text)
+                return match.group(1) if match else default
 
-        # Ищем параметры сетки
-        default_vals["grid_x"] = int(find_val(r"x_count\s*=\s*(\d+)", content, 5))
-        default_vals["grid_y"] = int(find_val(r"y_count\s*=\s*(\d+)", content, 5))
-        default_vals["min_x"] = float(find_val(r"min_x\s*=\s*([\d.]+)", content, 5))
-        default_vals["max_x"] = float(find_val(r"max_x\s*=\s*([\d.]+)", content, 245))
-        default_vals["min_y"] = float(find_val(r"min_y\s*=\s*([\d.]+)", content, 5))
-        default_vals["max_y"] = float(find_val(r"max_y\s*=\s*([\d.]+)", content, 245))
-        
-        # Ищем блок точек (поддержка многострочного вывода Klipper)
-        points_match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", content)
-        if points_match:
-            default_vals["points"] = points_match.group(1).strip()
-        
-        st.sidebar.success("✅ Данные из файла загружены!")
+            default_vals["grid_x"] = int(find_val(r"x_count\s*=\s*(\d+)", raw_content, 5))
+            default_vals["grid_y"] = int(find_val(r"y_count\s*=\s*(\d+)", raw_content, 5))
+            default_vals["min_x"] = float(find_val(r"min_x\s*=\s*([\d.]+)", raw_content, 5))
+            default_vals["max_x"] = float(find_val(r"max_x\s*=\s*([\d.]+)", raw_content, 245))
+            default_vals["min_y"] = float(find_val(r"min_y\s*=\s*([\d.]+)", raw_content, 5))
+            default_vals["max_y"] = float(find_val(r"max_y\s*=\s*([\d.]+)", raw_content, 245))
+            
+            points_match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", raw_content)
+            if points_match:
+                default_vals["points"] = points_match.group(1).strip()
+            st.sidebar.success("✅ Данные CFG загружены!")
+            
     except Exception as e:
         st.sidebar.error(f"Ошибка чтения: {e}")
 
@@ -64,7 +79,6 @@ max_y = st.sidebar.number_input("Max Y", value=default_vals["max_y"])
 origin_choice = st.sidebar.selectbox("Начало координат (0,0)", ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"])
 
 # --- ОСНОВНАЯ ЧАСТЬ ---
-# Текстовое поле теперь автоматически наполняется данными из файла
 data_input = st.text_area("Данные точек (подтянутся из файла автоматически):", 
                          value=default_vals["points"], height=150)
 
@@ -79,13 +93,11 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
         else:
             matrix = np.array(nums[-total:]).reshape((grid_y, grid_x))
             
-            # Ориентация
             display_matrix = matrix.copy()
             if origin_choice == "Левый-дальний угол": display_matrix = np.flipud(display_matrix)
             elif origin_choice == "Правый-ближний угол": display_matrix = np.fliplr(display_matrix)
             elif origin_choice == "Правый-дальний угол": display_matrix = np.flipud(np.fliplr(display_matrix))
 
-            # Расчет координат для визуализации
             x_edges = np.linspace(0, bed_size_x, grid_x + 1)
             y_edges = np.linspace(0, bed_size_y, grid_y + 1)
             x_centers = (x_edges[:-1] + x_edges[1:]) / 2
@@ -112,7 +124,8 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
                 st.pyplot(fig_2d)
 
             with t3:
-                st.header("⚙️ Как крутить винты")
+                st.header("⚙️ Инструкция по винтам")
+                # Углы берем из ориентированной матрицы
                 corners = {
                     "Передний-левый": display_matrix[0, 0], "Передний-правый": display_matrix[0, -1],
                     "Задний-левый": display_matrix[-1, 0], "Задний-правый": display_matrix[-1, -1]
@@ -123,11 +136,11 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
                     diff = val - base_val
                     with (c1 if idx < 2 else c2):
                         st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм", delta_color="inverse")
-                        if diff > 0.01:
-                            st.write(f"🔧 Крутить: **{diff/screw_pitch:.2f}** об. (ВНИЗ)")
-                        elif diff < -0.01:
-                            st.write(f"🔧 Крутить: **{abs(diff)/screw_pitch:.2f}** об. (ВВЕРХ)")
+                        if abs(diff) > 0.01:
+                            turns = abs(diff) / screw_pitch
+                            direction = "ВНИЗ (затянуть)" if diff > 0 else "ВВЕРХ (отпустить)"
+                            st.write(f"🔧 Крутить: **{turns:.2f}** об. ({direction})")
                         else:
-                            st.write("✅ В идеале")
+                            st.write("✅ В уровне")
     else:
-        st.info("Пожалуйста, загрузите файл конфигурации или вставьте данные вручную.")
+        st.info("Загрузите printer_mutable.cfg или вставьте данные точек вручную.")
