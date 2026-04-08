@@ -6,9 +6,9 @@ import numpy as np
 import re
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Professional v3.4", layout="wide")
+st.set_page_config(page_title="Bed Mesh Professional v3.5", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer (Full Bed View)")
+st.title("📏 Bed Mesh Visualizer (Точная сетка)")
 
 # --- БОКОВАЯ ПАНЕЛЬ ---
 st.sidebar.header("1. Физические размеры стола (мм)")
@@ -42,26 +42,38 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
         if len(nums) < total:
             st.error(f"Нужно {total} точек, найдено {len(nums)}")
         else:
-            # Матрица данных (Klipper обычно выдает Y строк, X столбцов)
+            # Матрица данных: первая точка — это минимальные X и Y
             matrix = np.array(nums[-total:]).reshape((grid_y, grid_x))
             
-            # Логика ориентации
+            # Центры ячеек (координаты точек замера)
+            x_centers = np.linspace(min_x, max_x, grid_x)
+            y_centers = np.linspace(min_y, max_y, grid_y)
+
+            # Вычисляем границы ячеек для одинаковых квадратов
+            def get_edges(centers):
+                d = (centers[1] - centers[0]) / 2
+                edges = np.append(centers - d, centers[-1] + d)
+                return edges
+
+            x_edges = get_edges(x_centers)
+            y_edges = get_edges(y_centers)
+
+            # Логика ориентации для отображения
+            display_matrix = matrix.copy()
             if origin_choice == "Левый-ближний угол":
-                matrix = np.flipud(matrix)
+                pass # Стандарт: Y растет вверх
+            elif origin_choice == "Левый-дальний угол":
+                display_matrix = np.flipud(display_matrix)
             elif origin_choice == "Правый-ближний угол":
-                matrix = np.flipud(np.fliplr(matrix))
+                display_matrix = np.fliplr(display_matrix)
             elif origin_choice == "Правый-дальний угол":
-                matrix = np.fliplr(matrix)
+                display_matrix = np.flipud(np.fliplr(display_matrix))
 
-            # Координаты точек замера
-            x_coords = np.linspace(min_x, max_x, grid_x)
-            y_coords = np.linspace(min_y, max_y, grid_y)
-
-            tab1, tab2 = st.tabs(["📊 3D Вид", "🗺️ 2D Карта (Весь стол)"])
+            tab1, tab2 = st.tabs(["📊 3D Вид", "🗺️ 2D Карта"])
 
             with tab1:
                 fig_3d = go.Figure(data=[go.Surface(
-                    x=x_coords, y=y_coords, z=matrix,
+                    x=x_centers, y=y_centers, z=display_matrix,
                     colorscale='RdYlBu_r',
                     colorbar=dict(title='Z (мм)', tickformat=".3f")
                 )])
@@ -77,34 +89,26 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
                 st.plotly_chart(fig_3d, use_container_width=True)
 
             with tab2:
-                fig_2d, ax = plt.subplots(figsize=(12, 10))
+                fig_2d, ax = plt.subplots(figsize=(10, 10))
                 
-                # Используем imshow на ВЕСЬ размер стола (0 до bed_size)
-                # Это создаст одинаковые квадраты
-                im = ax.imshow(matrix, 
-                               extent=[0, bed_size_x, 0, bed_size_y], 
-                               cmap='RdYlBu_r', 
-                               interpolation='nearest', # Четкие квадраты одинакового размера
-                               origin='lower')
+                # Рисуем сетку с одинаковыми квадратами через pcolormesh
+                im = ax.pcolormesh(x_edges, y_edges, display_matrix, 
+                                 cmap='RdYlBu_r', edgecolors='black', linewidth=1)
                 
-                # Добавляем цифры. Координаты текста теперь распределены по всему полю
-                text_x = np.linspace(bed_size_x/(grid_x*2), bed_size_x - bed_size_x/(grid_x*2), grid_x)
-                text_y = np.linspace(bed_size_y/(grid_y*2), bed_size_y - bed_size_y/(grid_y*2), grid_y)
-
+                # Добавляем текст строго в центры
                 for i in range(grid_y):
                     for j in range(grid_x):
-                        val = matrix[i, j]
-                        txt = ax.text(text_x[j], text_y[i], f"{val:.3f}", 
+                        val = display_matrix[i, j]
+                        txt = ax.text(x_centers[j], y_centers[i], f"{val:.3f}", 
                                      ha="center", va="center", color='black', 
-                                     fontsize=10, fontweight='bold')
+                                     fontsize=9, fontweight='bold')
                         txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
 
-                # Настройка сетки и осей
-                ax.set_xticks(np.linspace(0, bed_size_x, grid_x + 1))
-                ax.set_yticks(np.linspace(0, bed_size_y, grid_y + 1))
-                ax.grid(color='black', linestyle='-', linewidth=0.8)
+                ax.set_xlim(0, bed_size_x)
+                ax.set_ylim(0, bed_size_y)
+                ax.set_aspect('equal')
                 
-                ax.set_title(f"2D Карта стола {bed_size_x}x{bed_size_y} мм")
+                ax.set_title(f"2D Карта стола (0,0: {origin_choice})")
                 ax.set_xlabel("X (мм)")
                 ax.set_ylabel("Y (мм)")
                 
