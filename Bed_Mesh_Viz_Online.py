@@ -6,9 +6,9 @@ import numpy as np
 import re
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Professional v3.5", layout="wide")
+st.set_page_config(page_title="Bed Mesh Professional v3.6", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer (Точная сетка)")
+st.title("📏 Bed Mesh Visualizer (Perfect Grid)")
 
 # --- БОКОВАЯ ПАНЕЛЬ ---
 st.sidebar.header("1. Физические размеры стола (мм)")
@@ -16,6 +16,7 @@ bed_size_x = st.sidebar.number_input("Размер стола по X", value=250
 bed_size_y = st.sidebar.number_input("Размер стола по Y", value=250)
 
 st.sidebar.header("2. Границы сетки Mesh (мм)")
+# ВАЖНО: Эти координаты используются для 3D, в 2D они показывают отступы
 min_x = st.sidebar.number_input("Min X", value=5)
 max_x = st.sidebar.number_input("Max X", value=245)
 min_y = st.sidebar.number_input("Min Y", value=5)
@@ -45,23 +46,19 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
             # Матрица данных: первая точка — это минимальные X и Y
             matrix = np.array(nums[-total:]).reshape((grid_y, grid_x))
             
-            # Центры ячеек (координаты точек замера)
-            x_centers = np.linspace(min_x, max_x, grid_x)
-            y_centers = np.linspace(min_y, max_y, grid_y)
-
-            # Вычисляем границы ячеек для одинаковых квадратов
-            def get_edges(centers):
-                d = (centers[1] - centers[0]) / 2
-                edges = np.append(centers - d, centers[-1] + d)
-                return edges
-
-            x_edges = get_edges(x_centers)
-            y_edges = get_edges(y_centers)
+            # --- РАСЧЕТ ОДИНАКОВЫХ КВАДРАТОВ НА ВЕСЬ СТОЛ ---
+            # Создаем сетку, которая делит весь стол на равные сектора
+            x_edges = np.linspace(0, bed_size_x, grid_x + 1)
+            y_edges = np.linspace(0, bed_size_y, grid_y + 1)
+            
+            # Точки замера (для 3D и текста) будут в центрах этих секторов
+            x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+            y_centers = (y_edges[:-1] + y_edges[1:]) / 2
 
             # Логика ориентации для отображения
             display_matrix = matrix.copy()
             if origin_choice == "Левый-ближний угол":
-                pass # Стандарт: Y растет вверх
+                pass # Стандарт: Y растет вверх, X вправо
             elif origin_choice == "Левый-дальний угол":
                 display_matrix = np.flipud(display_matrix)
             elif origin_choice == "Правый-ближний угол":
@@ -69,11 +66,16 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
             elif origin_choice == "Правый-дальний угол":
                 display_matrix = np.flipud(np.fliplr(display_matrix))
 
-            tab1, tab2 = st.tabs(["📊 3D Вид", "🗺️ 2D Карта"])
+            tab1, tab2 = st.tabs(["📊 3D Вид", "🗺️ 2D Карта (Равные квадраты)"])
 
             with tab1:
+                # 3D вид всё же используем с реальными координатами замера
+                # Чтобы показать реальную область зондирования
+                real_x = np.linspace(min_x, max_x, grid_x)
+                real_y = np.linspace(min_y, max_y, grid_y)
+                
                 fig_3d = go.Figure(data=[go.Surface(
-                    x=x_centers, y=y_centers, z=display_matrix,
+                    x=real_x, y=real_y, z=display_matrix,
                     colorscale='RdYlBu_r',
                     colorbar=dict(title='Z (мм)', tickformat=".3f")
                 )])
@@ -91,11 +93,11 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
             with tab2:
                 fig_2d, ax = plt.subplots(figsize=(10, 10))
                 
-                # Рисуем сетку с одинаковыми квадратами через pcolormesh
+                # Рисуем сетку pcolormesh по РАВНЫМ краям
                 im = ax.pcolormesh(x_edges, y_edges, display_matrix, 
                                  cmap='RdYlBu_r', edgecolors='black', linewidth=1)
                 
-                # Добавляем текст строго в центры
+                # Добавляем текст в центры равных секторов
                 for i in range(grid_y):
                     for j in range(grid_x):
                         val = display_matrix[i, j]
@@ -108,7 +110,12 @@ if st.button("ПОСТРОИТЬ КАРТУ"):
                 ax.set_ylim(0, bed_size_y)
                 ax.set_aspect('equal')
                 
-                ax.set_title(f"2D Карта стола (0,0: {origin_choice})")
+                # Разметка осей по границам ячеек
+                ax.set_xticks(x_edges)
+                ax.set_yticks(y_edges)
+                ax.grid(color='black', linestyle='-', linewidth=0.5, alpha=0.5)
+                
+                ax.set_title(f"2D Карта стола {bed_size_x}x{bed_size_y} мм (Равные сектора)")
                 ax.set_xlabel("X (мм)")
                 ax.set_ylabel("Y (мм)")
                 
