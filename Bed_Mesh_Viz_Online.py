@@ -7,7 +7,7 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Master v4.0", layout="wide")
+st.set_page_config(page_title="Bed Mesh Master v4.1", layout="wide")
 
 st.title("📏 Bed Mesh Visualizer")
 
@@ -15,6 +15,7 @@ st.title("📏 Bed Mesh Visualizer")
 st.sidebar.header("📂 Загрузка конфигурации")
 uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
+# Переменные по умолчанию
 default_vals = {
     "grid_x": 5, "grid_y": 5,
     "min_x": 10.0, "max_x": 240.0,
@@ -23,36 +24,42 @@ default_vals = {
 }
 
 if uploaded_file is not None:
-    raw_content = uploaded_file.read().decode("utf-8")
     try:
+        raw_content = uploaded_file.read().decode("utf-8")
+        
+        # Если файл в формате JSON (как твой printer_mutable.cfg)
         if raw_content.strip().startswith('{'):
-            data = json.loads(raw_content) [cite: 1]
-            mesh_data = data.get("bed_mesh default", {}) [cite: 1]
+            data = json.loads(raw_content)
+            mesh_data = data.get("bed_mesh default", {})
             if mesh_data:
-                default_vals["grid_x"] = int(mesh_data.get("x_count", 5)) [cite: 1]
-                default_vals["grid_y"] = int(mesh_data.get("y_count", 5)) [cite: 1]
-                default_vals["min_x"] = float(mesh_data.get("min_x", 5)) [cite: 1]
-                default_vals["max_x"] = float(mesh_data.get("max_x", 245)) [cite: 1]
-                default_vals["min_y"] = float(mesh_data.get("min_y", 5)) [cite: 1]
-                default_vals["max_y"] = float(mesh_data.get("max_y", 245)) [cite: 1]
-                default_vals["points"] = mesh_data.get("points", "").strip() [cite: 1]
+                default_vals["grid_x"] = int(mesh_data.get("x_count", 5))
+                default_vals["grid_y"] = int(mesh_data.get("y_count", 5))
+                default_vals["min_x"] = float(mesh_data.get("min_x", 5))
+                default_vals["max_x"] = float(mesh_data.get("max_x", 245))
+                default_vals["min_y"] = float(mesh_data.get("min_y", 5))
+                default_vals["max_y"] = float(mesh_data.get("max_y", 245))
+                default_vals["points"] = mesh_data.get("points", "").strip()
                 st.sidebar.success("✅ Данные JSON загружены!")
         else:
-            def find_val(pattern, text, default):
+            # Если файл в обычном текстовом формате CFG
+            def get_val(pattern, text, default):
                 match = re.search(pattern, text)
                 return match.group(1) if match else default
-            default_vals["grid_x"] = int(find_val(r"x_count\s*=\s*(\d+)", raw_content, 5))
-            default_vals["grid_y"] = int(find_val(r"y_count\s*=\s*(\d+)", raw_content, 5))
-            default_vals["min_x"] = float(find_val(r"min_x\s*=\s*([\d.]+)", raw_content, 5))
-            default_vals["max_x"] = float(find_val(r"max_x\s*=\s*([\d.]+)", raw_content, 245))
-            default_vals["min_y"] = float(find_val(r"min_y\s*=\s*([\d.]+)", raw_content, 5))
-            default_vals["max_y"] = float(find_val(r"max_y\s*=\s*([\d.]+)", raw_content, 245))
-            points_match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", raw_content)
-            if points_match:
-                default_vals["points"] = points_match.group(1).strip()
+            
+            default_vals["grid_x"] = int(get_val(r"x_count\s*=\s*(\d+)", raw_content, 5))
+            default_vals["grid_y"] = int(get_val(r"y_count\s*=\s*(\d+)", raw_content, 5))
+            default_vals["min_x"] = float(get_val(r"min_x\s*=\s*([\d.]+)", raw_content, 5))
+            default_vals["max_x"] = float(get_val(r"max_x\s*=\s*([\d.]+)", raw_content, 245))
+            default_vals["min_y"] = float(get_val(r"min_y\s*=\s*([\d.]+)", raw_content, 5))
+            default_vals["max_y"] = float(get_val(r"max_y\s*=\s*([\d.]+)", raw_content, 245))
+            
+            p_match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", raw_content)
+            if p_match:
+                default_vals["points"] = p_match.group(1).strip()
             st.sidebar.success("✅ Данные CFG загружены!")
+            
     except Exception as e:
-        st.sidebar.error(f"Ошибка чтения: {e}")
+        st.sidebar.error(f"Ошибка чтения: {str(e)}")
 
 st.sidebar.header("1. Параметры стола")
 bed_size_x = st.sidebar.number_input("Размер стола X", value=250)
@@ -69,7 +76,7 @@ max_y = st.sidebar.number_input("Max Y", value=default_vals["max_y"])
 origin_choice = st.sidebar.selectbox("Начало координат (0,0)", ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"])
 
 # --- ОСНОВНАЯ ЧАСТЬ ---
-data_input = st.text_area("Данные точек:", value=default_vals["points"], height=150)
+data_input = st.text_area("Данные точек (подтянутся автоматически):", value=default_vals["points"], height=150)
 
 if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
     if data_input:
@@ -82,6 +89,7 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
         else:
             matrix = np.array(nums[-total:]).reshape((grid_y, grid_x))
             display_matrix = matrix.copy()
+            
             if origin_choice == "Левый-дальний угол": display_matrix = np.flipud(display_matrix)
             elif origin_choice == "Правый-ближний угол": display_matrix = np.fliplr(display_matrix)
             elif origin_choice == "Правый-дальний угол": display_matrix = np.flipud(np.fliplr(display_matrix))
@@ -91,7 +99,7 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
             x_centers = (x_edges[:-1] + x_edges[1:]) / 2
             y_centers = (y_edges[:-1] + y_edges[1:]) / 2
 
-            t1, t2, t3 = st.tabs(["📊 3D Интерактив", "🗺️ 2D Карта", "🔧 Инструкция по выравниванию"])
+            t1, t2, t3 = st.tabs(["📊 3D Интерактив", "🗺️ 2D Карта", "🔧 Мастер выравнивания"])
 
             with t1:
                 fig_3d = go.Figure(data=[go.Surface(x=np.linspace(min_x, max_x, grid_x), y=np.linspace(min_y, max_y, grid_y), z=display_matrix, colorscale='RdYlBu_r')])
@@ -110,46 +118,34 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
 
             with t3:
                 st.header("⚙️ Выбор метода коррекции")
-                method = st.radio("Что будем крутить?", ["Регулировочные винты стола", "Валы (моторы Z)"])
+                method = st.radio("Что будем настраивать?", ["Винты стола", "Валы оси Z"])
                 
-                if method == "Регулировочные винты стола":
-                    screw_pitch = st.selectbox("Шаг винтов", [0.7, 0.5, 0.8], format_func=lambda x: f"M4 (0.7мм)" if x==0.7 else f"M3 (0.5мм)")
-                    corners = {
-                        "Передний-левый": display_matrix[0, 0], "Передний-правый": display_matrix[0, -1],
-                        "Задний-левый": display_matrix[-1, 0], "Задний-правый": display_matrix[-1, -1]
-                    }
-                    base_val = min(corners.values())
+                if method == "Винты стола":
+                    screw_p = st.selectbox("Тип винтов", [0.7, 0.5, 0.8], format_func=lambda x: f"M4 (0.7мм)" if x==0.7 else f"M3 (0.5мм)")
+                    corners = {"Перед-Лево": display_matrix[0,0], "Перед-Право": display_matrix[0,-1], "Зад-Лево": display_matrix[-1,0], "Зад-Право": display_matrix[-1,-1]}
+                    target = min(corners.values())
                     c1, c2 = st.columns(2)
                     for idx, (name, val) in enumerate(corners.items()):
-                        diff = val - base_val
+                        diff = val - target
                         with (c1 if idx < 2 else c2):
                             st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм", delta_color="inverse")
                             if abs(diff) > 0.01:
-                                st.write(f"🔧 Крутить: **{abs(diff)/screw_pitch:.2f}** об. ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
-                
+                                st.write(f"🔧 Обороты: **{abs(diff)/screw_p:.2f}** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
                 else:
-                    z_count = st.selectbox("Сколько независимых валов Z?", [2, 3, 4])
-                    st.info(f"Расчет для {z_count} валов. Цель — привести все точки к среднему значению.")
+                    z_nums = st.selectbox("Кол-во валов Z", [2, 3, 4])
+                    if z_nums == 2:
+                        pz = {"Левый вал": np.mean(display_matrix[:,0]), "Правый вал": np.mean(display_matrix[:,-1])}
+                    elif z_nums == 3:
+                        pz = {"Перед (центр)": display_matrix[0, grid_x//2], "Зад-Лево": display_matrix[-1,0], "Зад-Право": display_matrix[-1,-1]}
+                    else:
+                        pz = {"Перед-Лево": display_matrix[0,0], "Перед-Право": display_matrix[0,-1], "Зад-Лево": display_matrix[-1,0], "Зад-Право": display_matrix[-1,-1]}
                     
-                    # Логика для валов зависит от их количества
-                    if z_count == 2:
-                        points_z = {"Левый вал (среднее по левой стороне)": np.mean(display_matrix[:, 0]), 
-                                    "Правый вал (среднее по правой стороне)": np.mean(display_matrix[:, -1])}
-                    elif z_count == 3:
-                        points_z = {"Передний (центр)": display_matrix[0, grid_x//2], 
-                                    "Задний левый": display_matrix[-1, 0], 
-                                    "Задний правый": display_matrix[-1, -1]}
-                    else: # 4 вала по углам
-                        points_z = {"Передний-левый": display_matrix[0, 0], "Передний-правый": display_matrix[0, -1],
-                                    "Задний-левый": display_matrix[-1, 0], "Задний-правый": display_matrix[-1, -1]}
-                    
-                    avg_z = np.mean(list(points_z.values()))
+                    avg_val = np.mean(list(pz.values()))
                     c1, c2 = st.columns(2)
-                    for idx, (name, val) in enumerate(points_z.items()):
-                        diff = val - avg_z
+                    for idx, (name, val) in enumerate(pz.items()):
+                        diff = val - avg_val
                         with (c1 if idx % 2 == 0 else c2):
                             st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм", delta_color="inverse")
-                            action = "ОПУСТИТЬ" if diff > 0 else "ПОДНЯТЬ"
-                            st.write(f"⚙️ Сместить вал на **{abs(diff):.3f} мм** ({action})")
+                            st.write(f"⚙️ Сместить: **{abs(diff):.3f} мм** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
     else:
-        st.info("Загрузите файл или введите данные.")
+        st.info("Загрузите файл или введите данные точек.")
