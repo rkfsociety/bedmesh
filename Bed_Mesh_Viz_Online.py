@@ -5,12 +5,31 @@ import matplotlib.patheffects as path_effects
 import numpy as np
 import re
 import json
+import streamlit.components.v1 as components
 
 # Настройка страницы
 st.set_page_config(page_title="Bed Mesh Visualizer", layout="wide")
 
+# --- ФУНКЦИЯ АНАЛИТИКИ (GA4) ---
+# Если у тебя есть Google Analytics, вставь свой ID (G-XXXXXXXXXX)
+def inject_ga(ga_id="G-XXXXXXXXXX"):
+    if ga_id != "G-XXXXXXXXXX":
+        ga_js = f"""
+        <script async src="https://www.googletagmanager.com/gtag/js?id={ga_id}"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){{dataLayer.push(arguments);}}
+            gtag('js', new Date());
+            gtag('config', '{ga_id}');
+        </script>
+        """
+        components.html(ga_js, height=0)
+
+# Вызываем аналитику (по умолчанию ничего не делает, пока не сменишь ID)
+inject_ga()
+
 # Название и версия
-st.title("📏 Bed Mesh Visualizer v4.7")
+st.title("📏 Bed Mesh Visualizer v4.8")
 
 # Инициализация состояния сессии
 if 'analyzed' not in st.session_state:
@@ -24,12 +43,6 @@ if 'last_file_id' not in st.session_state:
 st.sidebar.header("📂 Загрузка конфигурации")
 uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
-# Счётчик посетителей 
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    "![Посетители](https://visitor-badge.laobi.icu/badge?page_id=bed-mesh-viz-online)"
-)
-
 # Логика сброса при удалении файла
 if uploaded_file is None and st.session_state.last_file_id is not None:
     st.session_state.analyzed = False
@@ -37,6 +50,7 @@ if uploaded_file is None and st.session_state.last_file_id is not None:
     st.session_state.last_file_id = None
     st.rerun()
 
+# Настройки по умолчанию (на основе твоего конфига)
 default_vals = {
     "grid_x": 10, "grid_y": 10,
     "min_x": 5.0, "max_x": 244.94,
@@ -48,6 +62,7 @@ if uploaded_file is not None:
     st.session_state.last_file_id = uploaded_file.name
     try:
         raw_content = uploaded_file.read().decode("utf-8")
+        # Парсинг JSON ( printer_mutable.cfg )
         if raw_content.strip().startswith('{'):
             data = json.loads(raw_content)
             mesh_data = data.get("bed_mesh default", {})
@@ -60,6 +75,7 @@ if uploaded_file is not None:
                 default_vals["max_y"] = float(mesh_data.get("max_y", 244.94))
                 default_vals["points"] = mesh_data.get("points", "").strip()
                 st.sidebar.success("✅ Данные загружены")
+        # Парсинг обычного текстового CFG
         else:
             def get_val(pattern, text, default):
                 match = re.search(pattern, text)
@@ -89,6 +105,7 @@ my_max = st.sidebar.number_input("Max Y", value=default_vals["max_y"])
 
 origin = st.sidebar.selectbox("Начало координат (0,0)", ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"])
 
+# --- ОСНОВНАЯ ЧАСТЬ ---
 data_input = st.text_area("Данные точек:", value=default_vals["points"], height=100)
 
 if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
@@ -101,7 +118,7 @@ if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
         else:
             st.error(f"Недостаточно данных: {len(nums)} из {gx*gy}.")
 
-# --- ОТОБРАЖЕНИЕ ---
+# --- ВИЗУАЛИЗАЦИЯ ---
 if st.session_state.analyzed:
     display_matrix = st.session_state.matrix.copy()
     if origin == "Левый-дальний угол": display_matrix = np.flipud(display_matrix)
@@ -143,7 +160,7 @@ if st.session_state.analyzed:
             for i, (name, val) in enumerate(crn.items()):
                 diff = val - target
                 with cols[i]:
-                    st.metric(name, f"{val:.2f}", f"{diff:+.2f} мм")
+                    st.metric(name, f"{val:.2f}", f"{diff:+.3f} мм")
                     if abs(diff) > 0.01: st.write(f"**{abs(diff)/p:.2f}** об. ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
         else:
             z_mode = st.selectbox("Валов Z:", [2, 3, 4])
@@ -160,7 +177,7 @@ if st.session_state.analyzed:
             for i, (name, val) in enumerate(pts.items()):
                 diff = val - avg
                 with cols[i]:
-                    st.metric(name, f"{val:.2f}", f"{diff:+.2f} мм")
+                    st.metric(name, f"{val:.2f}", f"{diff:+.3f} мм")
                     st.write(f"**{abs(diff):.3f} мм** ({'ВНИЗ' if diff > 0 else 'ВВЕРХ'})")
 else:
     st.info("Загрузите конфигурацию или введите данные.")
