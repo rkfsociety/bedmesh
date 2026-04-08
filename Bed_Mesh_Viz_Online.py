@@ -6,70 +6,102 @@ import numpy as np
 import re
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Master v3.7", layout="wide")
+st.set_page_config(page_title="Bed Mesh Master v3.8", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer + Инструкции по правке")
+st.title("📏 Bed Mesh Visualizer + Авто-парсинг CFG")
 
 # --- БОКОВАЯ ПАНЕЛЬ ---
-st.sidebar.header("1. Физические размеры стола (мм)")
-bed_size_x = st.sidebar.number_input("Размер стола по X", value=250)
-bed_size_y = st.sidebar.number_input("Размер стола по Y", value=250)
+st.sidebar.header("📂 Загрузка конфигурации")
+# Изменил текст здесь:
+uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf'])
 
-st.sidebar.header("2. Параметры винтов")
-screw_pitch = st.sidebar.selectbox("Шаг резьбы винтов", [0.7, 0.5, 0.8], format_func=lambda x: f"M4 (0.7мм)" if x==0.7 else f"M3 (0.5мм)" if x==0.5 else f"M5 (0.8мм)")
+# Переменные по умолчанию
+default_vals = {
+    "grid_x": 5, "grid_y": 5,
+    "min_x": 10.0, "max_x": 240.0,
+    "min_y": 10.0, "max_y": 240.0,
+    "points": ""
+}
 
-st.sidebar.header("3. Сетка и границы")
-min_x = st.sidebar.number_input("Min X", value=5)
-max_x = st.sidebar.number_input("Max X", value=245)
-min_y = st.sidebar.number_input("Min Y", value=5)
-max_y = st.sidebar.number_input("Max Y", value=245)
-grid_x = st.sidebar.number_input("Точек по X", min_value=2, value=5)
-grid_y = st.sidebar.number_input("Точек по Y", min_value=2, value=5)
+if uploaded_file is not None:
+    content = uploaded_file.read().decode("utf-8")
+    
+    try:
+        def find_val(pattern, text, default):
+            match = re.search(pattern, text)
+            return match.group(1) if match else default
 
-origin_choice = st.sidebar.selectbox(
-    "Начало координат (0,0)",
-    ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"]
-)
+        # Ищем параметры сетки
+        default_vals["grid_x"] = int(find_val(r"x_count\s*=\s*(\d+)", content, 5))
+        default_vals["grid_y"] = int(find_val(r"y_count\s*=\s*(\d+)", content, 5))
+        default_vals["min_x"] = float(find_val(r"min_x\s*=\s*([\d.]+)", content, 5))
+        default_vals["max_x"] = float(find_val(r"max_x\s*=\s*([\d.]+)", content, 245))
+        default_vals["min_y"] = float(find_val(r"min_y\s*=\s*([\d.]+)", content, 5))
+        default_vals["max_y"] = float(find_val(r"max_y\s*=\s*([\d.]+)", content, 245))
+        
+        # Ищем блок точек (поддержка многострочного вывода Klipper)
+        points_match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", content)
+        if points_match:
+            default_vals["points"] = points_match.group(1).strip()
+        
+        st.sidebar.success("✅ Данные из файла загружены!")
+    except Exception as e:
+        st.sidebar.error(f"Ошибка чтения: {e}")
 
-# --- ВВОД ДАННЫХ ---
-data_input = st.text_area("Вставьте данные (JSON, лог или числа):", height=150)
+st.sidebar.header("1. Параметры стола")
+bed_size_x = st.sidebar.number_input("Размер стола X", value=250)
+bed_size_y = st.sidebar.number_input("Размер стола Y", value=250)
+screw_pitch = st.sidebar.selectbox("Шаг винтов", [0.7, 0.5, 0.8], format_func=lambda x: f"M4 (0.7мм)" if x==0.7 else f"M3 (0.5мм)")
 
-if st.button("АНАЛИЗИРОВАТЬ И ПОСТРОИТЬ"):
+st.sidebar.header("2. Настройки сетки")
+grid_x = st.sidebar.number_input("Точек по X", value=default_vals["grid_x"])
+grid_y = st.sidebar.number_input("Точек по Y", value=default_vals["grid_y"])
+min_x = st.sidebar.number_input("Min X", value=default_vals["min_x"])
+max_x = st.sidebar.number_input("Max X", value=default_vals["max_x"])
+min_y = st.sidebar.number_input("Min Y", value=default_vals["min_y"])
+max_y = st.sidebar.number_input("Max Y", value=default_vals["max_y"])
+
+origin_choice = st.sidebar.selectbox("Начало координат (0,0)", ["Левый-ближний угол", "Левый-дальний угол", "Правый-ближний угол", "Правый-дальний угол"])
+
+# --- ОСНОВНАЯ ЧАСТЬ ---
+# Текстовое поле теперь автоматически наполняется данными из файла
+data_input = st.text_area("Данные точек (подтянутся из файла автоматически):", 
+                         value=default_vals["points"], height=150)
+
+if st.button("ПОСТРОИТЬ И АНАЛИЗИРОВАТЬ"):
     if data_input:
         raw_nums = re.findall(r"[-+]?\d*\.\d+|\d+", data_input)
         nums = [float(n) for n in raw_nums]
         
         total = grid_x * grid_y
         if len(nums) < total:
-            st.error(f"Нужно {total} точек, найдено {len(nums)}")
+            st.error(f"Недостаточно данных: найдено {len(nums)} из {total}. Проверьте X и Y.")
         else:
             matrix = np.array(nums[-total:]).reshape((grid_y, grid_x))
             
-            # Логика ориентации
+            # Ориентация
             display_matrix = matrix.copy()
-            if origin_choice == "Левый-дальний угол":
-                display_matrix = np.flipud(display_matrix)
-            elif origin_choice == "Правый-ближний угол":
-                display_matrix = np.fliplr(display_matrix)
-            elif origin_choice == "Правый-дальний угол":
-                display_matrix = np.flipud(np.fliplr(display_matrix))
+            if origin_choice == "Левый-дальний угол": display_matrix = np.flipud(display_matrix)
+            elif origin_choice == "Правый-ближний угол": display_matrix = np.fliplr(display_matrix)
+            elif origin_choice == "Правый-дальний угол": display_matrix = np.flipud(np.fliplr(display_matrix))
 
-            # Координаты
+            # Расчет координат для визуализации
             x_edges = np.linspace(0, bed_size_x, grid_x + 1)
             y_edges = np.linspace(0, bed_size_y, grid_y + 1)
             x_centers = (x_edges[:-1] + x_edges[1:]) / 2
             y_centers = (y_edges[:-1] + y_edges[1:]) / 2
 
-            tab1, tab2, tab3 = st.tabs(["📊 3D Вид", "🗺️ 2D Карта", "🔧 Инструкция по исправлению"])
+            t1, t2, t3 = st.tabs(["📊 3D Интерактив", "🗺️ 2D Карта", "🔧 Коррекция винтов"])
 
-            with tab1:
-                real_x = np.linspace(min_x, max_x, grid_x)
-                real_y = np.linspace(min_y, max_y, grid_y)
-                fig_3d = go.Figure(data=[go.Surface(x=real_x, y=real_y, z=display_matrix, colorscale='RdYlBu_r')])
+            with t1:
+                fig_3d = go.Figure(data=[go.Surface(
+                    x=np.linspace(min_x, max_x, grid_x), 
+                    y=np.linspace(min_y, max_y, grid_y), 
+                    z=display_matrix, colorscale='RdYlBu_r')])
                 fig_3d.update_layout(scene=dict(xaxis_range=[0, bed_size_x], yaxis_range=[0, bed_size_y], aspectratio=dict(x=1, y=1, z=0.4)))
                 st.plotly_chart(fig_3d, use_container_width=True)
 
-            with tab2:
+            with t2:
                 fig_2d, ax = plt.subplots(figsize=(10, 10))
                 im = ax.pcolormesh(x_edges, y_edges, display_matrix, cmap='RdYlBu_r', edgecolors='black')
                 for i in range(grid_y):
@@ -79,40 +111,23 @@ if st.button("АНАЛИЗИРОВАТЬ И ПОСТРОИТЬ"):
                 ax.set_xlim(0, bed_size_x); ax.set_ylim(0, bed_size_y); ax.set_aspect('equal')
                 st.pyplot(fig_2d)
 
-            with tab3:
-                st.header("🛠️ Рекомендации по настройке винтов")
-                
-                # Извлекаем значения углов
-                # Ближний левый [0,0], Ближний правый [0, -1], Дальний левый [-1, 0], Дальний правый [-1, -1]
-                # ВАЖНО: берем из display_matrix, так как она уже ориентирована как стол
+            with t3:
+                st.header("⚙️ Как крутить винты")
                 corners = {
-                    "Ближний левый (Front-Left)": display_matrix[0, 0],
-                    "Ближний правый (Front-Right)": display_matrix[0, -1],
-                    "Дальний левый (Back-Left)": display_matrix[-1, 0],
-                    "Дальний правый (Back-Right)": display_matrix[-1, -1]
+                    "Передний-левый": display_matrix[0, 0], "Передний-правый": display_matrix[0, -1],
+                    "Задний-левый": display_matrix[-1, 0], "Задний-правый": display_matrix[-1, -1]
                 }
-                
-                # Базовая точка (самая низкая, её не трогаем, остальные подтягиваем к ней)
-                target_val = min(corners.values())
-                
-                col1, col2 = st.columns(2)
-                
+                base_val = min(corners.values())
+                c1, c2 = st.columns(2)
                 for idx, (name, val) in enumerate(corners.items()):
-                    diff = val - target_val
-                    with (col1 if idx < 2 else col2):
-                        st.subheader(name)
-                        if diff == 0:
-                            st.success("✅ Базовая точка (идеально)")
+                    diff = val - base_val
+                    with (c1 if idx < 2 else c2):
+                        st.metric(name, f"{val:.3f} мм", f"{diff:+.3f} мм", delta_color="inverse")
+                        if diff > 0.01:
+                            st.write(f"🔧 Крутить: **{diff/screw_pitch:.2f}** об. (ВНИЗ)")
+                        elif diff < -0.01:
+                            st.write(f"🔧 Крутить: **{abs(diff)/screw_pitch:.2f}** об. (ВВЕРХ)")
                         else:
-                            turns = diff / screw_pitch
-                            direction = "ПО часовой стрелке" if diff > 0 else "ПРОТИВ часовой стрелки"
-                            action = "ОПУСТИТЬ" if diff > 0 else "ПОДНЯТЬ"
-                            
-                            st.error(f"Отклонение: **{diff:+.3f} мм**")
-                            st.write(f"👉 Нужно **{action}** угол.")
-                            st.info(f"Крутить: **{abs(turns):.2f}** оборота ({direction})")
-                
-                st.warning("⚠️ Примечание: Расчет сделан исходя из того, что затягивание винта (по часовой) опускает стол. Если у вас наоборот — смените направление.")
-
+                            st.write("✅ В идеале")
     else:
-        st.info("Вставьте данные...")
+        st.info("Пожалуйста, загрузите файл конфигурации или вставьте данные вручную.")
