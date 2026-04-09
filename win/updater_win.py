@@ -24,13 +24,11 @@ def install_update(data):
         new_exe = "Bed_Mesh_Viz_Win_new.exe"
         with open(new_exe, 'wb') as f:
             for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
-        
         current_exe = os.path.abspath(sys.executable)
         with open("updater_win.bat", "w", encoding="cp866") as f:
             f.write(f'@echo off\n:loop\ntasklist | find /i "{os.path.basename(current_exe)}" > nul\n')
             f.write(f'if %errorlevel% equ 0 (timeout /t 1 > nul & goto loop)\n')
             f.write(f'del /f /q "{current_exe}"\nmove /y "{new_exe}" "{current_exe}"\n')
             f.write(f'start "" "{current_exe}"\ndel "%~f0"\n')
-        messagebox.showinfo("Update", "Перезапуск...")
-        subprocess.Popen("updater_win.bat", shell=True); os._exit(0)
+        messagebox.showinfo("Update", "Перезапуск..."); subprocess.Popen("updater_win.bat", shell=True); os._exit(0)
     except Exception as e: messagebox.showerror("Update Error", str(e))
