@@ -7,130 +7,124 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v4.9", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.0", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v4.9 (Multi-Z Support)")
+st.title("📏 Bed Mesh Visualizer Pro v5.0")
 
-# --- БОКОВАЯ ПАНЕЛЬ ---
-st.sidebar.header("📂 Загрузка данных")
-uploaded_file = st.sidebar.file_uploader("Загрузить printer_mutable.cfg", type=['cfg', 'txt', 'conf', 'json'])
+# --- БОКОВАЯ ПАНЕЛЬ (Только база) ---
+st.sidebar.header("📂 Данные")
+uploaded_file = st.sidebar.file_uploader("Загрузить конфигурацию", type=['cfg', 'txt', 'json'])
 
 default_vals = {"grid_x": 5, "grid_y": 5, "min_x": 10.0, "max_x": 240.0, "min_y": 10.0, "max_y": 240.0, "points": ""}
 
-if uploaded_file is not None:
-    raw_content = uploaded_file.read().decode("utf-8")
+if uploaded_file:
+    content = uploaded_file.read().decode("utf-8")
     try:
-        if raw_content.strip().startswith('{'):
-            data = json.loads(raw_content)
-            mesh_data = data.get("bed_mesh default", {})
-            if mesh_data:
+        if content.strip().startswith('{'):
+            js = json.loads(content).get("bed_mesh default", {})
+            if js:
                 default_vals.update({
-                    "grid_x": int(mesh_data.get("x_count", 5)), "grid_y": int(mesh_data.get("y_count", 5)),
-                    "min_x": float(mesh_data.get("min_x", 5)), "max_x": float(mesh_data.get("max_x", 245)),
-                    "min_y": float(mesh_data.get("min_y", 5)), "max_y": float(mesh_data.get("max_y", 245)),
-                    "points": mesh_data.get("points", "").strip()
+                    "grid_x": int(js.get("x_count", 5)), "grid_y": int(js.get("y_count", 5)),
+                    "min_x": float(js.get("min_x", 5)), "max_x": float(js.get("max_x", 245)),
+                    "min_y": float(js.get("min_y", 5)), "max_y": float(js.get("max_y", 245)),
+                    "points": js.get("points", "").strip()
                 })
         else:
-            def find_val(pattern, text, default):
-                match = re.search(pattern, text)
-                return match.group(1) if match else default
+            def fnd(p, t, d): return re.search(p, t).group(1) if re.search(p, t) else d
             default_vals.update({
-                "grid_x": int(find_val(r"x_count\s*=\s*(\d+)", raw_content, 5)),
-                "grid_y": int(find_val(r"y_count\s*=\s*(\d+)", raw_content, 5)),
-                "min_x": float(find_val(r"min_x\s*=\s*([\d.]+)", raw_content, 5)),
-                "max_x": float(find_val(r"max_x\s*=\s*([\d.]+)", raw_content, 245)),
-                "min_y": float(find_val(r"min_y\s*=\s*([\d.]+)", raw_content, 5)),
-                "max_y": float(find_val(r"max_y\s*=\s*([\d.]+)", raw_content, 245))
+                "grid_x": int(fnd(r"x_count\s*=\s*(\d+)", content, 5)),
+                "grid_y": int(fnd(r"y_count\s*=\s*(\d+)", content, 5)),
+                "min_x": float(fnd(r"min_x\s*=\s*([\d.]+)", content, 5)),
+                "max_x": float(fnd(r"max_x\s*=\s*([\d.]+)", content, 245)),
+                "min_y": float(fnd(r"min_y\s*=\s*([\d.]+)", content, 5)),
+                "max_y": float(fnd(r"max_y\s*=\s*([\d.]+)", content, 245))
             })
-            pts = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", raw_content)
+            pts = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)", content)
             if pts: default_vals["points"] = pts.group(1).strip()
     except: st.sidebar.error("Ошибка парсинга.")
 
-st.sidebar.header("1. Конфигурация Z (Валы)")
-z_type = st.sidebar.radio("Система валов:", ["2 вала (Л/П)", "3 вала (2 спереди, 1 сзади)"])
-screw_pitch = st.sidebar.selectbox("Шаг винта", [0.7, 0.5, 0.8], index=0)
-
-st.sidebar.header("2. Геометрия")
+st.sidebar.header("⚙️ Геометрия стола")
 bed_x = st.sidebar.number_input("Размер X (мм)", value=250)
 bed_y = st.sidebar.number_input("Размер Y (мм)", value=250)
 grid_x = st.sidebar.number_input("Точек X", value=default_vals["grid_x"])
 grid_y = st.sidebar.number_input("Точек Y", value=default_vals["grid_y"])
-mx_val, Mx_val = st.sidebar.number_input("Min X mesh", value=default_vals["min_x"]), st.sidebar.number_input("Max X mesh", value=default_vals["max_x"])
-my_val, My_val = st.sidebar.number_input("Min Y mesh", value=default_vals["min_y"]), st.sidebar.number_input("Max Y mesh", value=default_vals["max_y"])
 
-data_input = st.text_area("Данные точек (points):", value=default_vals["points"], height=150)
+# --- ОСНОВНАЯ ОБЛАСТЬ ---
+data_input = st.text_area("Данные точек (Mesh Points):", value=default_vals["points"], height=150)
 
-if st.button("🚀 ПОСТРОИТЬ КАРТУ", use_container_width=True):
+if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
     if data_input:
-        raw_nums = re.findall(r"[-+]?\d*\.\d+|\d+", data_input)
-        nums = [float(n) for n in raw_nums]
+        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", data_input)]
         if len(nums) < grid_x * grid_y:
-            st.error("Недостаточно точек!")
+            st.error("Недостаточно точек для построения сетки!")
         else:
+            # Подготовка матрицы
             matrix = np.array(nums[:grid_x*grid_y]).reshape((grid_y, grid_x))
             for i in range(len(matrix)):
                 if i % 2 != 0: matrix[i] = matrix[i][::-1]
             
-            variance = np.max(matrix) - np.min(matrix)
+            # Метрики
+            v = np.max(matrix) - np.min(matrix)
             m1, m2, m3 = st.columns(3)
-            m1.metric("Variance", f"{variance:.3f} мм")
+            m1.metric("Variance (Отклонение)", f"{v:.3f} мм")
             m2.metric("Max Z", f"{np.max(matrix):.3f} мм")
             m3.metric("Min Z", f"{np.min(matrix):.3f} мм")
 
-            tab1, tab2 = st.tabs(["📊 3D Интерактив", "🗺️ 2D Карта"])
+            tab1, tab2 = st.tabs(["📊 3D Модель", "🗺️ 2D Карта"])
+            
             with tab1:
-                fig_3d = go.Figure(data=[go.Surface(x=np.linspace(mx_val, Mx_val, grid_x), y=np.linspace(my_val, My_val, grid_y), z=matrix, colorscale='RdYlBu_r')])
-                fig_3d.update_layout(scene=dict(xaxis=dict(range=[0, bed_x]), yaxis=dict(range=[0, bed_y])), width=800, height=800)
-                st.plotly_chart(fig_3d, use_container_width=True)
+                fig3 = go.Figure(data=[go.Surface(z=matrix, colorscale='RdYlBu_r')])
+                fig3.update_layout(scene=dict(xaxis=dict(range=[0, grid_x-1]), yaxis=dict(range=[0, grid_y-1])), width=800, height=800)
+                st.plotly_chart(fig3, use_container_width=True)
 
             with tab2:
-                fig_2d, ax = plt.subplots(figsize=(8, 8))
-                x_edges = np.linspace(0, bed_x, grid_x + 1); y_edges = np.linspace(0, bed_y, grid_y + 1)
-                im = ax.pcolormesh(x_edges, y_edges, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
-                xc, yc = (x_edges[:-1] + x_edges[1:]) / 2, (y_edges[:-1] + y_edges[1:]) / 2
+                fig2, ax = plt.subplots(figsize=(8, 8))
+                xe = np.linspace(0, bed_x, grid_x + 1); ye = np.linspace(0, bed_y, grid_y + 1)
+                im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
+                xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
                 for i in range(grid_y):
                     for j in range(grid_x):
-                        txt = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold')
-                        txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
-                ax.set_aspect('equal'); fig_2d.colorbar(im); st.pyplot(fig_2d)
+                        t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold')
+                        t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
+                ax.set_aspect('equal'); fig2.colorbar(im); st.pyplot(fig2)
 
-            # --- ЛОГИКА ВЫРАВНИВАНИЯ ВАЛОВ ---
+            # --- БЛОК РЕКОМЕНДАЦИЙ (Настройки теперь здесь) ---
             st.divider()
-            st.subheader(f"⚖️ Выравнивание валов ({z_type})")
+            st.header("🛠️ Рекомендатор по механике")
             
-            if "2 вала" in z_type:
-                l_avg, r_avg = np.mean(matrix[:, 0]), np.mean(matrix[:, -1])
-                diff = l_avg - r_avg
-                c1, c2 = st.columns(2)
-                c1.write(f"Слева: `{l_avg:.3f}` | Справа: `{r_avg:.3f}`")
-                side = "ЛЕВЫЙ" if diff > 0 else "ПРАВЫЙ"
-                c2.warning(f"**{side} вал выше на {abs(diff):.3f} мм** \n({abs(diff/screw_pitch):.2f} об.)")
-            else:
-                # Tri-Z: 2 спереди по углам, 1 сзади по центру
-                f_left = matrix[0, 0]
-                f_right = matrix[0, -1]
-                b_center = matrix[-1, grid_x // 2]
-                
-                low = min(f_left, f_right, b_center)
-                z1, z2, z3 = st.columns(3)
-                points = [("Спереди Слева", f_left, z1), ("Спереди Справа", f_right, z2), ("Сзади Центр", b_center, z3)]
-                
-                for name, val, col in points:
-                    d = val - low
-                    with col:
-                        st.info(f"**{name}**")
-                        if d == 0: st.success("Опорная точка")
-                        else: st.warning(f"{'🔽 Вниз' if d>0 else '🔼 Вверх'}  \n**{abs(d/screw_pitch):.2f}** об.")
+            r_col1, r_col2 = st.columns([1, 2])
+            with r_col1:
+                st.write("##### Настройки системы")
+                z_sys = st.selectbox("Тип Z-привода:", 
+                                    ["Винты (только углы)", 
+                                     "2 вала (Л/П)", 
+                                     "3 вала (Tri-Z)", 
+                                     "4 вала (Quad-Z)"])
+                pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0)
 
-            # --- ВИНТЫ (УГЛЫ) ---
-            st.divider()
-            st.subheader("🛠️ Регулировка угловых винтов")
-            corners = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
-            low_c = min(corners.values())
-            cols = st.columns(4)
-            for (k, v), col in zip(corners.items(), cols):
-                d = v - low_c
-                with col:
-                    st.info(f"**{k}**")
-                    if d == 0: st.success("OK")
-                    else: st.warning(f"**{abs(d/screw_pitch):.2f}** об.")
+            with r_col2:
+                st.write("##### Инструкция по настройке")
+                
+                # Логика точек для разных систем
+                points = {}
+                if z_sys == "Винты (только углы)":
+                    points = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
+                elif z_sys == "2 вала (Л/П)":
+                    points = {"Левый вал (среднее)": np.mean(matrix[:, 0]), "Правый вал (среднее)": np.mean(matrix[:, -1])}
+                elif z_sys == "3 вала (Tri-Z)":
+                    points = {"Передний Левый": matrix[0,0], "Передний Правый": matrix[0,-1], "Задний Центр": matrix[-1, grid_x//2]}
+                elif z_sys == "4 вала (Quad-Z)":
+                    points = {"Передний Левый": matrix[0,0], "Передний Правый": matrix[0,-1], "Задний Левый": matrix[-1,0], "Задний Правый": matrix[-1,-1]}
+
+                low = min(points.values())
+                res_cols = st.columns(len(points))
+                for (name, val), col in zip(points.items(), res_cols):
+                    diff = val - low
+                    with col:
+                        if diff == 0:
+                            st.success(f"**{name}** \nОПОРА")
+                        else:
+                            st.warning(f"**{name}** \n{'+' if diff>0 else ''}{diff:.3f} мм  \n**{abs(diff/pitch):.2f} об.** \n{'🔽 ВНИЗ' if diff>0 else '🔼 ВВЕРХ'}")
+
+    else:
+        st.info("Вставьте данные или загрузите файл для начала работы.")
