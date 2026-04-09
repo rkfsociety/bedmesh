@@ -12,9 +12,15 @@ ctk.set_appearance_mode("dark")
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        # Версия подтягивается автоматически из logic.py
+        
+        # РАЗМЕРЫ ОКНА
+        self.width = 1400
+        self.height = 900
+        
+        # Настройка заголовка и центрирование
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
-        self.geometry("1400x900")
+        self.center_window()
+        
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.update_data = None
@@ -30,7 +36,7 @@ class App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR (Боковая панель) ---
+        # --- SIDEBAR ---
         self.sidebar = ctk.CTkFrame(self, width=300, corner_radius=0)
         self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
         
@@ -39,9 +45,7 @@ class App(ctk.CTk):
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
-        
-        # Кнопка получения данных
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", ".../printer_mutable.cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -50,7 +54,7 @@ class App(ctk.CTk):
         self.gx = ui_elements.LabeledEntry(self.sidebar, strings.LBL_GRID_X, self.settings.get("grid_x", "5"))
         self.gy = ui_elements.LabeledEntry(self.sidebar, strings.LBL_GRID_Y, self.settings.get("grid_y", "5"))
 
-        # --- MAIN VIEW (Центральная панель) ---
+        # --- MAIN VIEW ---
         self.main_area = ctk.CTkFrame(self, fg_color="transparent")
         self.main_area.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
         self.tabs = ctk.CTkTabview(self.main_area)
@@ -58,17 +62,15 @@ class App(ctk.CTk):
         self.t2d = self.tabs.add(strings.TAB_2D)
         self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
-        
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
         self.text_editor.pack(fill="both", expand=True)
 
-        # --- RIGHT PANEL (Рекомендации) ---
+        # --- RIGHT PANEL ---
         self.right = ctk.CTkFrame(self, width=340)
         self.right.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         self.right.pack_propagate(False)
 
         ctk.CTkLabel(self.right, text=strings.SECTION_ALIGN, font=styles.FONTS["ui_bold"]).pack(pady=15)
-        
         self.z_menu = ctk.CTkOptionMenu(self.right, values=strings.Z_SYSTEMS, command=self.refresh_recs)
         self.z_menu.set(self.settings.get("z_sys", strings.Z_SYSTEMS[0]))
         self.z_menu.pack(pady=10, padx=20, fill="x")
@@ -85,14 +87,22 @@ class App(ctk.CTk):
         self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=styles.FONTS["micro"], text_color=styles.COLORS["dark"]["text_dim"])
         self.empty_lbl.pack(pady=50)
 
-        # --- Кнопка "Визуализировать" ---
+        # --- RUN BUTTON ---
         self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
                                  fg_color=styles.COLORS["dark"]["success"], 
                                  font=styles.FONTS["title"], command=self.on_btn_click)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
-        # Автопроверка обновлений
         updater.check_for_updates(logic.VERSION, self.show_update_notify)
+
+    def center_window(self):
+        """ Выравнивает окно по центру экрана """
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = int((screen_width / 2) - (self.width / 2))
+        y = int((screen_height / 2) - (self.height / 2))
+        self.geometry(f"{self.width}x{self.height}+{x}+{y}")
 
     def show_update_notify(self, version, data):
         self.update_data = data
@@ -105,17 +115,12 @@ class App(ctk.CTk):
         else: self.run()
 
     def fetch(self):
-        """ Получение данных по SSH и автоматический запуск анализа """
         try:
             content = logic.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path.get())
             self.text_editor.delete("0.0", "end")
             self.text_editor.insert("end", content)
-            
-            # АВТОМАТИЗАЦИЯ: Сразу запускаем расчет и визуализацию
             self.run()
-            
-        except Exception as e:
-            messagebox.showerror(strings.ERR_SSH, str(e))
+        except Exception as e: messagebox.showerror(strings.ERR_SSH, str(e))
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
@@ -129,31 +134,22 @@ class App(ctk.CTk):
                 self.p_label.pack_forget(); self.p_menu.pack_forget()
 
     def run(self):
-        """ Логика обработки данных и отрисовки """
         raw = self.text_editor.get("0.0", "end").strip()
         if not raw: return
-        
         gx, gy = int(self.gx.get()), int(self.gy.get())
         self.matrix, err = logic.parse_points(raw, gx, gy)
-        
         if self.matrix is not None:
             self.refresh_recs()
             self.draw()
-            
-            # ПЕРЕКЛЮЧЕНИЕ: Сразу показываем карту пользователю
             self.tabs.set(strings.TAB_2D)
-            
-            # Сохранение настроек
             logic.save_settings({
                 "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), "password": self.pwd.get(),
                 "path": self.path.get(), "bed_x": self.bx.get(), "bed_y": self.by.get(),
                 "grid_x": self.gx.get(), "grid_y": self.gy.get(), "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
             })
-        else:
-            messagebox.showwarning(strings.ERR_DATA, err)
+        else: messagebox.showwarning(strings.ERR_DATA, err)
 
     def draw(self):
-        """ Отрисовка графиков Matplotlib """
         for tab, mode in [(self.t2d, "2d"), (self.t3d, "3d")]:
             for w in tab.winfo_children(): w.destroy()
             plt.style.use('dark_background')
@@ -167,7 +163,7 @@ class App(ctk.CTk):
             else:
                 ax = fig.add_subplot(111)
                 xe, ye = np.linspace(0, bx, gx + 1), np.linspace(0, by, gy + 1)
-                im = ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
+                ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
                 xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
                 for i in range(gy):
                     for j in range(gx):
