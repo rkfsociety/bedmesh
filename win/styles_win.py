@@ -1,4 +1,3 @@
-# Константы стилей оформления
 FONT_NAME = "Segoe UI"
 FONTS = {
     "title": (FONT_NAME, 20, "bold"),

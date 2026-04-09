@@ -1,4 +1,3 @@
-# Текстовые константы
 APP_TITLE = "Bed Mesh Visualizer"
 SECTION_SSH = "SSH ПОДКЛЮЧЕНИЕ"
 SECTION_GEOMETRY = "ГЕОМЕТРИЯ СТОЛА"
@@ -9,19 +8,18 @@ LBL_PORT = "Порт"
 LBL_USER = "Логин"
 LBL_PASS = "Пароль"
 LBL_PATH = "Путь к Mesh (mutable)"
-LBL_PATH_CFG = "Путь к printer.cfg" # Новое поле
+LBL_PATH_CFG = "Путь к printer.cfg"
 LBL_BED_X = "Стол X (мм)"
 LBL_BED_Y = "Стол Y (мм)"
 LBL_GRID_X = "Точек X"
 LBL_GRID_Y = "Точек Y"
 LBL_PITCH = "Шаг винта (мм):"
 
-BTN_FETCH = "ПОЛУЧИТЬ ВСЕ ДАННЫЕ"
+BTN_FETCH = "ПОЛУЧИТЬ ДАННЫЕ"
 BTN_RUN = "ВИЗУАЛИЗИРОВАТЬ"
 
 TAB_2D = "2D КАРТА"
 TAB_RAW = "RAW MESH"
-TAB_CFG = "PRINTER.CFG" # Новая вкладка
 
 DIR_UP = "ВВЕРХ (CW)"
 DIR_DOWN = "ВНИЗ (CCW)"

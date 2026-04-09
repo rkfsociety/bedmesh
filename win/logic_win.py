@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings_win
 
-VERSION = "0.088-win" 
+VERSION = "0.089-win" 
 SETTINGS_FILE = "settings_win.json"
 
 def resource_path(relative_path):

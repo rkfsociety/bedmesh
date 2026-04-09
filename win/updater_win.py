@@ -31,6 +31,6 @@ def install_update(data):
             f.write(f'if %errorlevel% equ 0 (timeout /t 1 > nul & goto loop)\n')
             f.write(f'del /f /q "{current_exe}"\nmove /y "{new_exe}" "{current_exe}"\n')
             f.write(f'start "" "{current_exe}"\ndel "%~f0"\n')
-        messagebox.showinfo("Update", "Обновление скачано. Перезапуск...")
+        messagebox.showinfo("Update", "Перезапуск...")
         subprocess.Popen("updater_win.bat", shell=True); os._exit(0)
     except Exception as e: messagebox.showerror("Update Error", str(e))

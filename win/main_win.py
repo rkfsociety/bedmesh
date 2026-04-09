@@ -45,10 +45,9 @@ class App(ctk.CTk):
         self.t2d, self.traw, self.tsettings = self.tabs.add(strings_win.TAB_2D), self.tabs.add(strings_win.TAB_RAW), self.tabs.add("ПАРАМЕТРЫ PRINTER.CFG")
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles_win.FONTS["code"]); self.text_editor.pack(fill="both", expand=True)
         
-        # Контент вкладки параметров
         self.cfg_frame = ctk.CTkScrollableFrame(self.tsettings, fg_color="transparent"); self.cfg_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Фрейм бэкапа
+        # Блок бэкапа
         self.bf = ctk.CTkFrame(self.cfg_frame, fg_color="#2b2b2b", corner_radius=10); self.bf.pack(fill="x", pady=10, padx=10)
         ctk.CTkLabel(self.bf, text="РЕЗЕРВНОЕ КОПИРОВАНИЕ", font=styles_win.FONTS["micro"]).pack(pady=5)
         bg = ctk.CTkFrame(self.bf, fg_color="transparent"); bg.pack(fill="x", pady=5, padx=10)
@@ -94,15 +93,34 @@ class App(ctk.CTk):
 
     def save_cfg(self):
         if not self.cfg_content: return
-        if not messagebox.askyesno("Сохранение", "Сделать бэкап и сохранить?"): return
+        if not messagebox.askyesno("Сохранение", "Сделать бэкап и сохранить изменения?"): return
+        # Принудительный бэкап перед сохранением
         backup_win.create_backup_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_cfg.get())
         new = logic_win.set_cfg_value(self.cfg_content, "cs1237", "sensitivity", self.s1.get())
         new = logic_win.set_cfg_value(new, "cs1237", "head_block_sensitivity", self.s2.get())
         new = logic_win.set_cfg_value(new, "cs1237", "scratch_sensitivity", self.s3.get())
         try:
             logic_win.save_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_cfg.get(), new)
-            self.cfg_content = new; messagebox.showinfo("Успех", "Сохранено!")
+            self.cfg_content = new; messagebox.showinfo("Успех", "Настройки сохранены!")
         except Exception as e: messagebox.showerror("Ошибка", str(e))
+
+    def fetch(self):
+        """Метод получения данных с автоматическим бэкапом"""
+        try:
+            m = logic_win.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_mesh.get())
+            self.cfg_content = logic_win.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_cfg.get())
+            
+            # АВТО-БЭКАП при первом удачном получении конфига (если .bak еще нет)
+            if self.cfg_content:
+                backup_win.auto_backup_if_missing(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_cfg.get())
+                
+                self.s1.entry.delete(0, 'end'); self.s1.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "sensitivity"))
+                self.s2.entry.delete(0, 'end'); self.s2.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "head_block_sensitivity"))
+                self.s3.entry.delete(0, 'end'); self.s3.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "scratch_sensitivity"))
+            
+            if m: self.text_editor.delete("0.0", "end"); self.text_editor.insert("end", m)
+            self.run()
+        except Exception as e: messagebox.showerror("SSH Error", str(e))
 
     def sync_geometry(self):
         if not self.cfg_content: return
@@ -112,27 +130,16 @@ class App(ctk.CTk):
         if pc:
             try: gx, gy = pc.split(','); self.gx.entry.delete(0, 'end'); self.gx.entry.insert(0, gx.strip()); self.gy.entry.delete(0, 'end'); self.gy.entry.insert(0, gy.strip())
             except: pass
-        messagebox.showinfo("Ок", "Данные синхронизированы")
+        messagebox.showinfo("Ок", "Геометрия синхронизирована")
 
     def show_update_notify(self, v, data): self.update_data = data; self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
     def copy_to_clipboard(self):
         if not self.recs_data: return
         r = "--- Bed Mesh Report ---\n" + "\n".join([f"{i['name']}: {i['val']:.3f} mm ({i['turns']}) -> {i['dir']}" for i in self.recs_data])
-        self.clipboard_clear(); self.clipboard_append(r); messagebox.showinfo("Ок", "Скопировано")
+        self.clipboard_clear(); self.clipboard_append(r); messagebox.showinfo("Ок", "Отчет скопирован")
     def on_click(self):
         if self.update_data: updater_win.install_update(self.update_data)
         else: self.run()
-    def fetch(self):
-        try:
-            m = logic_win.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_mesh.get())
-            self.cfg_content = logic_win.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path_cfg.get())
-            if m: self.text_editor.delete("0.0", "end"); self.text_editor.insert("end", m)
-            if self.cfg_content:
-                self.s1.entry.delete(0, 'end'); self.s1.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "sensitivity"))
-                self.s2.entry.delete(0, 'end'); self.s2.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "head_block_sensitivity"))
-                self.s3.entry.delete(0, 'end'); self.s3.entry.insert(0, logic_win.get_cfg_value(self.cfg_content, "cs1237", "scratch_sensitivity"))
-            self.run()
-        except Exception as e: messagebox.showerror("SSH Error", str(e))
     def refresh_recs(self, _=None):
         if self.matrix is not None:
             self.recs_data, is_s = logic_win.get_recs(self.matrix, self.z_m.get(), float(self.p_m.get()), int(self.gx.get()))
