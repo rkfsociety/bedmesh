@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings
 
-VERSION = "6.6"
+VERSION = "6.7"
 SETTINGS_FILE = "settings.json"
 
 def resource_path(relative_path):
@@ -50,24 +50,39 @@ def parse_points(raw_text, gx, gy):
 
 def get_recs(matrix, z_type, pitch, gx):
     is_screws = "Винты" in z_type
+    
+    # 1. Собираем значения в ключевых точках
     if is_screws:
         pts = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
     elif "2 вала" in z_type:
         pts = {"Левый вал": np.mean(matrix[:, 0]), "Правый вал": np.mean(matrix[:, -1])}
     elif "3 вала" in z_type:
         pts = {"Перед Лево": matrix[0,0], "Перед Право": matrix[0,-1], "Зад Центр": matrix[-1, gx//2]}
-    else:
+    else: # 4 вала
         pts = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
     
-    low = min(pts.values())
-    res_data = [] # Возвращаем структурированный список
+    # --- НОВАЯ ЛОГИКА ОПОРНОЙ ТОЧКИ ---
+    # Вычисляем среднее значение среди всех точек регулировки
+    vals = list(pts.values())
+    avg_val = sum(vals) / len(vals)
+    
+    # Находим точку, которая ближе всего к среднему (минимум усилий по кручению)
+    best_ref_key = min(pts, key=lambda k: abs(pts[k] - avg_val))
+    ref_val = pts[best_ref_key]
+    
+    res_data = []
     for name, val in pts.items():
-        diff = val - low
-        t_info = f"{abs(diff/pitch):.2f} об." if is_screws else ""
+        diff = val - ref_val
         
-        direction = strings.DIR_OK
-        if diff > 0: direction = strings.DIR_DOWN
-        elif diff < 0: direction = strings.DIR_UP
+        # Если это та самая точка, которую мы выбрали как эталон
+        if name == best_ref_key:
+            diff = 0.0
+            direction = strings.DIR_OK
+        else:
+            if diff > 0: direction = strings.DIR_DOWN
+            else: direction = strings.DIR_UP
+            
+        t_info = f"{abs(diff/pitch):.2f} об." if is_screws else ""
         
         res_data.append({
             "name": name,
