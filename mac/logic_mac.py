@@ -1,8 +1,8 @@
 import re, json, os, sys, requests, paramiko, numpy as np
-import strings
+import strings_mac
 
-VERSION = "0.082" # Версия без 3D-карты
-SETTINGS_FILE = "settings.json"
+VERSION = "0.083-mac" 
+SETTINGS_FILE = "settings_mac.json"
 
 def resource_path(relative_path):
     try:
@@ -67,7 +67,7 @@ def get_recs(matrix, z_type, pitch, gx):
     res_data = []
     for name, val in pts.items():
         diff = val - ref_val
-        direction = strings.DIR_OK if name == best_ref_key else (strings.DIR_DOWN if diff > 0 else strings.DIR_UP)
+        direction = strings_mac.DIR_OK if name == best_ref_key else (strings_mac.DIR_DOWN if diff > 0 else strings_mac.DIR_UP)
         t_info = f"{abs(diff/pitch):.2f} об." if is_screws else ""
         res_data.append({"name": name, "val": diff, "turns": t_info, "dir": direction})
     return res_data, is_screws
