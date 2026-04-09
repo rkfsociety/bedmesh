@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings
 
-VERSION = "6.9"
+VERSION = "7.0"
 SETTINGS_FILE = "settings.json"
 
 def resource_path(relative_path):

@@ -1,5 +1,5 @@
 import customtkinter as ctk
-import logic, styles, ui_elements, strings, updater
+import logic, styles, ui_elements, strings, updater, viz # Импорт viz
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patheffects as path_effects
@@ -13,14 +13,11 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # РАЗМЕРЫ ОКНА
+        # Размеры и центрирование
         self.width = 1400
-        self.height = 900
-        
-        # Настройка заголовка и центрирование
+        self.height = 920 # Чуть выше для графиков
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
         self.center_window()
-        
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.update_data = None
@@ -33,6 +30,7 @@ class App(ctk.CTk):
         self.matrix = None
         self.settings = logic.load_settings()
 
+        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -45,7 +43,7 @@ class App(ctk.CTk):
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", ".../printer_mutable.cfg"))
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -69,39 +67,30 @@ class App(ctk.CTk):
         self.right = ctk.CTkFrame(self, width=340)
         self.right.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         self.right.pack_propagate(False)
-
         ctk.CTkLabel(self.right, text=strings.SECTION_ALIGN, font=styles.FONTS["ui_bold"]).pack(pady=15)
         self.z_menu = ctk.CTkOptionMenu(self.right, values=strings.Z_SYSTEMS, command=self.refresh_recs)
         self.z_menu.set(self.settings.get("z_sys", strings.Z_SYSTEMS[0]))
         self.z_menu.pack(pady=10, padx=20, fill="x")
-
         self.p_label = ctk.CTkLabel(self.right, text=strings.LBL_PITCH)
         self.p_label.pack(pady=(10, 0))
         self.p_menu = ctk.CTkOptionMenu(self.right, values=["0.7", "0.5", "0.8"], command=self.refresh_recs)
         self.p_menu.set(self.settings.get("pitch", "0.7"))
         self.p_menu.pack(pady=5, padx=20, fill="x")
-
         self.rec_scroll = ctk.CTkScrollableFrame(self.right, fg_color="transparent")
         self.rec_scroll.pack(fill="both", expand=True, padx=5, pady=10)
-
         self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=styles.FONTS["micro"], text_color=styles.COLORS["dark"]["text_dim"])
         self.empty_lbl.pack(pady=50)
 
         # --- RUN BUTTON ---
-        self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
-                                 fg_color=styles.COLORS["dark"]["success"], 
-                                 font=styles.FONTS["title"], command=self.on_btn_click)
+        self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, fg_color=styles.COLORS["dark"]["success"], font=styles.FONTS["title"], command=self.on_btn_click)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
         updater.check_for_updates(logic.VERSION, self.show_update_notify)
 
     def center_window(self):
-        """ Выравнивает окно по центру экрана """
         self.update_idletasks()
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        x = int((screen_width / 2) - (self.width / 2))
-        y = int((screen_height / 2) - (self.height / 2))
+        screen_width = self.winfo_screenwidth(); screen_height = self.winfo_screenheight()
+        x = int((screen_width / 2) - (self.width / 2)); y = int((screen_height / 2) - (self.height / 2))
         self.geometry(f"{self.width}x{self.height}+{x}+{y}")
 
     def show_update_notify(self, version, data):
@@ -110,28 +99,23 @@ class App(ctk.CTk):
 
     def on_btn_click(self):
         if self.update_data:
-            if messagebox.askyesno("Обновление", "Установить новую версию?"):
-                updater.install_update(self.update_data)
+            if messagebox.askyesno("Обновление", "Установить новую версию?"): updater.install_update(self.update_data)
         else: self.run()
 
     def fetch(self):
         try:
             content = logic.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path.get())
-            self.text_editor.delete("0.0", "end")
-            self.text_editor.insert("end", content)
-            self.run()
+            self.text_editor.delete("0.0", "end"); self.text_editor.insert("end", content)
+            self.run() # Авто-запуск анализа
         except Exception as e: messagebox.showerror(strings.ERR_SSH, str(e))
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
             res_data, is_screws = logic.get_recs(self.matrix, self.z_menu.get(), float(self.p_menu.get()), int(self.gx.get()))
             for w in self.rec_scroll.winfo_children(): w.destroy()
-            for item in res_data:
-                ui_elements.RecCard(self.rec_scroll, item['name'], item['val'], item['turns'], item['dir'])
-            if is_screws:
-                self.p_label.pack(); self.p_menu.pack(pady=5, padx=20, fill="x")
-            else:
-                self.p_label.pack_forget(); self.p_menu.pack_forget()
+            for item in res_data: ui_elements.RecCard(self.rec_scroll, item['name'], item['val'], item['turns'], item['dir'])
+            if is_screws: self.p_label.pack(); self.p_menu.pack(pady=5, padx=20, fill="x")
+            else: self.p_label.pack_forget(); self.p_menu.pack_forget()
 
     def run(self):
         raw = self.text_editor.get("0.0", "end").strip()
@@ -140,40 +124,23 @@ class App(ctk.CTk):
         self.matrix, err = logic.parse_points(raw, gx, gy)
         if self.matrix is not None:
             self.refresh_recs()
-            self.draw()
+            # ПРИМЕНЯЕМ НОВЫЕ ФУНКЦИИ ОТРИСОВКИ ИЗ viz.py
+            bx, by = float(self.bx.get()), float(self.by.get())
+            viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
+            viz.draw_3d_klipper_style(self.t3d, self.matrix, bx, by, gx, gy)
             self.tabs.set(strings.TAB_2D)
             logic.save_settings({
                 "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), "password": self.pwd.get(),
                 "path": self.path.get(), "bed_x": self.bx.get(), "bed_y": self.by.get(),
                 "grid_x": self.gx.get(), "grid_y": self.gy.get(), "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
             })
-        else: messagebox.showwarning(strings.ERR_DATA, err)
-
-    def draw(self):
-        for tab, mode in [(self.t2d, "2d"), (self.t3d, "3d")]:
-            for w in tab.winfo_children(): w.destroy()
-            plt.style.use('dark_background')
-            fig = plt.figure(figsize=(6, 6), dpi=100); fig.patch.set_facecolor("#1a1a1a")
-            bx, by = float(self.bx.get()), float(self.by.get())
-            gx, gy = int(self.gx.get()), int(self.gy.get())
-            if mode == "3d":
-                ax = fig.add_subplot(111, projection='3d'); ax.set_facecolor("#1a1a1a")
-                X, Y = np.meshgrid(np.linspace(0, bx, gx), np.linspace(0, by, gy))
-                ax.plot_surface(X, Y, self.matrix, cmap='RdYlBu_r', edgecolor='#444444', alpha=0.8)
-            else:
-                ax = fig.add_subplot(111)
-                xe, ye = np.linspace(0, bx, gx + 1), np.linspace(0, by, gy + 1)
-                ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
-                xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
-                for i in range(gy):
-                    for j in range(gx):
-                        t = ax.text(xc[j], yc[i], f"{self.matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', color="white", fontsize=8)
-                        t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="black")])
-                ax.set_aspect('equal')
-            FigureCanvasTkAgg(fig, master=tab).get_tk_widget().pack(fill="both", expand=True)
+        else: messagebox.showwarning("Data Error", err)
 
     def on_closing(self):
-        plt.close('all'); self.destroy(); sys.exit(0)
+        # При закрытии окна убиваем Matplotlib принудительно
+        plt.close('all')
+        self.destroy()
+        sys.exit(0)
 
 if __name__ == "__main__":
     App().mainloop()
