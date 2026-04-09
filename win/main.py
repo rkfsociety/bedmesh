@@ -1,8 +1,6 @@
 import customtkinter as ctk
-import logic, styles, ui_elements, strings, updater, viz # Импорт viz
+import logic, styles, ui_elements, strings, updater, viz
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.patheffects as path_effects
 import numpy as np
 import sys, os
 from tkinter import messagebox
@@ -13,9 +11,8 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        # Размеры и центрирование
         self.width = 1400
-        self.height = 920 # Чуть выше для графиков
+        self.height = 920
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
         self.center_window()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -30,7 +27,6 @@ class App(ctk.CTk):
         self.matrix = None
         self.settings = logic.load_settings()
 
-        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -78,7 +74,7 @@ class App(ctk.CTk):
         self.p_menu.pack(pady=5, padx=20, fill="x")
         self.rec_scroll = ctk.CTkScrollableFrame(self.right, fg_color="transparent")
         self.rec_scroll.pack(fill="both", expand=True, padx=5, pady=10)
-        self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=styles.FONTS["micro"], text_color=styles.COLORS["dark"]["text_dim"])
+        self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=("Segoe UI", 10), text_color="#858585")
         self.empty_lbl.pack(pady=50)
 
         # --- RUN BUTTON ---
@@ -106,8 +102,10 @@ class App(ctk.CTk):
         try:
             content = logic.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path.get())
             self.text_editor.delete("0.0", "end"); self.text_editor.insert("end", content)
-            self.run() # Авто-запуск анализа
-        except Exception as e: messagebox.showerror(strings.ERR_SSH, str(e))
+            # Если SSH успешен, запускаем run() отдельно, чтобы ловить его ошибки правильно
+            self.run()
+        except Exception as e: 
+            messagebox.showerror(strings.ERR_SSH, f"Не удалось подключиться: {str(e)}")
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
@@ -118,29 +116,28 @@ class App(ctk.CTk):
             else: self.p_label.pack_forget(); self.p_menu.pack_forget()
 
     def run(self):
-        raw = self.text_editor.get("0.0", "end").strip()
-        if not raw: return
-        gx, gy = int(self.gx.get()), int(self.gy.get())
-        self.matrix, err = logic.parse_points(raw, gx, gy)
-        if self.matrix is not None:
-            self.refresh_recs()
-            # ПРИМЕНЯЕМ НОВЫЕ ФУНКЦИИ ОТРИСОВКИ ИЗ viz.py
-            bx, by = float(self.bx.get()), float(self.by.get())
-            viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
-            viz.draw_3d_klipper_style(self.t3d, self.matrix, bx, by, gx, gy)
-            self.tabs.set(strings.TAB_2D)
-            logic.save_settings({
-                "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), "password": self.pwd.get(),
-                "path": self.path.get(), "bed_x": self.bx.get(), "bed_y": self.by.get(),
-                "grid_x": self.gx.get(), "grid_y": self.gy.get(), "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
-            })
-        else: messagebox.showwarning("Data Error", err)
+        try:
+            raw = self.text_editor.get("0.0", "end").strip()
+            if not raw: return
+            gx, gy = int(self.gx.get()), int(self.gy.get())
+            self.matrix, err = logic.parse_points(raw, gx, gy)
+            if self.matrix is not None:
+                self.refresh_recs()
+                bx, by = float(self.bx.get()), float(self.by.get())
+                viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
+                viz.draw_3d_klipper_style(self.t3d, self.matrix, bx, by, gx, gy)
+                self.tabs.set(strings.TAB_2D)
+                logic.save_settings({
+                    "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), "password": self.pwd.get(),
+                    "path": self.path.get(), "bed_x": self.bx.get(), "bed_y": self.by.get(),
+                    "grid_x": self.gx.get(), "grid_y": self.gy.get(), "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
+                })
+            else: messagebox.showwarning(strings.ERR_DATA, err)
+        except Exception as e:
+            messagebox.showerror("Ошибка визуализации", f"Проблема при построении карты: {str(e)}")
 
     def on_closing(self):
-        # При закрытии окна убиваем Matplotlib принудительно
-        plt.close('all')
-        self.destroy()
-        sys.exit(0)
+        plt.close('all'); self.destroy(); sys.exit(0)
 
 if __name__ == "__main__":
     App().mainloop()
