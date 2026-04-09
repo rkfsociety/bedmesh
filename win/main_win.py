@@ -16,44 +16,59 @@ class App(ctk.CTk):
         self.set_app_icon()
         
         self.matrix, self.cfg_content = None, ""
+        self.last_raw_data = ""
         self.settings = storage_win.load_settings()
         
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
         self.init_ui()
-        
-        # Передаем ссылку на метод закрытия в апдейтер, если это нужно
         updater_win.check_for_updates(logic_win.VERSION, self.show_update_notify)
 
     def init_ui(self):
-        self.sidebar = Sidebar(self, self.settings, self.fetch)
+        self.sidebar = Sidebar(self, self.settings, self.fetch, self.toggle_log_view)
         self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
 
         self.tabs = ctk.CTkTabview(self, corner_radius=15)
         self.tabs.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        self.t2d, self.traw, self.tset_frame = self.tabs.add(strings_win.TAB_2D), self.tabs.add(strings_win.TAB_RAW), self.tabs.add("ПАРАМЕТРЫ")
+        
+        self.t2d = self.tabs.add(strings_win.TAB_2D)
+        self.tset_frame = self.tabs.add("ПАРАМЕТРЫ")
+        self.traw_tab = None # Вкладка лога скрыта
 
-        self.text_editor = ctk.CTkTextbox(self.traw, font=("Consolas", 12))
-        self.text_editor.pack(fill="both", expand=True)
         self.settings_tab = SettingsTab(self.tset_frame, self.create_backup, self.restore_backup, self.save_cfg)
         self.settings_tab.pack(fill="both", expand=True)
 
-        self.analysis = AnalysisPanel(self, self.settings.get("z_sys", strings_win.Z_SYSTEMS[0]), self.settings.get("pitch", "0.7"), self.refresh_recs)
+        default_z = self.settings.get("z_sys", strings_win.Z_SYSTEMS[0])
+        self.analysis = AnalysisPanel(self, default_z, self.settings.get("pitch", "0.7"), self.refresh_recs)
         self.analysis.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         
         self.btn = ctk.CTkButton(self, text=strings_win.BTN_RUN, height=60, command=self.run, corner_radius=12, fg_color="#2e7d32")
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
-        # Перехватываем закрытие окна (крестик)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def toggle_log_view(self, state):
+        if state == 1:
+            if strings_win.TAB_RAW not in self.tabs._tab_dict:
+                self.traw_tab = self.tabs.add(strings_win.TAB_RAW)
+                self.text_editor = ctk.CTkTextbox(self.traw_tab, font=("Consolas", 12))
+                self.text_editor.pack(fill="both", expand=True)
+                if self.last_raw_data:
+                    self.text_editor.insert("end", self.last_raw_data)
+        else:
+            if strings_win.TAB_RAW in self.tabs._tab_dict:
+                self.tabs.delete(strings_win.TAB_RAW)
+                self.traw_tab = None
 
     def fetch(self):
         d = self.sidebar.get_data()
         try:
             m = transport_win.fetch_ssh(d["host"], d["port"], d["user"], d["password"], d["path"])
             self.cfg_content = transport_win.fetch_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"])
-            if m: 
-                self.text_editor.delete("0.0", "end")
-                self.text_editor.insert("end", m)
+            if m:
+                self.last_raw_data = m
+                if self.traw_tab:
+                    self.text_editor.delete("0.0", "end")
+                    self.text_editor.insert("end", m)
             if self.cfg_content:
                 backup_win.auto_backup_if_missing(d["host"], d["port"], d["user"], d["password"], d["path_cfg"])
                 self.settings_tab.update_values(self.cfg_content)
@@ -62,7 +77,7 @@ class App(ctk.CTk):
 
     def save_cfg(self):
         if not self.cfg_content: return
-        if not messagebox.askyesno("Сохранение", "Записать настройки в принтер?"): return
+        if not messagebox.askyesno("Сохранение", "Записать настройки?"): return
         d, f = self.sidebar.get_data(), self.settings_tab.get_form_data()
         backup_win.create_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"])
         text = config_win.set_cfg_value(self.cfg_content, "cs1237", "sensitivity", f["s1"])
@@ -71,12 +86,11 @@ class App(ctk.CTk):
         text = config_win.set_cfg_value(text, "leviQ3", "bed_temp", f["bed_t"])
         try:
             transport_win.save_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"], text)
-            self.cfg_content = text
-            messagebox.showinfo("Успех", "Настройки сохранены!")
+            self.cfg_content = text; messagebox.showinfo("Успех", "OK")
         except Exception as e: messagebox.showerror("Ошибка", str(e))
 
     def run(self):
-        raw = self.text_editor.get("0.0", "end").strip()
+        raw = self.text_editor.get("0.0", "end").strip() if self.traw_tab else self.last_raw_data.strip()
         if not raw: return
         d = self.sidebar.get_data()
         self.matrix, err = mesh_parser_win.parse_points(raw, int(d["grid_x"]), int(d["grid_y"]))
@@ -89,35 +103,27 @@ class App(ctk.CTk):
         elif err: messagebox.showwarning("Data Error", err)
 
     def refresh_recs(self, _=None):
-        if self.matrix is not None:
-            self.analysis.update_results(self.matrix, self.sidebar.gx.get())
+        if self.matrix is not None: self.analysis.update_results(self.matrix, self.sidebar.gx.get())
 
     def create_backup(self):
         d = self.sidebar.get_data()
         if backup_win.create_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"]):
-            messagebox.showinfo("Бэкап", "Создан успешно")
+            messagebox.showinfo("Бэкап", "OK")
 
     def restore_backup(self):
         d = self.sidebar.get_data()
-        if backup_win.restore_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"]):
-            self.fetch()
+        if backup_win.restore_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"]): self.fetch()
 
-    def show_update_notify(self, v, data): 
-        self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
+    def show_update_notify(self, v, data): self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
 
     def on_closing(self):
-        """Метод полной очистки памяти и завершения процесса"""
         try:
-            plt.close('all') # Убиваем Matplotlib
-            self.withdraw()  # Мгновенно скрываем окно
-            # Жесткое завершение через сигнал системному ID процесса
-            os.kill(os.getpid(), 9) 
-        except:
-            os._exit(0)
+            plt.close('all'); self.withdraw()
+            os.kill(os.getpid(), 9)
+        except: os._exit(0)
 
     def center_window(self):
-        self.update_idletasks()
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.update_idletasks(); sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"1400x950+{int((sw-1400)/2)}+{int((sh-950)/2)}")
 
     def set_app_icon(self):
