@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings_win
 
-VERSION = "0.084-win" 
+VERSION = "0.086-win" 
 SETTINGS_FILE = "settings_win.json"
 
 def resource_path(relative_path):
@@ -20,16 +20,21 @@ def save_settings(data):
     with open(SETTINGS_FILE, "w") as f: json.dump(data, f, indent=4)
 
 def fetch_ssh(host, port, user, pwd, path):
+    if not path or path.strip() == "": return ""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(host, int(port), user, pwd, timeout=10)
-    sftp = client.open_sftp()
-    with sftp.open(path, 'r') as f:
-        content = f.read().decode('utf-8')
-    sftp.close(); client.close()
-    return content
+    try:
+        client.connect(host, int(port), user, pwd, timeout=10)
+        sftp = client.open_sftp()
+        with sftp.open(path, 'r') as f:
+            content = f.read().decode('utf-8')
+        sftp.close(); client.close()
+        return content
+    except Exception as e:
+        raise Exception(f"Ошибка при чтении {path}: {str(e)}")
 
 def parse_points(raw_text, gx, gy):
+    if not raw_text: return None, "Нет данных"
     match = re.search(r'"points":\s*"([\s\S]+?)"', raw_text)
     content = match.group(1) if match else raw_text
     nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", content)]
@@ -42,7 +47,7 @@ def parse_points(raw_text, gx, gy):
 
 def get_recs(matrix, z_type, pitch, gx):
     is_screws = "Винты" in z_type
-    if is_screws:
+    if is_screws or "4 вала" in z_type:
         pts = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
     elif "2 вала" in z_type:
         pts = {"Левый вал": np.mean(matrix[:, 0]), "Правый вал": np.mean(matrix[:, -1])}

@@ -8,22 +8,24 @@ LBL_IP = "IP Адрес"
 LBL_PORT = "Порт"
 LBL_USER = "Логин"
 LBL_PASS = "Пароль"
-LBL_PATH = "Путь к конфигу"
+LBL_PATH = "Путь к Mesh (mutable)"
+LBL_PATH_CFG = "Путь к printer.cfg" # Новое поле
 LBL_BED_X = "Стол X (мм)"
 LBL_BED_Y = "Стол Y (мм)"
 LBL_GRID_X = "Точек X"
 LBL_GRID_Y = "Точек Y"
 LBL_PITCH = "Шаг винта (мм):"
 
-BTN_FETCH = "ПОЛУЧИТЬ ДАННЫЕ"
+BTN_FETCH = "ПОЛУЧИТЬ ВСЕ ДАННЫЕ"
 BTN_RUN = "ВИЗУАЛИЗИРОВАТЬ"
 
 TAB_2D = "2D КАРТА"
-TAB_RAW = "RAW ДАННЫЕ"
+TAB_RAW = "RAW MESH"
+TAB_CFG = "PRINTER.CFG" # Новая вкладка
 
 DIR_UP = "ВВЕРХ (CW)"
 DIR_DOWN = "ВНИЗ (CCW)"
 DIR_OK = "OK"
 
 MSG_WAITING = "Ожидание данных..."
-Z_SYSTEMS = ["Винты (4 шт)", "2 вала (Z-Tilt)", "3 вала (Quad)", "Только карта"]
+Z_SYSTEMS = ["Винты (4 шт)", "2 вала (Z-Tilt)", "3 вала (3-Z/Quad)", "4 вала (Quad Z)"]
