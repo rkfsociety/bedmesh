@@ -1,14 +1,14 @@
 name: Build macOS App
 
 on:
-  workflow_dispatch: # Позволяет запускать сборку вручную одной кнопкой
+  workflow_dispatch:
   push:
     tags:
-      - 'v*' # Запускается при создании тега версии, например v0.083-mac
+      - 'v*'
 
 jobs:
   build-macos:
-    runs-on: macos-latest # GitHub выделит настоящий Mac для сборки
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -20,11 +20,14 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
+        # Указываем, что установку нужно делать с учетом маковской директории
         run: |
           python -m pip install --upgrade pip
           pip install customtkinter paramiko requests numpy matplotlib pyinstaller
 
       - name: Build with PyInstaller
+        # Здесь мы заходим в папку mac перед запуском компиляции
+        working-directory: mac
         run: |
           python -m PyInstaller --onefile --windowed \
           --name "BedMeshVisualizer_Mac" \
@@ -40,6 +43,7 @@ jobs:
         run: brew install create-dmg
 
       - name: Create DMG
+        working-directory: mac
         run: |
           mkdir -p dist/dmg
           create-dmg \
@@ -57,4 +61,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BedMeshVisualizer-MacOS-DMG
-          path: dist/dmg/*.dmg
+          path: mac/dist/dmg/*.dmg
