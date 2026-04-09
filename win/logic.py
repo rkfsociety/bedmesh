@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings
 
-VERSION = "8.0" # Мажорное обновление: переход на GPU (WebGL)
+VERSION = "0.080" # Откат версии для "сырой" беты
 SETTINGS_FILE = "settings.json"
 
 def resource_path(relative_path):
