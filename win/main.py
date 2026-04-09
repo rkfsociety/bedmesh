@@ -1,5 +1,5 @@
 import customtkinter as ctk
-import logic, styles, ui_elements, strings, updater # Импорт updater
+import logic, styles, ui_elements, strings, updater
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patheffects as path_effects
@@ -13,12 +13,10 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
-        self.geometry("1350x900")
+        self.geometry("1400x900")
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
-        # Данные обновления
         self.update_data = None
-        
         try:
             icon_path = logic.resource_path("icon.ico")
             if os.path.exists(icon_path):
@@ -60,10 +58,11 @@ class App(ctk.CTk):
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
         self.text_editor.pack(fill="both", expand=True)
 
-        # --- RIGHT PANEL ---
-        self.right = ctk.CTkFrame(self, width=320)
+        # --- RIGHT PANEL (РЕКОМЕНДАЦИИ) ---
+        self.right = ctk.CTkFrame(self, width=340)
         self.right.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         self.right.pack_propagate(False)
+
         ctk.CTkLabel(self.right, text=strings.SECTION_ALIGN, font=styles.FONTS["ui_bold"]).pack(pady=15)
         
         self.z_menu = ctk.CTkOptionMenu(self.right, values=strings.Z_SYSTEMS, command=self.refresh_recs)
@@ -76,8 +75,12 @@ class App(ctk.CTk):
         self.p_menu.set(self.settings.get("pitch", "0.7"))
         self.p_menu.pack(pady=5, padx=20, fill="x")
 
-        self.instr = ctk.CTkLabel(self.right, text=strings.MSG_WAITING, justify="left", font=styles.FONTS["ui"])
-        self.instr.pack(pady=30, padx=15, fill="both")
+        # Прокручиваемая область для карточек
+        self.rec_scroll = ctk.CTkScrollableFrame(self.right, fg_color="transparent")
+        self.rec_scroll.pack(fill="both", expand=True, padx=5, pady=10)
+
+        self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=styles.FONTS["micro"], text_color=styles.COLORS["dark"]["text_dim"])
+        self.empty_lbl.pack(pady=50)
 
         # --- RUN BUTTON ---
         self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
@@ -85,37 +88,36 @@ class App(ctk.CTk):
                                  font=styles.FONTS["title"], command=self.on_btn_click)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
-        # ПРОВЕРКА ОБНОВЛЕНИЙ ПРИ СТАРТЕ
         updater.check_for_updates(logic.VERSION, self.show_update_notify)
 
     def show_update_notify(self, version, data):
-        """ Метод вызывается, если найдено обновление """
         self.update_data = data
-        self.btn.configure(
-            text=f"ДОСТУПНО ОБНОВЛЕНИЕ v{version}! (НАЖМИТЕ)",
-            fg_color="#007acc" # Меняем цвет на синий
-        )
+        self.btn.configure(text=f"ОБНОВЛЕНИЕ v{version}! (КЛИК)", fg_color="#007acc")
 
     def on_btn_click(self):
-        """ Если есть обновление - обновляем, иначе - анализируем """
         if self.update_data:
-            if messagebox.askyesno("Обновление", "Хотите скачать и установить новую версию прямо сейчас?"):
+            if messagebox.askyesno("Обновление", "Установить новую версию?"):
                 updater.install_update(self.update_data)
-        else:
-            self.run()
+        else: self.run()
 
     def fetch(self):
         try:
             content = logic.fetch_ssh(self.ip.get(), self.port.get(), self.user.get(), self.pwd.get(), self.path.get())
-            self.text_editor.delete("0.0", "end")
-            self.text_editor.insert("end", content)
+            self.text_editor.delete("0.0", "end"); self.text_editor.insert("end", content)
             self.tabs.set(strings.TAB_RAW)
         except Exception as e: messagebox.showerror(strings.ERR_SSH, str(e))
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
-            txt, is_screws = logic.get_recs(self.matrix, self.z_menu.get(), float(self.p_menu.get()), int(self.gx.get()))
-            self.instr.configure(text=txt)
+            res_data, is_screws = logic.get_recs(self.matrix, self.z_menu.get(), float(self.p_menu.get()), int(self.gx.get()))
+            
+            # Очистка старых карточек
+            for w in self.rec_scroll.winfo_children(): w.destroy()
+            
+            # Добавление новых карточек
+            for item in res_data:
+                ui_elements.RecCard(self.rec_scroll, item['name'], item['val'], item['turns'], item['dir'])
+            
             if is_screws:
                 self.p_label.pack(); self.p_menu.pack(pady=5, padx=20, fill="x")
             else:
@@ -130,11 +132,9 @@ class App(ctk.CTk):
             self.refresh_recs()
             self.draw()
             logic.save_settings({
-                "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(),
-                "password": self.pwd.get(), "path": self.path.get(),
-                "bed_x": self.bx.get(), "bed_y": self.by.get(),
-                "grid_x": self.gx.get(), "grid_y": self.gy.get(),
-                "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
+                "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), "password": self.pwd.get(),
+                "path": self.path.get(), "bed_x": self.bx.get(), "bed_y": self.by.get(),
+                "grid_x": self.gx.get(), "grid_y": self.gy.get(), "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
             })
         else: messagebox.showwarning(strings.ERR_DATA, err)
 
@@ -142,19 +142,17 @@ class App(ctk.CTk):
         for tab, mode in [(self.t2d, "2d"), (self.t3d, "3d")]:
             for w in tab.winfo_children(): w.destroy()
             plt.style.use('dark_background')
-            fig = plt.figure(figsize=(6, 6), dpi=100)
-            fig.patch.set_facecolor("#1a1a1a")
+            fig = plt.figure(figsize=(6, 6), dpi=100); fig.patch.set_facecolor("#1a1a1a")
             bx, by = float(self.bx.get()), float(self.by.get())
             gx, gy = int(self.gx.get()), int(self.gy.get())
             if mode == "3d":
-                ax = fig.add_subplot(111, projection='3d')
-                ax.set_facecolor("#1a1a1a")
+                ax = fig.add_subplot(111, projection='3d'); ax.set_facecolor("#1a1a1a")
                 X, Y = np.meshgrid(np.linspace(0, bx, gx), np.linspace(0, by, gy))
                 ax.plot_surface(X, Y, self.matrix, cmap='RdYlBu_r', edgecolor='#444444', alpha=0.8)
             else:
                 ax = fig.add_subplot(111)
                 xe, ye = np.linspace(0, bx, gx + 1), np.linspace(0, by, gy + 1)
-                im = ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
+                ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
                 xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
                 for i in range(gy):
                     for j in range(gx):
@@ -164,9 +162,7 @@ class App(ctk.CTk):
             FigureCanvasTkAgg(fig, master=tab).get_tk_widget().pack(fill="both", expand=True)
 
     def on_closing(self):
-        plt.close('all')
-        self.destroy()
-        sys.exit(0)
+        plt.close('all'); self.destroy(); sys.exit(0)
 
 if __name__ == "__main__":
     App().mainloop()

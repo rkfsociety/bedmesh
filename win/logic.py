@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings
 
-VERSION = "6.5" # Повышаем версию
+VERSION = "6.6"
 SETTINGS_FILE = "settings.json"
 
 def resource_path(relative_path):
@@ -53,22 +53,27 @@ def get_recs(matrix, z_type, pitch, gx):
     if is_screws:
         pts = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
     elif "2 вала" in z_type:
-        pts = {"Левый вал (среднее)": np.mean(matrix[:, 0]), "Правый вал (среднее)": np.mean(matrix[:, -1])}
+        pts = {"Левый вал": np.mean(matrix[:, 0]), "Правый вал": np.mean(matrix[:, -1])}
     elif "3 вала" in z_type:
-        pts = {"Пер. Лево": matrix[0,0], "Пер. Право": matrix[0,-1], "Зад Центр": matrix[-1, gx//2]}
+        pts = {"Перед Лево": matrix[0,0], "Перед Право": matrix[0,-1], "Зад Центр": matrix[-1, gx//2]}
     else:
         pts = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
     
     low = min(pts.values())
-    res_list = []
+    res_data = [] # Возвращаем структурированный список
     for name, val in pts.items():
         diff = val - low
-        t_info = f" | {abs(diff/pitch):.2f} об." if is_screws else ""
+        t_info = f"{abs(diff/pitch):.2f} об." if is_screws else ""
         
         direction = strings.DIR_OK
         if diff > 0: direction = strings.DIR_DOWN
         elif diff < 0: direction = strings.DIR_UP
         
-        res_list.append(f"● {name}:\n  {diff:+.3f}мм{t_info}\n  [{direction}]")
+        res_data.append({
+            "name": name,
+            "val": diff,
+            "turns": t_info,
+            "dir": direction
+        })
     
-    return "\n\n".join(res_list), is_screws
+    return res_data, is_screws
