@@ -14,14 +14,13 @@ import sys
 import subprocess
 
 # --- КОНСТАНТЫ ---
-VERSION = "4.2"
+VERSION = "4.3"
 REPO = "rkfsociety/bedmesh"
 SETTINGS_FILE = "settings.json"
 
 class TableVisualizer:
     def __init__(self, root):
         self.root = root
-        # Установлено название и размер окна 800x800 по вашему запросу
         self.root.title(f"Bed Mesh Visualizer Pro v{VERSION}")
         self.root.geometry("800x800")
 
@@ -95,6 +94,9 @@ class TableVisualizer:
         self.screw_pitch.set(self.settings.get("pitch", 0.7))
         self.screw_pitch.grid(row=1, column=6, padx=5)
 
+        self.btn_manual_save = tk.Button(cfg_frame, text="💾", command=self.save_settings, bg="#FF9800", fg="white", font=("Arial", 8))
+        self.btn_manual_save.grid(row=0, column=6, padx=5)
+
         # --- ПОЛЕ ДАННЫХ ---
         self.text_area = scrolledtext.ScrolledText(root, width=90, height=22, font=("Consolas", 9))
         self.text_area.pack(padx=10, pady=5)
@@ -151,6 +153,7 @@ class TableVisualizer:
     def save_settings(self, silent=False):
         d = {"host": self.ssh_host.get(), "port": self.ssh_port.get(), "user": self.ssh_user.get(), "password": self.ssh_pass.get(), "path": self.cfg_path.get(), "bed_x": self.bed_x.get(), "bed_y": self.bed_y.get(), "grid_x": self.entry_x.get(), "grid_y": self.entry_y.get(), "min_x": self.min_x.get(), "max_x": self.max_x.get(), "min_y": self.min_y.get(), "max_y": self.max_y.get(), "pitch": self.screw_pitch.get()}
         with open(SETTINGS_FILE, "w") as f: json.dump(d, f, indent=4)
+        if not silent: messagebox.showinfo("Успех", "Настройки сохранены!")
 
     def visualize(self, mode):
         nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", self.text_area.get("1.0", tk.END))]
@@ -160,7 +163,6 @@ class TableVisualizer:
         self.save_settings(True)
 
         plt.close('all')
-        # Окно графика тоже 800x800
         fig = plt.figure(figsize=(8, 8)) 
         
         mx, Mx = float(self.min_x.get()), float(self.max_x.get())
@@ -168,8 +170,9 @@ class TableVisualizer:
         bx, by = float(self.bed_x.get()), float(self.bed_y.get())
 
         if mode == "3d":
+            # Установка заголовка окна
+            fig.canvas.manager.set_window_title("3D Вид")
             ax = fig.add_subplot(111, projection='3d')
-            # Исправлено: координаты в мм для осей
             x_coords = np.linspace(mx, Mx, gx)
             y_coords = np.linspace(my, My, gy)
             X, Y = np.meshgrid(x_coords, y_coords)
@@ -178,22 +181,34 @@ class TableVisualizer:
             ax.set_xlabel("X (мм)"); ax.set_ylabel("Y (мм)"); ax.set_zlabel("Z (мм)")
             fig.colorbar(surf, shrink=0.5, aspect=10)
         else:
+            # Установка заголовка окна
+            fig.canvas.manager.set_window_title("2D Карта")
             ax = fig.add_subplot(111)
-            im = ax.imshow(matrix, extent=[mx, Mx, my, My], cmap='RdYlBu_r', origin='lower')
+            
+            # Равные квадраты по всему столу
+            x_edges = np.linspace(0, bx, gx + 1)
+            y_edges = np.linspace(0, by, gy + 1)
+            x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+            y_centers = (y_edges[:-1] + y_edges[1:]) / 2
+
+            im = ax.pcolormesh(x_edges, y_edges, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
             ax.set_xlim(0, bx); ax.set_ylim(0, by); ax.set_aspect('equal')
-            # Подписи точек с координатами мм
-            tx, ty = np.meshgrid(np.linspace(mx, Mx, gx), np.linspace(my, My, gy))
+            
+            # Текст СТРОГО В ЦЕНТРЕ каждого квадрата
             for i in range(gy):
                 for j in range(gx):
-                    txt = ax.text(tx[i,j], ty[i,j], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold')
+                    txt = ax.text(x_centers[j], y_centers[i], f"{matrix[i,j]:.3f}", 
+                                ha="center", va="center", fontweight='bold', fontsize=9)
                     txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
             
+            # Рекомендации по винтам
             corners = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
             base = min(corners.values())
             p = float(self.screw_pitch.get())
             instr = "\n".join([f"{k}: {v-base:+.3f}мм ({(v-base)/p:.2f} об. {'ВНИЗ' if v-base>0 else 'ОК'})" for k,v in corners.items()])
-            plt.gcf().text(0.15, 0.02, f"Винты:\n{instr}", fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
-            fig.colorbar(im)
+            plt.gcf().text(0.12, 0.02, f"Винты (отн. низшего):\n{instr}", fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
+            fig.colorbar(im, label="Z (мм)")
+            ax.set_xlabel("X (мм)"); ax.set_ylabel("Y (мм)")
         
         plt.tight_layout()
         plt.show()
