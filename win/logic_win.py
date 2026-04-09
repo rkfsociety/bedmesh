@@ -1,9 +1,8 @@
 import os, sys
 
-VERSION = "0.113-win" 
+VERSION = "0.125-win" 
 
 def resource_path(relative_path):
-    """Путь для упаковки ресурсов в EXE"""
     try:
         base_path = sys._MEIPASS
     except Exception:

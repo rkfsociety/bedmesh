@@ -1,40 +1,55 @@
 import customtkinter as ctk
-import numpy as np
-import styles_win
-import strings_win
-
-def get_recs(matrix, z_type, pitch, gx):
-    """Расчет необходимых правок для выравнивания стола"""
-    is_screws = "Винты" in z_type
-    if is_screws or "4 вала" in z_type:
-        pts = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
-    elif "2 вала" in z_type:
-        pts = {"Левый вал": np.mean(matrix[:, 0]), "Правый вал": np.mean(matrix[:, -1])}
-    elif "3 вала" in z_type:
-        pts = {"Перед Лево": matrix[0,0], "Перед Право": matrix[0,-1], "Зад Центр": matrix[-1, gx//2]}
-    else: 
-        pts = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
-    
-    vals = list(pts.values())
-    avg_val = sum(vals) / len(vals)
-    best_ref_key = min(pts, key=lambda k: abs(pts[k] - avg_val))
-    ref_val = pts[best_ref_key]
-    res_data = []
-    for name, val in pts.items():
-        diff = val - ref_val
-        direction = strings_win.DIR_OK if name == best_ref_key else (strings_win.DIR_DOWN if diff > 0 else strings_win.DIR_UP)
-        t_info = f"{abs(diff/pitch):.2f} об." if is_screws else ""
-        res_data.append({"name": name, "val": diff, "turns": t_info, "dir": direction})
-    return res_data, is_screws
 
 class RecCard(ctk.CTkFrame):
-    """Карточка рекомендации для правой панели"""
-    def __init__(self, master, name, val, turns, direction):
-        color = styles_win.COLORS["dark"]["success"] if direction == strings_win.DIR_OK else \
-                (styles_win.COLORS["dark"]["error"] if abs(val) > 0.1 else styles_win.COLORS["dark"]["warning"])
-        super().__init__(master, fg_color=color, corner_radius=10)
-        self.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(self, text=name, font=styles_win.FONTS["ui_bold"]).pack(pady=(5,0))
-        txt = f"{val:+.3f} мм" + (f" ({turns})" if turns else "")
-        ctk.CTkLabel(self, text=txt, font=styles_win.FONTS["ui"]).pack()
-        ctk.CTkLabel(self, text=direction, font=styles_win.FONTS["micro"]).pack(pady=(0,5))
+    def __init__(self, parent, name, val, turns, direction):
+        super().__init__(parent, fg_color="#333333", corner_radius=8)
+        self.pack(fill="x", pady=2, padx=5)
+        
+        # Для валов (независимых моторов) выводим только мм
+        if turns is None:
+            text = f"{name}: {val:+.3f} мм"
+        else:
+            # Для винтов - мм и обороты
+            text = f"{name}: {val:+.3f} мм ({turns:.2f} {direction})"
+            
+        ctk.CTkLabel(self, text=text, font=("Segoe UI", 12)).pack(pady=5)
+
+def get_recs(matrix, z_sys, pitch, gx):
+    gy = matrix.shape[0]
+    # Опорная точка всегда центр стола
+    ref = matrix[gy//2, gx//2]
+    recs = []
+    is_shafts = "Валы" in z_sys
+
+    pts_map = {
+        "Винты (4шт)": [
+            ("Лево-перед", matrix[0, 0]), ("Право-перед", matrix[0, -1]),
+            ("Лево-зад", matrix[-1, 0]), ("Право-зад", matrix[-1, -1])
+        ],
+        "Винты (3шт)": [
+            ("Лево-перед", matrix[0, 0]), ("Право-перед", matrix[0, -1]),
+            ("Центр-зад", matrix[-1, gx//2])
+        ],
+        "Валы (2 перед, 1 зад)": [
+            ("Вал лево-перед", matrix[0, 0]), ("Вал право-перед", matrix[0, -1]),
+            ("Вал центр-зад", matrix[-1, gx//2])
+        ],
+        "Валы (4 по углам)": [
+            ("Вал лево-перед", matrix[0, 0]), ("Вал право-перед", matrix[0, -1]),
+            ("Вал лево-зад", matrix[-1, 0]), ("Вал право-зад", matrix[-1, -1])
+        ]
+    }
+
+    selected_pts = pts_map.get(z_sys, [])
+    for name, val in selected_pts:
+        diff = ref - val
+        if is_shafts:
+            # Для валов возвращаем чистую разницу
+            recs.append({'name': name, 'val': diff, 'turns': None, 'dir': ""})
+        else:
+            # Для винтов считаем обороты по шагу резьбы
+            turns = abs(diff) / pitch
+            direction = "CW (по час.)" if diff > 0 else "CCW (против)"
+            recs.append({'name': name, 'val': diff, 'turns': turns, 'dir': direction})
+            
+    return recs, None
