@@ -1,6 +1,6 @@
 import os, sys
 
-VERSION = "0.127-win" 
+VERSION = "0.128-win" 
 
 def resource_path(relative_path):
     try:
