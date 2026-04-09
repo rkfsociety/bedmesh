@@ -1,6 +1,6 @@
 APP_TITLE = "Bed Mesh Visualizer Win"
 TAB_2D = "2D КАРТА"
-TAB_3D = "3D КАРТА"
+TAB_3D = "3D КАРТА (Smooth)" # Пометка, что 3D теперь со сглаживанием
 TAB_RAW = "СЫРЫЕ ДАННЫЕ"
 
 SECTION_SSH = "SSH И КОНФИГ"
@@ -14,13 +14,13 @@ BTN_FETCH = "ПОЛУЧИТЬ ИЗ ПРИНТЕРА"
 SECTION_GEOMETRY = "ГЕОМЕТРИЯ СТОЛА"
 LBL_BED_X = "СТОЛ X (мм)"
 LBL_BED_Y = "СТОЛ Y (мм)"
-LBL_GRID_X = "ТОЧЕК X (Mesh)"
-LBL_GRID_Y = "ТОЧЕК Y (Mesh)"
+LBL_GRID_X = "ТОЧЕК X"
+LBL_GRID_Y = "ТОЧЕК Y"
 
 SECTION_ALIGN = "РЕКОМЕНДАЦИИ ПО ВЫРАВНИВАНИЮ"
 LBL_Z_SYS = "ТИП Z-СИСТЕМЫ"
 LBL_PITCH = "ШАГ РЕЗЬБЫ ВИНТА"
-MSG_WAITING = "Ожидание данных для анализа..."
+MSG_WAITING = "Ожидание данных..."
 
 BTN_RUN = "⚡ ПОСТРОИТЬ И ПРОАНАЛИЗИРОВАТЬ"
 ERR_SSH = "Ошибка SSH подключения"

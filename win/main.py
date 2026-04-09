@@ -1,15 +1,22 @@
 import customtkinter as ctk
 import logic, styles, ui_elements, strings, updater, viz
 import matplotlib.pyplot as plt
-import sys, os
+import sys, os, ctypes
 from tkinter import messagebox
+
+# ВКЛЮЧАЕМ ПОДДЕРЖКУ ВЫСОКОЙ ЧЕТКОСТИ (High DPI Awareness)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except:
+    pass
 
 ctk.set_appearance_mode("dark")
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.width, self.height = 1400, 920
+        
+        self.width, self.height = 1400, 950
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
         self.center_window()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -17,7 +24,8 @@ class App(ctk.CTk):
         self.update_data = None
         try:
             icon_path = logic.resource_path("icon.ico")
-            if os.path.exists(icon_path): self.iconbitmap(icon_path)
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
         except: pass
         
         self.matrix = None
@@ -32,7 +40,7 @@ class App(ctk.CTk):
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "...cfg"))
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -43,7 +51,7 @@ class App(ctk.CTk):
 
         # Tabs
         self.main_area = ctk.CTkFrame(self, fg_color="transparent"); self.main_area.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        self.tabs = ctk.CTkTabview(self.main_area); self.tabs.pack(fill="both", expand=True)
+        self.tabs = ctk.CTkTabview(self.main_area, corner_radius=15); self.tabs.pack(fill="both", expand=True)
         self.t2d, self.t3d, self.traw = self.tabs.add(strings.TAB_2D), self.tabs.add(strings.TAB_3D), self.tabs.add(strings.TAB_RAW)
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"]); self.text_editor.pack(fill="both", expand=True)
 
@@ -53,10 +61,10 @@ class App(ctk.CTk):
         self.z_menu = ctk.CTkOptionMenu(self.right, values=strings.Z_SYSTEMS, command=self.refresh_recs); self.z_menu.set(self.settings.get("z_sys", strings.Z_SYSTEMS[0])); self.z_menu.pack(pady=10, padx=20, fill="x")
         self.p_label = ctk.CTkLabel(self.right, text=strings.LBL_PITCH); self.p_label.pack(); self.p_menu = ctk.CTkOptionMenu(self.right, values=["0.7", "0.5", "0.8"], command=self.refresh_recs); self.p_menu.set(self.settings.get("pitch", "0.7")); self.p_menu.pack(pady=5, padx=20, fill="x")
         self.rec_scroll = ctk.CTkScrollableFrame(self.right, fg_color="transparent"); self.rec_scroll.pack(fill="both", expand=True, padx=5, pady=10)
-        self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=("Segoe UI", 10), text_color="#858585"); self.empty_lbl.pack(pady=50)
+        self.empty_lbl = ctk.CTkLabel(self.rec_scroll, text=strings.MSG_WAITING, font=("Segoe UI", 10), text_color="#555555"); self.empty_lbl.pack(pady=50)
 
-        # Footer Button
-        self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, fg_color=styles.COLORS["dark"]["success"], font=styles.FONTS["title"], command=self.on_btn_click)
+        # Run Button
+        self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, fg_color=styles.COLORS["dark"]["success"], font=styles.FONTS["title"], command=self.on_btn_click, corner_radius=12)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
         updater.check_for_updates(logic.VERSION, self.show_update_notify)
@@ -81,9 +89,9 @@ class App(ctk.CTk):
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
-            data, is_screws = logic.get_recs(self.matrix, self.z_menu.get(), float(self.p_menu.get()), int(self.gx.get()))
+            res_data, is_screws = logic.get_recs(self.matrix, self.z_menu.get(), float(self.p_menu.get()), int(self.gx.get()))
             for w in self.rec_scroll.winfo_children(): w.destroy()
-            for item in data: ui_elements.RecCard(self.rec_scroll, item['name'], item['val'], item['turns'], item['dir'])
+            for item in res_data: ui_elements.RecCard(self.rec_scroll, item['name'], item['val'], item['turns'], item['dir'])
             if is_screws: self.p_label.pack(); self.p_menu.pack(pady=5, padx=20, fill="x")
             else: self.p_label.pack_forget(); self.p_menu.pack_forget()
 
