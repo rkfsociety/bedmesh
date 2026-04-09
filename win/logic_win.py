@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings_win
 
-VERSION = "0.086-win" 
+VERSION = "0.088-win" 
 SETTINGS_FILE = "settings_win.json"
 
 def resource_path(relative_path):
@@ -23,15 +23,30 @@ def fetch_ssh(host, port, user, pwd, path):
     if not path or path.strip() == "": return ""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        client.connect(host, int(port), user, pwd, timeout=10)
-        sftp = client.open_sftp()
-        with sftp.open(path, 'r') as f:
-            content = f.read().decode('utf-8')
-        sftp.close(); client.close()
-        return content
-    except Exception as e:
-        raise Exception(f"Ошибка при чтении {path}: {str(e)}")
+    client.connect(host, int(port), user, pwd, timeout=10)
+    sftp = client.open_sftp()
+    with sftp.open(path, 'r') as f:
+        content = f.read().decode('utf-8')
+    sftp.close(); client.close()
+    return content
+
+def save_ssh(host, port, user, pwd, path, content):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(host, int(port), user, pwd, timeout=10)
+    sftp = client.open_sftp()
+    with sftp.open(path, 'w') as f:
+        f.write(content)
+    sftp.close(); client.close()
+
+def get_cfg_value(text, section, key):
+    pattern = rf"\[{section}\][^\[]*?{key}\s*[:=]\s*([^\s#\n]+)"
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    return match.group(1) if match else ""
+
+def set_cfg_value(text, section, key, new_val):
+    section_pattern = rf"(\[{section}\][^\[]*?{key}\s*[:=]\s*)([^\s#\n]+)"
+    return re.sub(section_pattern, rf"\1{new_val}", text, flags=re.IGNORECASE | re.DOTALL)
 
 def parse_points(raw_text, gx, gy):
     if not raw_text: return None, "Нет данных"
