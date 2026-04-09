@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import scrolledtext, messagebox, ttk
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patheffects as path_effects
 import numpy as np
@@ -15,7 +15,7 @@ import sys
 import subprocess
 
 # --- КОНСТАНТЫ ---
-VERSION = "5.5"
+VERSION = "5.9"
 REPO = "rkfsociety/bedmesh"
 SETTINGS_FILE = "settings.json"
 
@@ -23,132 +23,106 @@ class BedMeshVisualizerWin:
     def __init__(self, root):
         self.root = root
         self.root.title(f"Bed Mesh Visualizer Pro v{VERSION}")
-        self.root.geometry("1200x850")
+        self.root.geometry("1250x900")
+
+        # КРИТИЧЕСКИЙ ФИКС: Обработка закрытия окна
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.matrix = None
-        self.current_theme = "light"
+        self.current_theme = "dark"
         self.cleanup_old_files()
         self.settings = self.load_settings()
 
-        # Настройка цветов тем
-        self.colors = {
-            "light": {"bg": "#f0f0f0", "fg": "#000000", "text_bg": "#ffffff", "frame_bg": "#e1e1e1", "accent": "#2196F3"},
-            "dark": {"bg": "#2d2d2d", "fg": "#ffffff", "text_bg": "#1e1e1e", "frame_bg": "#3d3d3d", "accent": "#1976D2"}
+        self.themes = {
+            "dark": {"bg": "#1e1e1e", "fg": "#d4d4d4", "head": "#252526", "text_bg": "#1e1e1e", "accent": "#007acc", "border": "#3c3c3c"},
+            "light": {"bg": "#ffffff", "fg": "#333333", "head": "#f3f3f3", "text_bg": "#ffffff", "accent": "#007acc", "border": "#cccccc"}
         }
 
-        # --- ВЕРХНЯЯ ПАНЕЛЬ (SSH + ТЕМА) ---
-        self.top_frame = tk.Frame(root, padx=10, pady=5)
-        self.top_frame.pack(fill="x")
+        self.style = ttk.Style()
+        self.style.theme_use('default')
 
-        self.ssh_frame = tk.LabelFrame(self.top_frame, text=" SSH Подключение ", padx=5, pady=5)
-        self.ssh_frame.pack(side="left", fill="x", expand=True)
+        # --- ИНТЕРФЕЙС ---
+        self.header = tk.Frame(root, pady=10, padx=15); self.header.pack(fill="x")
+        self.ssh_box = tk.LabelFrame(self.header, text=" ПАРАМЕТРЫ ПОДКЛЮЧЕНИЯ ", font=("Segoe UI", 9, "bold"), padx=10, pady=10)
+        self.ssh_box.pack(side="left", fill="x", expand=True)
 
-        self.ssh_host = self.add_ssh_entry(self.ssh_frame, "IP:", self.settings.get("host", "192.168.1.100"), 0, 1)
-        self.ssh_port = self.add_ssh_entry(self.ssh_frame, "Порт:", self.settings.get("port", "22"), 0, 3)
-        self.ssh_user = self.add_ssh_entry(self.ssh_frame, "User:", self.settings.get("user", "pi"), 0, 5)
-        self.ssh_pass = self.add_ssh_entry(self.ssh_frame, "Pass:", self.settings.get("password", "raspberry"), 0, 7, show="*")
-        
-        self.cfg_path = tk.Entry(self.ssh_frame, width=50); self.cfg_path.insert(0, self.settings.get("path", "...cfg"))
-        self.cfg_path.grid(row=1, column=0, columnspan=6, padx=5, pady=5, sticky="w")
-        
-        tk.Button(self.ssh_frame, text="ВЫТЯНУТЬ", command=self.fetch_ssh, bg="#2196F3", fg="white", font=("Arial", 8, "bold")).grid(row=1, column=6, columnspan=2, sticky="we")
+        row1 = tk.Frame(self.ssh_box); row1.pack(fill="x")
+        self.ssh_host = self.create_input(row1, "IP:", "host", "192.168.1.100", 0, width=20)
+        self.ssh_port = self.create_input(row1, "PORT:", "port", "22", 2, width=6)
+        self.ssh_user = self.create_input(row1, "USER:", "user", "pi", 4, width=10)
+        self.ssh_pass = self.create_input(row1, "PASS:", "password", "raspberry", 6, width=10, show="*")
 
-        self.btn_theme = tk.Button(self.top_frame, text="🌓", command=self.toggle_theme, width=4)
-        self.btn_theme.pack(side="right", padx=5)
+        row2 = tk.Frame(self.ssh_box); row2.pack(fill="x", pady=(10, 0))
+        self.cfg_path = tk.Entry(row2, font=("Segoe UI", 9)); self.cfg_path.insert(0, self.settings.get("path", "...cfg"))
+        self.cfg_path.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        tk.Button(row2, text="ВЫТЯНУТЬ", command=self.fetch_ssh, bg="#007acc", fg="white", font=("Segoe UI", 9, "bold"), relief="flat", padx=15).pack(side="right")
 
-        # --- ПАНЕЛЬ МЕТРИК ---
-        self.mid_frame = tk.Frame(root, padx=10); self.mid_frame.pack(fill="x")
-        self.metric_frame = tk.LabelFrame(self.mid_frame, text=" Анализ ", padx=10)
-        self.metric_frame.pack(fill="x", pady=5)
-        
-        self.lbl_var = tk.Label(self.metric_frame, text="Variance: ---", font=("Arial", 11, "bold")); self.lbl_var.pack(side="left", padx=20)
-        self.lbl_max = tk.Label(self.metric_frame, text="Max Z: ---"); self.lbl_max.pack(side="left", padx=20)
-        self.lbl_min = tk.Label(self.metric_frame, text="Min Z: ---"); self.lbl_min.pack(side="left", padx=20)
+        tk.Button(self.header, text="🌓", command=self.toggle_theme, width=4).pack(side="right", padx=(15, 0))
 
-        # --- ОСНОВНОЙ КОНТЕНТ (ВКЛАДКИ + РЕКОМЕНДАЦИИ) ---
-        self.main_split = tk.Frame(root, padx=10); self.main_split.pack(fill="both", expand=True)
+        # Метрики
+        self.m_strip = tk.Frame(root, height=40); self.m_strip.pack(fill="x", padx=15, pady=5)
+        self.lbl_var = tk.Label(self.m_strip, text="VARIANCE: ---", font=("Segoe UI", 12, "bold")); self.lbl_var.pack(side="left", padx=20)
+        self.lbl_max = tk.Label(self.m_strip, text="MAX Z: ---"); self.lbl_max.pack(side="left", padx=20)
+        self.lbl_min = tk.Label(self.m_strip, text="MIN Z: ---"); self.lbl_min.pack(side="left", padx=20)
 
-        # Левая часть: Вкладки
-        self.notebook = ttk.Notebook(self.main_split)
-        self.notebook.pack(side="left", fill="both", expand=True)
+        # Центр
+        self.container = tk.Frame(root, padx=15, pady=5); self.container.pack(fill="both", expand=True)
+        self.tabs = ttk.Notebook(self.container); self.tabs.pack(side="left", fill="both", expand=True)
 
-        self.tab_text = tk.Frame(self.notebook)
-        self.tab_2d = tk.Frame(self.notebook)
-        self.tab_3d = tk.Frame(self.notebook)
-        self.tab_cfg = tk.Frame(self.notebook)
+        self.tab_data = tk.Frame(self.tabs); self.tabs.add(self.tab_data, text=" ДАННЫЕ ")
+        self.tab_2d = tk.Frame(self.tabs); self.tabs.add(self.tab_2d, text=" 2D КАРТА ")
+        self.tab_3d = tk.Frame(self.tabs); self.tabs.add(self.tab_3d, text=" 3D МОДЕЛЬ ")
+        self.tab_stg = tk.Frame(self.tabs); self.tabs.add(self.tab_stg, text=" НАСТРОЙКИ ")
 
-        self.notebook.add(self.tab_text, text=" Данные Mesh ")
-        self.notebook.add(self.tab_2d, text=" 2D Карта ")
-        self.notebook.add(self.tab_3d, text=" 3D Модель ")
-        self.notebook.add(self.tab_cfg, text=" Настройки стола ")
+        self.text_editor = scrolledtext.ScrolledText(self.tab_data, font=("Consolas", 10), relief="flat", padx=10, pady=10)
+        self.text_editor.pack(fill="both", expand=True)
 
-        # Содержимое вкладок
-        self.text_area = scrolledtext.ScrolledText(self.tab_text, font=("Consolas", 10))
-        self.text_area.pack(fill="both", expand=True)
+        self.init_settings_tab()
 
-        self.setup_cfg_tab()
+        # Рекомендации
+        self.rec_box = tk.LabelFrame(self.container, text=" ИНСТРУКЦИИ ", font=("Segoe UI", 9, "bold"), padx=10, pady=10, width=320)
+        self.rec_box.pack(side="right", fill="both", padx=(15, 0))
+        self.rec_box.pack_propagate(False)
 
-        # Правая часть: Рекомендации (Всегда виден)
-        self.rec_frame = tk.LabelFrame(self.main_split, text=" Рекомендации по выравниванию ", padx=10, pady=10, width=300)
-        self.rec_frame.pack(side="right", fill="both", padx=(10, 0))
-        self.rec_frame.pack_propagate(False)
+        tk.Label(self.rec_box, text="СИСТЕМА:").pack(anchor="w")
+        self.z_type = ttk.Combobox(self.rec_box, values=["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"], state="readonly")
+        self.z_type.set(self.settings.get("z_sys", "Винты (углы)")); self.z_type.pack(fill="x", pady=5)
+        self.z_type.bind("<<ComboboxSelected>>", lambda e: self.process_data())
 
-        tk.Label(self.rec_frame, text="Система:").pack(anchor="w")
-        self.z_sys = ttk.Combobox(self.rec_frame, values=["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"], state="readonly")
-        self.z_sys.set(self.settings.get("z_sys", "Винты (углы)")); self.z_sys.pack(fill="x", pady=5)
-        self.z_sys.bind("<<ComboboxSelected>>", lambda e: self.update_viz())
+        tk.Label(self.rec_box, text="ШАГ:").pack(anchor="w")
+        self.z_pitch = ttk.Combobox(self.rec_box, values=["0.7", "0.5", "0.8"], state="readonly")
+        self.z_pitch.set(self.settings.get("pitch", "0.7")); self.z_pitch.pack(fill="x", pady=5)
+        self.z_pitch.bind("<<ComboboxSelected>>", lambda e: self.process_data())
 
-        tk.Label(self.rec_frame, text="Шаг винта:").pack(anchor="w")
-        self.pitch = ttk.Combobox(self.rec_frame, values=["0.7", "0.5", "0.8"], state="readonly")
-        self.pitch.set(self.settings.get("pitch", "0.7")); self.pitch.pack(fill="x", pady=5)
-        self.pitch.bind("<<ComboboxSelected>>", lambda e: self.update_viz())
+        self.instr_label = tk.Label(self.rec_box, text="Ожидание данных...", justify="left", font=("Segoe UI", 9))
+        self.instr_label.pack(fill="both", expand=True)
 
-        self.rec_display = tk.Label(self.rec_frame, text="\nЗагрузите данные...", justify="left", font=("Consolas", 10))
-        self.rec_display.pack(pady=20, fill="both")
-
-        # Кнопка действия
-        self.btn_viz = tk.Button(root, text="🚀 ОБНОВИТЬ И ВИЗУАЛИЗИРОВАТЬ", command=self.update_viz, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), pady=10)
-        self.btn_viz.pack(fill="x", padx=10, pady=10)
+        tk.Button(root, text="⚡ ВИЗУАЛИЗИРОВАТЬ", command=self.process_data, bg="#28a745", fg="white", font=("Segoe UI", 11, "bold"), relief="flat", pady=10).pack(fill="x", padx=15, pady=10)
 
         self.apply_theme()
+        
+        # Обновления (daemon поток не мешает закрытию)
+        threading.Thread(target=self.check_updates, daemon=True).start()
 
-    def add_ssh_entry(self, master, label, default, r, c, show=None):
-        tk.Label(master, text=label).grid(row=r, column=c-1, padx=2)
-        e = tk.Entry(master, width=12, show=show); e.insert(0, default); e.grid(row=r, column=c, padx=2); return e
+    def on_closing(self):
+        """Принудительно завершает всё при закрытии окна"""
+        plt.close('all')
+        self.root.destroy()
+        sys.exit(0)
 
-    def setup_cfg_tab(self):
-        self.entries = {}
-        frame = tk.Frame(self.tab_cfg, padx=20, pady=20)
-        frame.pack(fill="both")
-        fields = [("bed_x", "250"), ("bed_y", "250"), ("grid_x", "5"), ("grid_y", "5")]
-        for i, (key, default) in enumerate(fields):
-            tk.Label(frame, text=f"Параметр {key}:").grid(row=i, column=0, pady=5, sticky="w")
-            e = tk.Entry(frame, width=10); e.insert(0, self.settings.get(key, default)); e.grid(row=i, column=1, padx=10)
-            self.entries[key] = e
-        tk.Button(frame, text="Сохранить настройки", command=self.save_settings).grid(row=4, column=0, columnspan=2, pady=20)
+    def create_input(self, master, label, key, default, col, width=10, show=None):
+        tk.Label(master, text=label, font=("Segoe UI", 8)).grid(row=0, column=col, padx=(5, 2))
+        e = tk.Entry(master, width=width, font=("Segoe UI", 9), show=show, relief="flat", highlightthickness=1)
+        e.insert(0, self.settings.get(key, default)); e.grid(row=0, column=col+1); return e
 
-    def toggle_theme(self):
-        self.current_theme = "dark" if self.current_theme == "light" else "light"
-        self.apply_theme()
-        if self.matrix is not None: self.update_viz()
-
-    def apply_theme(self):
-        theme = self.colors[self.current_theme]
-        self.root.config(bg=theme["bg"])
-        # Рекурсивная покраска виджетов
-        def color_widgets(parent):
-            for widget in parent.winfo_children():
-                try:
-                    if isinstance(widget, (tk.Frame, tk.LabelFrame, tk.Label)):
-                        widget.config(bg=theme["bg"], fg=theme["fg"])
-                    elif isinstance(widget, tk.Entry):
-                        widget.config(bg=theme["text_bg"], fg=theme["fg"], insertbackground=theme["fg"])
-                    elif isinstance(widget, scrolledtext.ScrolledText):
-                        widget.config(bg=theme["text_bg"], fg=theme["fg"], insertbackground=theme["fg"])
-                except: pass
-                color_widgets(widget)
-        color_widgets(self.root)
-        self.rec_frame.config(bg=theme["bg"], fg=theme["fg"])
+    def init_settings_tab(self):
+        self.stg_entries = {}
+        cont = tk.Frame(self.tab_stg, padx=20, pady=20); cont.pack(fill="both")
+        for i, (l, k, d) in enumerate([("Размер X", "bed_x", "250"), ("Размер Y", "bed_y", "250"), ("Точек X", "grid_x", "5"), ("Точек Y", "grid_y", "5")]):
+            tk.Label(cont, text=l).grid(row=i, column=0, pady=5, sticky="w")
+            e = tk.Entry(cont, width=10, relief="flat", highlightthickness=1); e.insert(0, self.settings.get(k, d)); e.grid(row=i, column=1, padx=10)
+            self.stg_entries[k] = e
+        tk.Button(cont, text="СОХРАНИТЬ", command=self.save_settings, bg="#007acc", fg="white", relief="flat").grid(row=4, column=0, columnspan=2, pady=20)
 
     def fetch_ssh(self):
         try:
@@ -157,91 +131,94 @@ class BedMeshVisualizerWin:
             sftp = client.open_sftp()
             with sftp.open(self.cfg_path.get(), 'r') as f: content = f.read().decode('utf-8')
             sftp.close(); client.close()
-            self.text_area.delete("1.0", tk.END); self.text_area.insert(tk.END, content)
-            self.notebook.select(self.tab_text)
+            self.text_editor.delete("1.0", tk.END); self.text_editor.insert(tk.END, content)
+            self.tabs.select(self.tab_data)
         except Exception as e: messagebox.showerror("SSH Error", str(e))
 
-    def update_viz(self):
-        text = self.text_area.get("1.0", tk.END).strip()
-        if not text: return
-        try:
-            nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", text)]
-            gx, gy = int(self.entries["grid_x"].get()), int(self.entries["grid_y"].get())
-            if len(nums) < gx * gy: return
-            self.matrix = np.array(nums[:gx*gy]).reshape((gy, gx))
-            for i in range(len(self.matrix)):
-                if i % 2 != 0: self.matrix[i] = self.matrix[i][::-1]
-            
-            # Обновление метрик
-            v = np.max(self.matrix) - np.min(self.matrix)
-            self.lbl_var.config(text=f"Variance: {v:.3f} мм")
-            self.lbl_max.config(text=f"Max Z: {np.max(self.matrix):.3f} мм")
-            self.lbl_min.config(text=f"Min Z: {np.min(self.matrix):.3f} мм")
-
-            # Отрисовка 2D
-            self.draw_plot(self.tab_2d, "2d")
-            # Отрисовка 3D
-            self.draw_plot(self.tab_3d, "3d")
-            # Расчет рекомендаций
-            self.calc_rec()
-        except: pass
-
-    def draw_plot(self, tab, mode):
-        for widget in tab.winfo_children(): widget.destroy()
+    def process_data(self):
+        raw = self.text_editor.get("1.0", tk.END).strip()
+        if not raw: return
+        match = re.search(r'"points":\s*"([\s\S]+?)"', raw)
+        pts_content = match.group(1) if match else raw
+        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", pts_content)]
+        gx, gy = int(self.stg_entries["grid_x"].get()), int(self.stg_entries["grid_y"].get())
+        if len(nums) < gx * gy: return
+        self.matrix = np.array(nums[:gx*gy]).reshape((gy, gx))
+        for i in range(len(self.matrix)):
+            if i % 2 != 0: self.matrix[i] = self.matrix[i][::-1]
         
-        # Настройка стиля под тему
+        v = np.max(self.matrix) - np.min(self.matrix)
+        self.lbl_var.config(text=f"VARIANCE: {v:.3f} mm", fg="#f44336" if v > 0.2 else "#28a745")
+        self.lbl_max.config(text=f"MAX Z: {np.max(self.matrix):.3f} mm")
+        self.lbl_min.config(text=f"MIN Z: {np.min(self.matrix):.3f} mm")
+        self.render_tab(self.tab_2d, "2d"); self.render_tab(self.tab_3d, "3d"); self.update_instructions()
+
+    def render_tab(self, tab, mode):
+        for w in tab.winfo_children(): w.destroy()
         is_dark = self.current_theme == "dark"
         plt.style.use('dark_background' if is_dark else 'default')
-        fig = plt.figure(figsize=(6, 6), dpi=100)
-        fig.patch.set_facecolor(self.colors[self.current_theme]["bg"])
-        
-        bx, by = float(self.entries["bed_x"].get()), float(self.entries["bed_y"].get())
-        gx, gy = int(self.entries["grid_x"].get()), int(self.entries["grid_y"].get())
+        fig = plt.figure(figsize=(6, 6), dpi=100); fig.patch.set_facecolor(self.themes[self.current_theme]["bg"])
+        bx, by = float(self.stg_entries["bed_x"].get()), float(self.stg_entries["bed_y"].get())
+        gx, gy = int(self.stg_entries["grid_x"].get()), int(self.stg_entries["grid_y"].get())
 
         if mode == "3d":
-            ax = fig.add_subplot(111, projection='3d')
-            ax.set_facecolor(self.colors[self.current_theme]["bg"])
+            ax = fig.add_subplot(111, projection='3d'); ax.set_facecolor(self.themes[self.current_theme]["bg"])
             X, Y = np.meshgrid(np.linspace(0, bx, gx), np.linspace(0, by, gy))
-            ax.plot_surface(X, Y, self.matrix, cmap='RdYlBu_r', edgecolor='black' if not is_dark else '#444444')
+            ax.plot_surface(X, Y, self.matrix, cmap='RdYlBu_r', edgecolor='#444444', alpha=0.8)
         else:
             ax = fig.add_subplot(111)
             xe, ye = np.linspace(0, bx, gx + 1), np.linspace(0, by, gy + 1)
-            im = ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black')
+            ax.pcolormesh(xe, ye, self.matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.5)
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(gy):
                 for j in range(gx):
-                    t = ax.text(xc[j], yc[i], f"{self.matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', color="black" if not is_dark else "white")
+                    t = ax.text(xc[j], yc[i], f"{self.matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=9, color="black" if not is_dark else "white")
                     t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white" if not is_dark else "black")])
             ax.set_aspect('equal')
+        FigureCanvasTkAgg(fig, master=tab).get_tk_widget().pack(fill="both", expand=True)
 
-        canvas = FigureCanvasTkAgg(fig, master=tab)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
-
-    def calc_rec(self):
-        z_type, p = self.z_sys.get(), float(self.pitch.get())
+    def update_instructions(self):
+        z_sys, p = self.z_type.get(), float(self.z_pitch.get())
         pts = {}
-        if z_type == "Винты (углы)":
-            pts = {"ПЛ": self.matrix[0,0], "ПП": self.matrix[0,-1], "ЗЛ": self.matrix[-1,0], "ЗП": self.matrix[-1,-1]}
-        elif z_type == "2 вала (Л/П)":
-            pts = {"Левый вал": np.mean(self.matrix[:, 0]), "Правый вал": np.mean(self.matrix[:, -1])}
-        elif z_type == "3 вала (Tri-Z)":
-            pts = {"Перед Лево": self.matrix[0,0], "Перед Право": self.matrix[0,-1], "Зад Центр": self.matrix[-1, int(self.entries["grid_x"].get())//2]}
-        elif z_type == "4 вала (Quad-Z)":
-            pts = {"ПЛ": self.matrix[0,0], "ПП": self.matrix[0,-1], "ЗЛ": self.matrix[-1,0], "ЗП": self.matrix[-1,-1]}
-
-        low = min(pts.values())
-        res = ""
+        if "Винты" in z_sys: pts = {"ПЛ": self.matrix[0,0], "ПП": self.matrix[0,-1], "ЗЛ": self.matrix[-1,0], "ЗП": self.matrix[-1,-1]}
+        elif "2 вала" in z_sys: pts = {"Левый": np.mean(self.matrix[:, 0]), "Правый": np.mean(self.matrix[:, -1])}
+        elif "3 вала" in z_sys: pts = {"П.Лево": self.matrix[0,0], "П.Право": self.matrix[0,-1], "З.Центр": self.matrix[-1, int(self.stg_entries["grid_x"].get())//2]}
+        elif "4 вала" in z_sys: pts = {"ПЛ": self.matrix[0,0], "ПП": self.matrix[0,-1], "ЗЛ": self.matrix[-1,0], "ЗП": self.matrix[-1,-1]}
+        low = min(pts.values()); res = ""
         for name, val in pts.items():
-            diff = val - low
-            res += f"{name}:\n {diff:+.3f} мм | {abs(diff/p):.2f} об.\n {'🔽 ВНИЗ' if diff>0 else '✅ ОПОРА' if diff==0 else '🔼 ВВЕРХ'}\n\n"
-        self.rec_display.config(text=res, fg=self.colors[self.current_theme]["fg"])
+            diff = val - low; dir_s = "🔽 ВНИЗ" if diff > 0 else "✅ OK" if diff == 0 else "🔼 ВВЕРХ"
+            res += f"● {name}:\n  {diff:+.3f} мм | {abs(diff/p):.2f} об. [{dir_s}]\n\n"
+        self.instr_label.config(text=res)
 
-    def cleanup_old_files(self):
-        for f in ["updater.bat", "Bed_Mesh_Viz_new.exe"]:
-            if os.path.exists(f): 
-                try: os.remove(f)
+    def apply_theme(self):
+        t = self.themes[self.current_theme]; self.root.config(bg=t["bg"])
+        self.style.configure("TNotebook", background=t["bg"], borderwidth=0)
+        self.style.configure("TNotebook.Tab", background=t["head"], foreground=t["fg"], padding=[10, 5]); self.style.map("TNotebook.Tab", background=[("selected", t["accent"])], foreground=[("selected", "white")])
+        def paint(parent):
+            for w in parent.winfo_children():
+                try:
+                    if isinstance(w, (tk.Frame, tk.LabelFrame, tk.Label)): w.config(bg=t["bg"], fg=t["fg"])
+                    elif isinstance(w, (tk.Entry, scrolledtext.ScrolledText)): w.config(bg=t["text_bg"], fg=t["fg"], insertbackground=t["fg"])
                 except: pass
+                paint(w)
+        paint(self.root); self.header.config(bg=t["head"]); self.ssh_box.config(bg=t["head"])
+
+    def toggle_theme(self):
+        self.current_theme = "light" if self.current_theme == "dark" else "dark"; self.apply_theme()
+        if self.matrix is not None: self.process_data()
+
+    def check_updates(self):
+        try:
+            r = requests.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            latest = r.json().get("tag_name", "").replace("v", "")
+            if latest > VERSION: self.lbl_var.config(text=f"UPDATE v{latest}!", fg="#007acc")
+        except: pass
+
+    def save_settings(self):
+        d = {k: e.get() for k, e in self.stg_entries.items()}
+        d.update({"host": self.ssh_host.get(), "port": self.ssh_port.get(), "user": self.ssh_user.get(), "password": self.ssh_pass.get(), "path": self.cfg_path.get(), "z_sys": self.z_type.get(), "pitch": self.z_pitch.get()})
+        with open(SETTINGS_FILE, "w") as f: json.dump(d, f, indent=4)
+        messagebox.showinfo("OK", "Настройки сохранены")
 
     def load_settings(self):
         if os.path.exists(SETTINGS_FILE):
@@ -250,18 +227,9 @@ class BedMeshVisualizerWin:
             except: return {}
         return {}
 
-    def save_settings(self):
-        d = {k: e.get() for k, e in self.entries.items()}
-        d.update({"host": self.ssh_host.get(), "port": self.ssh_port.get(), "user": self.ssh_user.get(), "password": self.ssh_pass.get(), "path": self.cfg_path.get(), "z_sys": self.z_sys.get(), "pitch": self.pitch.get()})
-        with open(SETTINGS_FILE, "w") as f: json.dump(d, f, indent=4)
-        messagebox.showinfo("OK", "Сохранено")
-
-    def check_updates(self):
-        try:
-            r = requests.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
-            latest = r.json().get("tag_name", "").replace("v", "")
-            if latest > VERSION: self.update_status.config(text=f"Доступно v{latest}", fg="green")
-        except: pass
+    def cleanup_old_files(self):
+        for f in ["updater.bat", "Bed_Mesh_Viz_new.exe"]:
+            if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     root = tk.Tk(); app = BedMeshVisualizerWin(root); root.mainloop()
