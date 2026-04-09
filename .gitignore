@@ -1,16 +1,19 @@
 # Папки сборки PyInstaller
 dist/
 build/
+mac/dist/
+mac/build/
 
 # Исполняемые файлы
 *.exe
+*.dmg
 
 # Временные файлы Python
 __pycache__/
 *.py[cod]
 
-# Конфиденциальные данные (пароли SSH и IP)
-settings.json
+# Конфиденциальные данные (все файлы настроек)
+settings*.json
 
 # Файлы спецификации сборки
 *.spec
