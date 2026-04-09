@@ -4,16 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patheffects as path_effects
+import os
 
 BG_COLOR = "#1a1a1a"
 
 def clear_tab(tab):
-    """Очистка вкладки от старых элементов"""
+    """Очистка вкладки"""
     for w in tab.winfo_children():
         w.destroy()
 
 def draw_2d_map(tab, matrix, bx, by, gx, gy):
-    """2D карта на Matplotlib (CPU)"""
+    """Стандартная 2D карта (CPU)"""
     clear_tab(tab)
     plt.style.use('dark_background')
     fig = plt.figure(figsize=(6, 6), dpi=100)
@@ -36,8 +37,8 @@ def draw_2d_map(tab, matrix, bx, by, gx, gy):
     canvas.draw()
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
-def get_plotly_html(matrix, bx, by, gx, gy):
-    """Генерация автономного WebGL контента для GPU"""
+def save_plotly_html(matrix, bx, by, gx, gy):
+    """Генерация HTML файла для 3D карты (GPU WebGL)"""
     x = np.linspace(0, bx, gx)
     y = np.linspace(0, by, gy)
     
@@ -62,6 +63,7 @@ def get_plotly_html(matrix, bx, by, gx, gy):
         plot_bgcolor=BG_COLOR
     )
     
-    # include_plotlyjs=True вшивает библиотеку внутрь HTML. 
-    # full_html=True создает законченный документ.
-    return pio.to_html(fig, full_html=True, include_plotlyjs=True)
+    # Сохраняем во временный файл, так как WebView2 лучше работает с файлами
+    path = os.path.abspath("temp_mesh.html")
+    pio.write_html(fig, file=path, auto_open=False, include_plotlyjs='cdn')
+    return path

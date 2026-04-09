@@ -1,7 +1,7 @@
 import customtkinter as ctk
 import logic, styles, ui_elements, strings, updater, viz
 import matplotlib.pyplot as plt
-from tkinterweb import HtmlFrame
+from tkwebview2.tkwebview2 import WebView2 # Используем движок Edge (Chromium)
 import sys, os, ctypes
 from tkinter import messagebox
 
@@ -57,8 +57,9 @@ class App(ctk.CTk):
         self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
         
-        # HTML Фрейм для GPU карты. messages_enabled=False убирает лишние консольные окна.
-        self.gpu_view = HtmlFrame(self.t3d, messages_enabled=False)
+        # Современный GPU-виджет (Edge WebView2)
+        # На некоторых системах может потребоваться время на инициализацию
+        self.gpu_view = WebView2(self.t3d, width=800, height=600)
         self.gpu_view.pack(fill="both", expand=True)
 
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
@@ -74,7 +75,7 @@ class App(ctk.CTk):
         self.rec_s.pack(fill="both", expand=True, padx=5, pady=10)
         self.empty = ctk.CTkLabel(self.rec_s, text=strings.MSG_WAITING, font=("Segoe UI", 10), text_color="#555555"); self.empty.pack(pady=50)
 
-        # --- КНОПКА ЗАПУСКА ---
+        # --- RUN BUTTON ---
         self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
                                  fg_color=styles.COLORS["dark"]["success"], 
                                  font=styles.FONTS["title"], command=self.on_click, corner_radius=12)
@@ -124,9 +125,9 @@ class App(ctk.CTk):
                 # 2D (CPU)
                 viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
                 
-                # 3D (GPU WebGL) - Загружаем сгенерированный HTML
-                html_res = viz.get_plotly_html(self.matrix, bx, by, gx, gy)
-                self.gpu_view.load_html(html_res)
+                # 3D (GPU WebGL) - Генерируем файл и загружаем URL
+                html_file_path = viz.save_plotly_html(self.matrix, bx, by, gx, gy)
+                self.gpu_view.load_url(html_file_path)
                 
                 self.tabs.set(strings.TAB_2D)
                 logic.save_settings({"host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), 
@@ -138,6 +139,10 @@ class App(ctk.CTk):
 
     def on_closing(self):
         plt.close('all')
+        # Удаляем временный файл при выходе
+        if os.path.exists("temp_mesh.html"):
+            try: os.remove("temp_mesh.html")
+            except: pass
         self.destroy()
         sys.exit(0)
 
