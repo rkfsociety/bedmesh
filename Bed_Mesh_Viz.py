@@ -14,7 +14,7 @@ import sys
 import subprocess
 
 # --- КОНСТАНТЫ ---
-VERSION = "4.3"
+VERSION = "4.5"
 REPO = "rkfsociety/bedmesh"
 SETTINGS_FILE = "settings.json"
 
@@ -26,7 +26,6 @@ class TableVisualizer:
 
         self.settings = self.load_settings()
 
-        # Статус обновления
         self.update_status = tk.Label(root, text="Проверка обновлений...", fg="gray", font=("Arial", 8))
         self.update_status.pack(side="top", anchor="e", padx=10)
         threading.Thread(target=self.check_updates, daemon=True).start()
@@ -156,36 +155,53 @@ class TableVisualizer:
         if not silent: messagebox.showinfo("Успех", "Настройки сохранены!")
 
     def visualize(self, mode):
-        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", self.text_area.get("1.0", tk.END))]
+        text = self.text_area.get("1.0", tk.END).strip()
+        
+        # Парсим точки из JSON или текста
+        mesh_points_str = text
+        try:
+            data_json = json.loads(text)
+            mesh_points_str = data_json.get("bed_mesh default", {}).get("points", text)
+        except:
+            match = re.search(r"points\s*=\s*([\s\S]+?)(?=\n\w|\Z)", text)
+            if match: mesh_points_str = match.group(1)
+
+        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", mesh_points_str)]
         gx, gy = int(self.entry_x.get()), int(self.entry_y.get())
-        if len(nums) < gx * gy: return
-        matrix = np.array(nums[-(gx*gy):]).reshape((gy, gx))
+        
+        if len(nums) < gx * gy:
+            messagebox.showerror("Ошибка", f"Найдено {len(nums)} точек, нужно {gx*gy}.")
+            return
+            
+        # Формируем матрицу (Klipper закладывает по строкам)
+        matrix = np.array(nums[:gx*gy]).reshape((gy, gx))
+        
+        # --- ЛОГИКА "ЗМЕЙКИ" (Serpentine Path) ---
+        # Т.к. калибровка идет: L-R, затем R-L, затем L-R...
+        # Каждую нечетную строку (индексы 1, 3, 5...) нужно развернуть обратно
+        for i in range(len(matrix)):
+            if i % 2 != 0:
+                matrix[i] = matrix[i][::-1]
+
         self.save_settings(True)
 
         plt.close('all')
         fig = plt.figure(figsize=(8, 8)) 
-        
         mx, Mx = float(self.min_x.get()), float(self.max_x.get())
         my, My = float(self.min_y.get()), float(self.max_y.get())
         bx, by = float(self.bed_x.get()), float(self.bed_y.get())
 
         if mode == "3d":
-            # Установка заголовка окна
             fig.canvas.manager.set_window_title("3D Вид")
             ax = fig.add_subplot(111, projection='3d')
-            x_coords = np.linspace(mx, Mx, gx)
-            y_coords = np.linspace(my, My, gy)
-            X, Y = np.meshgrid(x_coords, y_coords)
+            X, Y = np.meshgrid(np.linspace(mx, Mx, gx), np.linspace(my, My, gy))
             surf = ax.plot_surface(X, Y, matrix, cmap='RdYlBu_r', edgecolor='black', alpha=0.8)
             ax.set_xlim(0, bx); ax.set_ylim(0, by)
             ax.set_xlabel("X (мм)"); ax.set_ylabel("Y (мм)"); ax.set_zlabel("Z (мм)")
             fig.colorbar(surf, shrink=0.5, aspect=10)
         else:
-            # Установка заголовка окна
             fig.canvas.manager.set_window_title("2D Карта")
             ax = fig.add_subplot(111)
-            
-            # Равные квадраты по всему столу
             x_edges = np.linspace(0, bx, gx + 1)
             y_edges = np.linspace(0, by, gy + 1)
             x_centers = (x_edges[:-1] + x_edges[1:]) / 2
@@ -194,19 +210,17 @@ class TableVisualizer:
             im = ax.pcolormesh(x_edges, y_edges, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
             ax.set_xlim(0, bx); ax.set_ylim(0, by); ax.set_aspect('equal')
             
-            # Текст СТРОГО В ЦЕНТРЕ каждого квадрата
             for i in range(gy):
                 for j in range(gx):
                     txt = ax.text(x_centers[j], y_centers[i], f"{matrix[i,j]:.3f}", 
                                 ha="center", va="center", fontweight='bold', fontsize=9)
                     txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
             
-            # Рекомендации по винтам
             corners = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
             base = min(corners.values())
             p = float(self.screw_pitch.get())
             instr = "\n".join([f"{k}: {v-base:+.3f}мм ({(v-base)/p:.2f} об. {'ВНИЗ' if v-base>0 else 'ОК'})" for k,v in corners.items()])
-            plt.gcf().text(0.12, 0.02, f"Винты (отн. низшего):\n{instr}", fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
+            plt.gcf().text(0.12, 0.02, f"Винты:\n{instr}", fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
             fig.colorbar(im, label="Z (мм)")
             ax.set_xlabel("X (мм)"); ax.set_ylabel("Y (мм)")
         
