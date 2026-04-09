@@ -8,91 +8,138 @@ import re
 import paramiko
 import json
 import os
+import requests
+import threading
+import sys
+import subprocess
 
-# Имя файла для хранения настроек
+# --- КОНСТАНТЫ ---
+VERSION = "4.2"
+REPO = "rkfsociety/bedmesh"
 SETTINGS_FILE = "settings.json"
 
 class TableVisualizer:
     def __init__(self, root):
         self.root = root
-        # Название программы строго по запросу
-        self.root.title("Bed Mesh Visualizer Pro v4.0")
-        self.root.geometry("850x950")
+        # Установлено название и размер окна 800x800 по вашему запросу
+        self.root.title(f"Bed Mesh Visualizer Pro v{VERSION}")
+        self.root.geometry("800x800")
 
-        # Загружаем настройки из файла
         self.settings = self.load_settings()
 
-        # --- БЛОК SSH ПОДКЛЮЧЕНИЯ ---
-        ssh_frame = tk.LabelFrame(root, text=" Подключение к принтеру (SSH) ", padx=10, pady=10)
-        ssh_frame.pack(fill="x", padx=20, pady=5)
+        # Статус обновления
+        self.update_status = tk.Label(root, text="Проверка обновлений...", fg="gray", font=("Arial", 8))
+        self.update_status.pack(side="top", anchor="e", padx=10)
+        threading.Thread(target=self.check_updates, daemon=True).start()
+
+        # --- SSH ПАНЕЛЬ ---
+        ssh_frame = tk.LabelFrame(root, text=" SSH Подключение ", padx=5, pady=5)
+        ssh_frame.pack(fill="x", padx=10, pady=5)
 
         tk.Label(ssh_frame, text="IP:").grid(row=0, column=0)
-        self.ssh_host = tk.Entry(ssh_frame, width=15)
+        self.ssh_host = tk.Entry(ssh_frame, width=12)
         self.ssh_host.insert(0, self.settings.get("host", "192.168.1.100"))
-        self.ssh_host.grid(row=0, column=1, padx=5)
+        self.ssh_host.grid(row=0, column=1)
 
         tk.Label(ssh_frame, text="Порт:").grid(row=0, column=2)
-        self.ssh_port = tk.Entry(ssh_frame, width=6)
+        self.ssh_port = tk.Entry(ssh_frame, width=5)
         self.ssh_port.insert(0, self.settings.get("port", "22"))
-        self.ssh_port.grid(row=0, column=3, padx=5)
+        self.ssh_port.grid(row=0, column=3)
 
         tk.Label(ssh_frame, text="User:").grid(row=0, column=4)
-        self.ssh_user = tk.Entry(ssh_frame, width=10)
+        self.ssh_user = tk.Entry(ssh_frame, width=8)
         self.ssh_user.insert(0, self.settings.get("user", "pi"))
-        self.ssh_user.grid(row=0, column=5, padx=5)
+        self.ssh_user.grid(row=0, column=5)
 
         tk.Label(ssh_frame, text="Pass:").grid(row=0, column=6)
-        self.ssh_pass = tk.Entry(ssh_frame, width=10, show="*")
+        self.ssh_pass = tk.Entry(ssh_frame, width=8, show="*")
         self.ssh_pass.insert(0, self.settings.get("password", "raspberry"))
-        self.ssh_pass.grid(row=0, column=7, padx=5)
+        self.ssh_pass.grid(row=0, column=7)
 
-        tk.Label(ssh_frame, text="Путь к файлу:").grid(row=1, column=0, pady=10)
-        self.cfg_path = tk.Entry(ssh_frame, width=50)
+        self.cfg_path = tk.Entry(ssh_frame, width=40)
         self.cfg_path.insert(0, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
-        self.cfg_path.grid(row=1, column=1, columnspan=5, sticky="w", padx=5)
+        self.cfg_path.grid(row=1, column=0, columnspan=6, pady=5, padx=5, sticky="w")
 
-        self.btn_ssh = tk.Button(ssh_frame, text="ВЫТЯНУТЬ CFG", command=self.fetch_ssh, bg="#2196F3", fg="white", font=("Arial", 9, "bold"))
-        self.btn_ssh.grid(row=1, column=6, columnspan=2, padx=10)
+        self.btn_ssh = tk.Button(ssh_frame, text="ВЫТЯНУТЬ", command=self.fetch_ssh, bg="#2196F3", fg="white", font=("Arial", 8, "bold"))
+        self.btn_ssh.grid(row=1, column=6, columnspan=2)
 
-        # --- НАСТРОЙКИ СЕТКИ И ВИНТОВ ---
-        settings_frame = tk.LabelFrame(root, text=" Параметры стола и механики ", padx=10, pady=10)
-        settings_frame.pack(fill="x", padx=20, pady=5)
+        # --- ПАРАМЕТРЫ СЕТКИ ---
+        cfg_frame = tk.LabelFrame(root, text=" Конфигурация стола ", padx=5, pady=5)
+        cfg_frame.pack(fill="x", padx=10, pady=5)
 
-        tk.Label(settings_frame, text="Размер X:").grid(row=0, column=0)
-        self.bed_x = tk.Entry(settings_frame, width=5); self.bed_x.insert(0, self.settings.get("bed_x", "250"))
+        tk.Label(cfg_frame, text="Стол X/Y:").grid(row=0, column=0)
+        self.bed_x = tk.Entry(cfg_frame, width=5); self.bed_x.insert(0, self.settings.get("bed_x", "250"))
         self.bed_x.grid(row=0, column=1)
+        self.bed_y = tk.Entry(cfg_frame, width=5); self.bed_y.insert(0, self.settings.get("bed_y", "250"))
+        self.bed_y.grid(row=0, column=2)
 
-        tk.Label(settings_frame, text="Размер Y:").grid(row=0, column=2)
-        self.bed_y = tk.Entry(settings_frame, width=5); self.bed_y.insert(0, self.settings.get("bed_y", "250"))
-        self.bed_y.grid(row=0, column=3)
+        tk.Label(cfg_frame, text="Точки X/Y:").grid(row=0, column=3)
+        self.entry_x = tk.Entry(cfg_frame, width=3); self.entry_x.insert(0, self.settings.get("grid_x", "5"))
+        self.entry_x.grid(row=0, column=4)
+        self.entry_y = tk.Entry(cfg_frame, width=3); self.entry_y.insert(0, self.settings.get("grid_y", "5"))
+        self.entry_y.grid(row=0, column=5)
 
-        tk.Label(settings_frame, text="Винты:").grid(row=0, column=4, padx=5)
-        self.screw_pitch = ttk.Combobox(settings_frame, values=[0.7, 0.5, 0.8], width=10)
+        tk.Label(cfg_frame, text="Min X/Y:").grid(row=1, column=0)
+        self.min_x = tk.Entry(cfg_frame, width=5); self.min_x.insert(0, self.settings.get("min_x", "5"))
+        self.min_x.grid(row=1, column=1)
+        self.min_y = tk.Entry(cfg_frame, width=5); self.min_y.insert(0, self.settings.get("min_y", "5"))
+        self.min_y.grid(row=1, column=2)
+
+        tk.Label(cfg_frame, text="Max X/Y:").grid(row=1, column=3)
+        self.max_x = tk.Entry(cfg_frame, width=5); self.max_x.insert(0, self.settings.get("max_x", "245"))
+        self.max_x.grid(row=1, column=4)
+        self.max_y = tk.Entry(cfg_frame, width=5); self.max_y.insert(0, self.settings.get("max_y", "245"))
+        self.max_y.grid(row=1, column=5)
+
+        self.screw_pitch = ttk.Combobox(cfg_frame, values=[0.7, 0.5, 0.8], width=5)
         self.screw_pitch.set(self.settings.get("pitch", 0.7))
-        self.screw_pitch.grid(row=0, column=5)
+        self.screw_pitch.grid(row=1, column=6, padx=5)
 
-        tk.Label(settings_frame, text="Точек X/Y:").grid(row=1, column=0, pady=5)
-        self.entry_x = tk.Entry(settings_frame, width=5); self.entry_x.insert(0, self.settings.get("grid_x", "5"))
-        self.entry_x.grid(row=1, column=1)
-        self.entry_y = tk.Entry(settings_frame, width=5); self.entry_y.insert(0, self.settings.get("grid_y", "5"))
-        self.entry_y.grid(row=1, column=3)
+        # --- ПОЛЕ ДАННЫХ ---
+        self.text_area = scrolledtext.ScrolledText(root, width=90, height=22, font=("Consolas", 9))
+        self.text_area.pack(padx=10, pady=5)
 
-        self.btn_save = tk.Button(settings_frame, text="СОХРАНИТЬ КОНФИГ", command=self.save_settings, bg="#FF9800", fg="white")
-        self.btn_save.grid(row=1, column=4, columnspan=2, padx=20)
+        btn_box = tk.Frame(root)
+        btn_box.pack(pady=10)
+        tk.Button(btn_box, text="3D ВИД (мм)", command=lambda: self.visualize("3d"), bg="#4CAF50", fg="white", width=25).grid(row=0, column=0, padx=5)
+        tk.Button(btn_box, text="2D КАРТА + ВИНТЫ", command=lambda: self.visualize("2d"), bg="#9C27B0", fg="white", width=25).grid(row=0, column=1, padx=5)
 
-        # --- ПОЛЕ ВВОДА ---
-        self.text_area = scrolledtext.ScrolledText(root, width=95, height=15, font=("Consolas", 10))
-        self.text_area.pack(padx=20, pady=5)
+    def check_updates(self):
+        try:
+            r = requests.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            latest = r.json().get("tag_name", "").replace("v", "")
+            if latest and latest > VERSION:
+                self.update_status.config(text=f"Доступно обновление v{latest}", fg="green")
+                if messagebox.askyesno("Обновление", f"Найдена версия v{latest}. Обновить?"):
+                    self.download_update(r.json())
+            else: self.update_status.config(text="Версия актуальна", fg="blue")
+        except: self.update_status.config(text="Ошибка обновлений", fg="red")
 
-        # КНОПКИ ПОСТРОЕНИЯ
-        btn_frame = tk.Frame(root)
-        btn_frame.pack(pady=10)
+    def download_update(self, data):
+        url = next((a["browser_download_url"] for a in data["assets"] if a["name"].endswith(".exe")), None)
+        if not url: return
+        r = requests.get(url)
+        with open("Bed_Mesh_Viz_new.exe", 'wb') as f: f.write(r.content)
+        with open("updater.bat", "w") as f:
+            f.write(f'@echo off\ntimeout /t 2\ndel "{os.path.basename(sys.executable)}"\nren "Bed_Mesh_Viz_new.exe" "{os.path.basename(sys.executable)}"\nstart "" "{os.path.basename(sys.executable)}"\ndel updater.bat')
+        subprocess.Popen("updater.bat", shell=True); self.root.destroy()
 
-        self.btn_plot_3d = tk.Button(btn_frame, text="3D ВИД", command=lambda: self.visualize("3d"), bg="#4CAF50", fg="white", width=20, font=("Arial", 10, "bold"))
-        self.btn_plot_3d.grid(row=0, column=0, padx=10)
-
-        self.btn_plot_2d = tk.Button(btn_frame, text="2D КАРТА + ВИНТЫ", command=lambda: self.visualize("2d"), bg="#9C27B0", fg="white", width=20, font=("Arial", 10, "bold"))
-        self.btn_plot_2d.grid(row=0, column=1, padx=10)
+    def fetch_ssh(self):
+        try:
+            client = paramiko.SSHClient(); client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(self.ssh_host.get(), int(self.ssh_port.get()), self.ssh_user.get(), self.ssh_pass.get())
+            sftp = client.open_sftp()
+            with sftp.open(self.cfg_path.get(), 'r') as f: content = f.read().decode('utf-8')
+            sftp.close(); client.close()
+            self.text_area.delete("1.0", tk.END); self.text_area.insert(tk.END, content)
+            try:
+                js = json.loads(content).get("bed_mesh default", {})
+                if js:
+                    for k, e in [("x_count", self.entry_x), ("y_count", self.entry_y), ("min_x", self.min_x), ("max_x", self.max_x), ("min_y", self.min_y), ("max_y", self.max_y)]:
+                        e.delete(0, tk.END); e.insert(0, js.get(k, ""))
+            except: pass
+            self.save_settings(True)
+        except Exception as e: messagebox.showerror("SSH Error", str(e))
 
     def load_settings(self):
         if os.path.exists(SETTINGS_FILE):
@@ -102,76 +149,53 @@ class TableVisualizer:
         return {}
 
     def save_settings(self, silent=False):
-        data = {
-            "host": self.ssh_host.get(), "port": self.ssh_port.get(), "user": self.ssh_user.get(),
-            "password": self.ssh_pass.get(), "path": self.cfg_path.get(),
-            "bed_x": self.bed_x.get(), "bed_y": self.bed_y.get(),
-            "pitch": self.screw_pitch.get(), "grid_x": self.entry_x.get(), "grid_y": self.entry_y.get()
-        }
-        with open(SETTINGS_FILE, "w") as f: json.dump(data, f, indent=4)
-        if not silent: messagebox.showinfo("Успех", "Настройки сохранены!")
-
-    def fetch_ssh(self):
-        try:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(hostname=self.ssh_host.get(), port=int(self.ssh_port.get()), 
-                           username=self.ssh_user.get(), password=self.ssh_pass.get(), timeout=10)
-            sftp = client.open_sftp()
-            with sftp.open(self.cfg_path.get(), 'r') as f: content = f.read().decode('utf-8')
-            sftp.close(); client.close()
-            self.text_area.delete("1.0", tk.END); self.text_area.insert(tk.END, content)
-            self.save_settings(silent=True)
-            # Авто-парсинг JSON
-            try:
-                js = json.loads(content).get("bed_mesh default", {})
-                if js:
-                    self.entry_x.delete(0, tk.END); self.entry_x.insert(0, js.get("x_count", "5"))
-                    self.entry_y.delete(0, tk.END); self.entry_y.insert(0, js.get("y_count", "5"))
-            except: pass
-            messagebox.showinfo("Успех", "Данные получены!")
-        except Exception as e: messagebox.showerror("Ошибка SSH", str(e))
+        d = {"host": self.ssh_host.get(), "port": self.ssh_port.get(), "user": self.ssh_user.get(), "password": self.ssh_pass.get(), "path": self.cfg_path.get(), "bed_x": self.bed_x.get(), "bed_y": self.bed_y.get(), "grid_x": self.entry_x.get(), "grid_y": self.entry_y.get(), "min_x": self.min_x.get(), "max_x": self.max_x.get(), "min_y": self.min_y.get(), "max_y": self.max_y.get(), "pitch": self.screw_pitch.get()}
+        with open(SETTINGS_FILE, "w") as f: json.dump(d, f, indent=4)
 
     def visualize(self, mode):
-        text = self.text_area.get("1.0", tk.END).strip()
-        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", text)]
-        if not nums: return
+        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", self.text_area.get("1.0", tk.END))]
         gx, gy = int(self.entry_x.get()), int(self.entry_y.get())
         if len(nums) < gx * gy: return
         matrix = np.array(nums[-(gx*gy):]).reshape((gy, gx))
-        self.save_settings(silent=True)
+        self.save_settings(True)
 
         plt.close('all')
+        # Окно графика тоже 800x800
+        fig = plt.figure(figsize=(8, 8)) 
+        
+        mx, Mx = float(self.min_x.get()), float(self.max_x.get())
+        my, My = float(self.min_y.get()), float(self.max_y.get())
+        bx, by = float(self.bed_x.get()), float(self.bed_y.get())
+
         if mode == "3d":
-            fig = plt.figure("3D View", figsize=(10, 8))
             ax = fig.add_subplot(111, projection='3d')
-            y, x = np.indices(matrix.shape)
-            surf = ax.plot_surface(x, y, matrix, cmap='RdYlBu_r', edgecolor='black', alpha=0.8)
+            # Исправлено: координаты в мм для осей
+            x_coords = np.linspace(mx, Mx, gx)
+            y_coords = np.linspace(my, My, gy)
+            X, Y = np.meshgrid(x_coords, y_coords)
+            surf = ax.plot_surface(X, Y, matrix, cmap='RdYlBu_r', edgecolor='black', alpha=0.8)
+            ax.set_xlim(0, bx); ax.set_ylim(0, by)
+            ax.set_xlabel("X (мм)"); ax.set_ylabel("Y (мм)"); ax.set_zlabel("Z (мм)")
             fig.colorbar(surf, shrink=0.5, aspect=10)
         else:
-            fig, ax = plt.subplots(figsize=(10, 10))
-            bx, by = float(self.bed_x.get()), float(self.bed_y.get())
-            im = ax.imshow(matrix, extent=[0, bx, 0, by], cmap='RdYlBu_r', origin='lower')
-            # Текст с обводкой
-            tx = np.linspace(bx/(gx*2), bx - bx/(gx*2), gx)
-            ty = np.linspace(by/(gy*2), by - by/(gy*2), gy)
+            ax = fig.add_subplot(111)
+            im = ax.imshow(matrix, extent=[mx, Mx, my, My], cmap='RdYlBu_r', origin='lower')
+            ax.set_xlim(0, bx); ax.set_ylim(0, by); ax.set_aspect('equal')
+            # Подписи точек с координатами мм
+            tx, ty = np.meshgrid(np.linspace(mx, Mx, gx), np.linspace(my, My, gy))
             for i in range(gy):
                 for j in range(gx):
-                    val = matrix[i, j]
-                    t = ax.text(tx[j], ty[i], f"{val:.3f}", ha="center", va="center", fontweight='bold')
-                    t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
+                    txt = ax.text(tx[i,j], ty[i,j], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold')
+                    txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
             
-            # Расчет винтов
             corners = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЛ": matrix[-1,0], "ЗП": matrix[-1,-1]}
             base = min(corners.values())
-            pitch = float(self.screw_pitch.get())
-            info_text = "Коррекция винтов (отн. низшей точки):\n"
-            for k, v in corners.items():
-                diff = v - base
-                turns = diff / pitch
-                info_text += f"{k}: {diff:+.3f}мм ({turns:.2f} об. {'ВНИЗ' if diff > 0 else 'ОК'})\n"
-            plt.gcf().text(0.02, 0.02, info_text, fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
+            p = float(self.screw_pitch.get())
+            instr = "\n".join([f"{k}: {v-base:+.3f}мм ({(v-base)/p:.2f} об. {'ВНИЗ' if v-base>0 else 'ОК'})" for k,v in corners.items()])
+            plt.gcf().text(0.15, 0.02, f"Винты:\n{instr}", fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
             fig.colorbar(im)
+        
+        plt.tight_layout()
         plt.show()
 
 if __name__ == "__main__":
