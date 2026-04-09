@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import sys, os, ctypes
 from tkinter import messagebox
 
-# Поддержка высокого разрешения
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except: pass
@@ -15,7 +14,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        self.width, self.height = 1400, 950
+        self.width, self.height = 1350, 900
         self.title(f"{strings.APP_TITLE} v{logic.VERSION}")
         self.center_window()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -40,7 +39,7 @@ class App(ctk.CTk):
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "...cfg"))
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch, corner_radius=8).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -53,7 +52,6 @@ class App(ctk.CTk):
         self.tabs = ctk.CTkTabview(self, corner_radius=15)
         self.tabs.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
         self.t2d = self.tabs.add(strings.TAB_2D)
-        self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
         
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
@@ -115,9 +113,8 @@ class App(ctk.CTk):
                 self.refresh_recs()
                 bx, by = float(self.bx.get()), float(self.by.get())
                 
-                # РИСУЕМ КАРТЫ (Теперь стабильно и красиво)
+                # РИСУЕМ ТОЛЬКО 2D
                 viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
-                viz.draw_3d_pro(self.t3d, self.matrix, bx, by, gx, gy)
                 
                 self.tabs.set(strings.TAB_2D)
                 logic.save_settings({"host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), 

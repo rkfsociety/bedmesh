@@ -1,6 +1,5 @@
 APP_TITLE = "Bed Mesh Visualizer Win"
-TAB_2D = "2D КАРТА"
-TAB_3D = "3D КАРТА (Smooth)" # Пометка, что 3D теперь со сглаживанием
+TAB_2D = "КАРТА СТОЛА (2D)"
 TAB_RAW = "СЫРЫЕ ДАННЫЕ"
 
 SECTION_SSH = "SSH И КОНФИГ"

@@ -1,7 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
 import strings
 
-VERSION = "0.081" # Стабильная фикс-версия
+VERSION = "0.082" # Версия без 3D-карты
 SETTINGS_FILE = "settings.json"
 
 def resource_path(relative_path):
