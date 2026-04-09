@@ -1,6 +1,7 @@
 import re, json, os, sys, requests, paramiko, numpy as np
+import strings # Импортируем строки
 
-VERSION = "6.2"
+VERSION = "6.3"
 SETTINGS_FILE = "settings.json"
 
 def load_settings():
@@ -56,6 +57,12 @@ def get_recs(matrix, z_type, pitch, gx):
     for name, val in pts.items():
         diff = val - low
         t_info = f" | {abs(diff/pitch):.2f} об." if is_screws else ""
-        res_list.append(f"● {name}:\n  {diff:+.3f}мм{t_info}\n  [{'🔽 ВНИЗ' if diff > 0 else '✅ OK' if diff == 0 else '🔼 ВВЕРХ'}]")
+        
+        # Используем направления из strings.py
+        direction = strings.DIR_OK
+        if diff > 0: direction = strings.DIR_DOWN
+        elif diff < 0: direction = strings.DIR_UP
+        
+        res_list.append(f"● {name}:\n  {diff:+.3f}мм{t_info}\n  [{direction}]")
     
     return "\n\n".join(res_list), is_screws
