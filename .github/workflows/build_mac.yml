@@ -24,25 +24,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install customtkinter paramiko requests numpy matplotlib pyinstaller
 
-      - name: Build with PyInstaller
+      - name: Build and Package
         run: |
+          # 1. Заходим в папку с мак-версией
           cd mac
+          
+          # 2. Проверяем список файлов (для логов, если что-то пойдет не так)
+          ls -la
+          
+          # 3. Запускаем сборку
           python -m PyInstaller --onefile --windowed \
-          --name "BedMeshVisualizer_Mac" \
-          --add-data "icon.png:." \
-          --collect-all customtkinter \
-          --hidden-import=paramiko \
-          --hidden-import=requests \
-          --hidden-import=numpy \
-          --hidden-import=matplotlib \
-          main_mac.py
-
-      - name: Install create-dmg
-        run: brew install create-dmg
-
-      - name: Create DMG
-        run: |
-          cd mac
+            --name "BedMeshVisualizer_Mac" \
+            --add-data "icon.png:." \
+            --collect-all customtkinter \
+            --hidden-import=paramiko \
+            --hidden-import=requests \
+            --hidden-import=numpy \
+            --hidden-import=matplotlib \
+            main_mac.py
+          
+          # 4. Установка утилиты для DMG (если еще нет)
+          brew install create-dmg
+          
+          # 5. Создание DMG образа
           mkdir -p dist/dmg
           create-dmg \
             --volname "BedMeshVisualizer Installer" \
