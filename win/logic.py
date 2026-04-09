@@ -1,8 +1,15 @@
 import re, json, os, sys, requests, paramiko, numpy as np
-import strings # Импортируем строки
+import strings
 
-VERSION = "6.3"
+VERSION = "6.5" # Повышаем версию
 SETTINGS_FILE = "settings.json"
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
@@ -58,7 +65,6 @@ def get_recs(matrix, z_type, pitch, gx):
         diff = val - low
         t_info = f" | {abs(diff/pitch):.2f} об." if is_screws else ""
         
-        # Используем направления из strings.py
         direction = strings.DIR_OK
         if diff > 0: direction = strings.DIR_DOWN
         elif diff < 0: direction = strings.DIR_UP

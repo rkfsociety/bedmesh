@@ -1,10 +1,10 @@
 import customtkinter as ctk
-import logic, styles, ui_elements, strings # Импорт strings
+import logic, styles, ui_elements, strings, updater # Импорт updater
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patheffects as path_effects
 import numpy as np
-import sys
+import sys, os
 from tkinter import messagebox
 
 ctk.set_appearance_mode("dark")
@@ -16,10 +16,18 @@ class App(ctk.CTk):
         self.geometry("1350x900")
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+        # Данные обновления
+        self.update_data = None
+        
+        try:
+            icon_path = logic.resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except: pass
+        
         self.matrix = None
         self.settings = logic.load_settings()
 
-        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -28,13 +36,11 @@ class App(ctk.CTk):
         self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_SSH, font=styles.FONTS["title"]).pack(pady=(20, 10))
-        
         self.ip = ui_elements.LabeledEntry(self.sidebar, strings.LBL_IP, self.settings.get("host", "192.168.1.100"))
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
-        
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", ".../printer_mutable.cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -46,13 +52,11 @@ class App(ctk.CTk):
         # --- MAIN VIEW ---
         self.main_area = ctk.CTkFrame(self, fg_color="transparent")
         self.main_area.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        
         self.tabs = ctk.CTkTabview(self.main_area)
         self.tabs.pack(fill="both", expand=True)
         self.t2d = self.tabs.add(strings.TAB_2D)
         self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
-        
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
         self.text_editor.pack(fill="both", expand=True)
 
@@ -60,12 +64,9 @@ class App(ctk.CTk):
         self.right = ctk.CTkFrame(self, width=320)
         self.right.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         self.right.pack_propagate(False)
-
         ctk.CTkLabel(self.right, text=strings.SECTION_ALIGN, font=styles.FONTS["ui_bold"]).pack(pady=15)
         
-        self.z_menu = ctk.CTkOptionMenu(self.right, 
-                                        values=strings.Z_SYSTEMS,
-                                        command=self.refresh_recs)
+        self.z_menu = ctk.CTkOptionMenu(self.right, values=strings.Z_SYSTEMS, command=self.refresh_recs)
         self.z_menu.set(self.settings.get("z_sys", strings.Z_SYSTEMS[0]))
         self.z_menu.pack(pady=10, padx=20, fill="x")
 
@@ -81,8 +82,27 @@ class App(ctk.CTk):
         # --- RUN BUTTON ---
         self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
                                  fg_color=styles.COLORS["dark"]["success"], 
-                                 font=styles.FONTS["title"], command=self.run)
+                                 font=styles.FONTS["title"], command=self.on_btn_click)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
+
+        # ПРОВЕРКА ОБНОВЛЕНИЙ ПРИ СТАРТЕ
+        updater.check_for_updates(logic.VERSION, self.show_update_notify)
+
+    def show_update_notify(self, version, data):
+        """ Метод вызывается, если найдено обновление """
+        self.update_data = data
+        self.btn.configure(
+            text=f"ДОСТУПНО ОБНОВЛЕНИЕ v{version}! (НАЖМИТЕ)",
+            fg_color="#007acc" # Меняем цвет на синий
+        )
+
+    def on_btn_click(self):
+        """ Если есть обновление - обновляем, иначе - анализируем """
+        if self.update_data:
+            if messagebox.askyesno("Обновление", "Хотите скачать и установить новую версию прямо сейчас?"):
+                updater.install_update(self.update_data)
+        else:
+            self.run()
 
     def fetch(self):
         try:
@@ -90,8 +110,7 @@ class App(ctk.CTk):
             self.text_editor.delete("0.0", "end")
             self.text_editor.insert("end", content)
             self.tabs.set(strings.TAB_RAW)
-        except Exception as e:
-            messagebox.showerror(strings.ERR_SSH, str(e))
+        except Exception as e: messagebox.showerror(strings.ERR_SSH, str(e))
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
@@ -110,7 +129,6 @@ class App(ctk.CTk):
         if self.matrix is not None:
             self.refresh_recs()
             self.draw()
-            # Save settings
             logic.save_settings({
                 "host": self.ip.get(), "port": self.port.get(), "user": self.user.get(),
                 "password": self.pwd.get(), "path": self.path.get(),
@@ -118,8 +136,7 @@ class App(ctk.CTk):
                 "grid_x": self.gx.get(), "grid_y": self.gy.get(),
                 "z_sys": self.z_menu.get(), "pitch": self.p_menu.get()
             })
-        else:
-            messagebox.showwarning(strings.ERR_DATA, err)
+        else: messagebox.showwarning(strings.ERR_DATA, err)
 
     def draw(self):
         for tab, mode in [(self.t2d, "2d"), (self.t3d, "3d")]:
@@ -144,9 +161,7 @@ class App(ctk.CTk):
                         t = ax.text(xc[j], yc[i], f"{self.matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', color="white", fontsize=8)
                         t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="black")])
                 ax.set_aspect('equal')
-            canvas = FigureCanvasTkAgg(fig, master=tab)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill="both", expand=True)
+            FigureCanvasTkAgg(fig, master=tab).get_tk_widget().pack(fill="both", expand=True)
 
     def on_closing(self):
         plt.close('all')
