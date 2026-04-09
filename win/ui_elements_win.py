@@ -1,39 +1,24 @@
 import customtkinter as ctk
-import styles
+import styles_win, strings_win
 
 class LabeledEntry(ctk.CTkFrame):
-    def __init__(self, master, label, default="", show=None, **kwargs):
+    def __init__(self, master, label_text, default_val="", show=None):
         super().__init__(master, fg_color="transparent")
-        self.pack(pady=5, padx=20, fill="x")
-        self.lbl = ctk.CTkLabel(self, text=label, font=("Segoe UI", 10), text_color="#858585")
-        self.lbl.pack(anchor="w", padx=2)
-        self.entry = ctk.CTkEntry(self, show=show, height=35)
-        self.entry.insert(0, default)
+        self.pack(fill="x", padx=20, pady=5)
+        ctk.CTkLabel(self, text=label_text, font=styles_win.FONTS["micro"], text_color="#aaaaaa").pack(anchor="w")
+        self.entry = ctk.CTkEntry(self, height=35, corner_radius=8, border_width=1)
+        self.entry.insert(0, default_val)
+        if show: self.entry.configure(show=show)
         self.entry.pack(fill="x", pady=(2, 0))
-
     def get(self): return self.entry.get()
 
 class RecCard(ctk.CTkFrame):
-    def __init__(self, master, name, value, turns_info, direction, **kwargs):
-        abs_val = abs(value)
-        if abs_val == 0: color = styles.COLORS["dark"]["success"]
-        elif abs_val <= 0.2: color = styles.COLORS["dark"]["warning"]
-        else: color = styles.COLORS["dark"]["danger"]
-
-        super().__init__(master, fg_color=styles.COLORS["dark"]["card"], border_width=2, border_color=color)
-        self.pack(pady=5, padx=10, fill="x")
-
-        self.title = ctk.CTkLabel(self, text=name, font=styles.FONTS["ui_bold"])
-        self.title.pack(anchor="w", padx=10, pady=(5, 0))
-
-        self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.info_frame.pack(fill="x", padx=10, pady=(0, 5))
-
-        val_text = f"{value:+.3f} мм"
-        if turns_info: val_text += f"\n({turns_info})"
-        
-        self.val_lbl = ctk.CTkLabel(self.info_frame, text=val_text, font=styles.FONTS["ui"], justify="left")
-        self.val_lbl.pack(side="left")
-
-        self.dir_lbl = ctk.CTkLabel(self.info_frame, text=direction, font=styles.FONTS["ui_bold"], text_color=color)
-        self.dir_lbl.pack(side="right")
+    def __init__(self, master, name, val, turns, direction):
+        color = styles_win.COLORS["dark"]["success"] if direction == strings_win.DIR_OK else \
+                (styles_win.COLORS["dark"]["error"] if abs(val) > 0.1 else styles_win.COLORS["dark"]["warning"])
+        super().__init__(master, fg_color=color, corner_radius=10)
+        self.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(self, text=name, font=styles_win.FONTS["ui_bold"]).pack(pady=(5,0))
+        txt = f"{val:+.3f} мм" + (f" ({turns})" if turns else "")
+        ctk.CTkLabel(self, text=txt, font=styles_win.FONTS["ui"]).pack()
+        ctk.CTkLabel(self, text=direction, font=styles_win.FONTS["micro"]).pack(pady=(0,5))

@@ -1,32 +1,29 @@
-APP_TITLE = "Bed Mesh Visualizer Win"
-TAB_2D = "КАРТА СТОЛА (2D)"
-TAB_RAW = "СЫРЫЕ ДАННЫЕ"
-
-SECTION_SSH = "SSH И КОНФИГ"
-LBL_IP = "IP АДРЕС"
-LBL_PORT = "ПОРТ"
-LBL_USER = "ПОЛЬЗОВАТЕЛЬ"
-LBL_PASS = "ПАРОЛЬ"
-LBL_PATH = "ПУТЬ К КОНФИГУ"
-BTN_FETCH = "ПОЛУЧИТЬ ИЗ ПРИНТЕРА"
-
+# Текстовые константы
+APP_TITLE = "Bed Mesh Visualizer"
+SECTION_SSH = "SSH ПОДКЛЮЧЕНИЕ"
 SECTION_GEOMETRY = "ГЕОМЕТРИЯ СТОЛА"
-LBL_BED_X = "СТОЛ X (мм)"
-LBL_BED_Y = "СТОЛ Y (мм)"
-LBL_GRID_X = "ТОЧЕК X"
-LBL_GRID_Y = "ТОЧЕК Y"
+SECTION_ALIGN = "ВЫРАВНИВАНИЕ"
 
-SECTION_ALIGN = "РЕКОМЕНДАЦИИ ПО ВЫРАВНИВАНИЮ"
-LBL_Z_SYS = "ТИП Z-СИСТЕМЫ"
-LBL_PITCH = "ШАГ РЕЗЬБЫ ВИНТА"
+LBL_IP = "IP Адрес"
+LBL_PORT = "Порт"
+LBL_USER = "Логин"
+LBL_PASS = "Пароль"
+LBL_PATH = "Путь к конфигу"
+LBL_BED_X = "Стол X (мм)"
+LBL_BED_Y = "Стол Y (мм)"
+LBL_GRID_X = "Точек X"
+LBL_GRID_Y = "Точек Y"
+LBL_PITCH = "Шаг винта (мм):"
+
+BTN_FETCH = "ПОЛУЧИТЬ ДАННЫЕ"
+BTN_RUN = "ВИЗУАЛИЗИРОВАТЬ"
+
+TAB_2D = "2D КАРТА"
+TAB_RAW = "RAW ДАННЫЕ"
+
+DIR_UP = "ВВЕРХ (CW)"
+DIR_DOWN = "ВНИЗ (CCW)"
+DIR_OK = "OK"
+
 MSG_WAITING = "Ожидание данных..."
-
-BTN_RUN = "⚡ ПОСТРОИТЬ И ПРОАНАЛИЗИРОВАТЬ"
-ERR_SSH = "Ошибка SSH подключения"
-ERR_DATA = "Ошибка данных"
-
-Z_SYSTEMS = ["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"]
-
-DIR_DOWN = "🔽 ВНИЗ (затянуть)"
-DIR_UP = "🔼 ВВЕРХ (отпустить)"
-DIR_OK = "✅ ОК (опорная)"
+Z_SYSTEMS = ["Винты (4 шт)", "2 вала (Z-Tilt)", "3 вала (Quad)", "Только карта"]

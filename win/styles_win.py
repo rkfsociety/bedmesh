@@ -1,22 +1,20 @@
-import customtkinter as ctk
+# Константы стилей оформления
+FONT_NAME = "Segoe UI"
+FONTS = {
+    "title": (FONT_NAME, 20, "bold"),
+    "ui": (FONT_NAME, 12),
+    "ui_bold": (FONT_NAME, 12, "bold"),
+    "micro": (FONT_NAME, 10, "bold"),
+    "code": ("Consolas", 11)
+}
 
 COLORS = {
     "dark": {
-        "bg": "#1a1a1a", 
-        "card": "#242424", 
-        "accent": "#007acc", 
-        "success": "#28a745",
-        "warning": "#d19a66",
-        "danger": "#f44336",
-        "text": "#d4d4d4",
-        "text_dim": "#858585"
+        "bg": "#1a1a1a",
+        "card": "#252525",
+        "success": "#2d5a27",
+        "warning": "#8b7500",
+        "error": "#7a2424",
+        "text": "#ffffff"
     }
-}
-
-FONTS = {
-    "title": ("Segoe UI", 16, "bold"),
-    "ui": ("Segoe UI", 12),
-    "ui_bold": ("Segoe UI", 12, "bold"),
-    "code": ("Consolas", 11),
-    "micro": ("Segoe UI", 10)
 }
