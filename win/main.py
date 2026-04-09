@@ -1,11 +1,10 @@
 import customtkinter as ctk
 import logic, styles, ui_elements, strings, updater, viz
 import matplotlib.pyplot as plt
-from tkwebview2.tkwebview2 import WebView2 # Используем движок Edge (Chromium)
 import sys, os, ctypes
 from tkinter import messagebox
 
-# Поддержка High DPI
+# Поддержка высокого разрешения
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except: pass
@@ -41,7 +40,7 @@ class App(ctk.CTk):
         self.port = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PORT, self.settings.get("port", "22"))
         self.user = ui_elements.LabeledEntry(self.sidebar, strings.LBL_USER, self.settings.get("user", "pi"))
         self.pwd = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PASS, self.settings.get("password", "raspberry"), show="*")
-        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "/home/pi/printer_data/config/printer_mutable.cfg"))
+        self.path = ui_elements.LabeledEntry(self.sidebar, strings.LBL_PATH, self.settings.get("path", "...cfg"))
         ctk.CTkButton(self.sidebar, text=strings.BTN_FETCH, command=self.fetch, corner_radius=8).pack(pady=10, padx=20)
         
         ctk.CTkLabel(self.sidebar, text=strings.SECTION_GEOMETRY, font=styles.FONTS["ui_bold"]).pack(pady=(20, 5))
@@ -57,11 +56,6 @@ class App(ctk.CTk):
         self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
         
-        # Современный GPU-виджет (Edge WebView2)
-        # На некоторых системах может потребоваться время на инициализацию
-        self.gpu_view = WebView2(self.t3d, width=800, height=600)
-        self.gpu_view.pack(fill="both", expand=True)
-
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles.FONTS["code"])
         self.text_editor.pack(fill="both", expand=True)
 
@@ -75,7 +69,7 @@ class App(ctk.CTk):
         self.rec_s.pack(fill="both", expand=True, padx=5, pady=10)
         self.empty = ctk.CTkLabel(self.rec_s, text=strings.MSG_WAITING, font=("Segoe UI", 10), text_color="#555555"); self.empty.pack(pady=50)
 
-        # --- RUN BUTTON ---
+        # --- КНОПКА ЗАПУСКА ---
         self.btn = ctk.CTkButton(self, text=strings.BTN_RUN, height=60, 
                                  fg_color=styles.COLORS["dark"]["success"], 
                                  font=styles.FONTS["title"], command=self.on_click, corner_radius=12)
@@ -90,8 +84,7 @@ class App(ctk.CTk):
         self.geometry(f"{self.width}x{self.height}+{x}+{y}")
 
     def on_upd(self, v, data):
-        self.update_data = data
-        self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
+        self.update_data = data; self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
 
     def on_click(self):
         if self.update_data: updater.install_update(self.update_data)
@@ -122,12 +115,9 @@ class App(ctk.CTk):
                 self.refresh_recs()
                 bx, by = float(self.bx.get()), float(self.by.get())
                 
-                # 2D (CPU)
+                # РИСУЕМ КАРТЫ (Теперь стабильно и красиво)
                 viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
-                
-                # 3D (GPU WebGL) - Генерируем файл и загружаем URL
-                html_file_path = viz.save_plotly_html(self.matrix, bx, by, gx, gy)
-                self.gpu_view.load_url(html_file_path)
+                viz.draw_3d_pro(self.t3d, self.matrix, bx, by, gx, gy)
                 
                 self.tabs.set(strings.TAB_2D)
                 logic.save_settings({"host": self.ip.get(), "port": self.port.get(), "user": self.user.get(), 
@@ -138,12 +128,6 @@ class App(ctk.CTk):
         except Exception as e: messagebox.showerror("Error", str(e))
 
     def on_closing(self):
-        plt.close('all')
-        # Удаляем временный файл при выходе
-        if os.path.exists("temp_mesh.html"):
-            try: os.remove("temp_mesh.html")
-            except: pass
-        self.destroy()
-        sys.exit(0)
+        plt.close('all'); self.destroy(); sys.exit(0)
 
 if __name__ == "__main__": App().mainloop()

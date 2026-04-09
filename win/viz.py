@@ -1,20 +1,18 @@
-import plotly.graph_objects as go
-import plotly.io as pio
-import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.patheffects as path_effects
-import os
+from matplotlib.colors import LightSource
+import numpy as np
+from scipy.interpolate import griddata
+import styles
 
 BG_COLOR = "#1a1a1a"
 
 def clear_tab(tab):
-    """Очистка вкладки"""
     for w in tab.winfo_children():
         w.destroy()
 
 def draw_2d_map(tab, matrix, bx, by, gx, gy):
-    """Стандартная 2D карта (CPU)"""
     clear_tab(tab)
     plt.style.use('dark_background')
     fig = plt.figure(figsize=(6, 6), dpi=100)
@@ -33,37 +31,56 @@ def draw_2d_map(tab, matrix, bx, by, gx, gy):
             t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="black")])
     
     ax.set_aspect('equal')
+    # Исправление ошибки FontProperties: передаем размер явно
+    ax.set_xlabel("X (мм)", fontsize=9)
+    ax.set_ylabel("Y (мм)", fontsize=9)
+    
     canvas = FigureCanvasTkAgg(fig, master=tab)
     canvas.draw()
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
-def save_plotly_html(matrix, bx, by, gx, gy):
-    """Генерация HTML файла для 3D карты (GPU WebGL)"""
-    x = np.linspace(0, bx, gx)
-    y = np.linspace(0, by, gy)
+def draw_3d_pro(tab, matrix, bx, by, gx, gy):
+    """Продвинутая 3D карта с эффектом сглаживания и тенями"""
+    clear_tab(tab)
+    plt.style.use('dark_background')
+    fig = plt.figure(figsize=(7, 7), dpi=100)
+    fig.patch.set_facecolor(BG_COLOR)
     
-    fig = go.Figure(data=[go.Surface(
-        z=matrix, x=x, y=y,
-        colorscale='RdYlBu',
-        reversescale=True,
-        contours_z=dict(show=True, usecolormap=True, highlightcolor="white", project_z=True),
-        lighting=dict(ambient=0.5, diffuse=0.8, roughness=0.1, specular=1.5)
-    )])
+    # Регистрация 3D осей
+    from mpl_toolkits.mplot3d import Axes3D 
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_facecolor(BG_COLOR)
+    
+    # 1. МАТЕМАТИЧЕСКОЕ СГЛАЖИВАНИЕ (как в Plotly)
+    x, y = np.linspace(0, bx, gx), np.linspace(0, by, gy)
+    X, Y = np.meshgrid(x, y)
+    # Оптимальная плотность для скорости (40x40 точек)
+    x_f, y_f = np.linspace(0, bx, 40), np.linspace(0, by, 40)
+    X_f, Y_f = np.meshgrid(x_f, y_f)
+    Z_f = griddata((X.ravel(), Y.ravel()), matrix.ravel(), (X_f, Y_f), method='cubic')
 
-    fig.update_layout(
-        template="plotly_dark",
-        margin=dict(l=0, r=0, b=0, t=0),
-        scene=dict(
-            xaxis=dict(title='X (mm)', gridcolor='rgb(60,60,60)'),
-            yaxis=dict(title='Y (mm)', gridcolor='rgb(60,60,60)'),
-            zaxis=dict(title='Z (mm)', gridcolor='rgb(60,60,60)', range=[-2, 2]),
-            aspectratio=dict(x=1, y=1, z=0.4),
-        ),
-        paper_bgcolor=BG_COLOR,
-        plot_bgcolor=BG_COLOR
-    )
+    # 2. ИМИТАЦИЯ ОСВЕЩЕНИЯ (Объем и тени)
+    ls = LightSource(azdeg=315, altdeg=45)
+    # Используем RdYlBu_r для точного соответствия стилю Klipper
+    rgb = ls.shade(Z_f, cmap=plt.get_cmap('RdYlBu_r'), vert_exag=0.1, blend_mode='soft')
+
+    # 3. ОТРИСОВКА ПОВЕРХНОСТИ
+    surf = ax.plot_surface(X_f, Y_f, Z_f, facecolors=rgb, rstride=1, cstride=1, 
+                          antialiased=True, linewidth=0, shade=False)
     
-    # Сохраняем во временный файл, так как WebView2 лучше работает с файлами
-    path = os.path.abspath("temp_mesh.html")
-    pio.write_html(fig, file=path, auto_open=False, include_plotlyjs='cdn')
-    return path
+    # Прозрачные панели осей
+    ax.xaxis.set_pane_color((0,0,0,0))
+    ax.yaxis.set_pane_color((0,0,0,0))
+    ax.zaxis.set_pane_color((0,0,0,0))
+    
+    # Настройка осей (без передачи кортежей шрифтов)
+    ax.set_xlabel('X', fontsize=8)
+    ax.set_ylabel('Y', fontsize=8)
+    ax.set_zlabel('Z', fontsize=8)
+    
+    ax.view_init(elev=30, azim=-135)
+    ax.mouse_init() # Вращение мышью
+
+    canvas = FigureCanvasTkAgg(fig, master=tab)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill="both", expand=True)
