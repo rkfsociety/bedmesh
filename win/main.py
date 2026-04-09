@@ -1,7 +1,7 @@
 import customtkinter as ctk
 import logic, styles, ui_elements, strings, updater, viz
 import matplotlib.pyplot as plt
-from tkinterweb import HtmlFrame # Движок для отображения GPU-графики
+from tkinterweb import HtmlFrame
 import sys, os, ctypes
 from tkinter import messagebox
 
@@ -24,6 +24,11 @@ class App(ctk.CTk):
         self.matrix = None
         self.settings = logic.load_settings()
         self.update_data = None
+
+        try:
+            icon_p = logic.resource_path("icon.ico")
+            if os.path.exists(icon_p): self.iconbitmap(icon_p)
+        except: pass
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
 
@@ -52,7 +57,7 @@ class App(ctk.CTk):
         self.t3d = self.tabs.add(strings.TAB_3D)
         self.traw = self.tabs.add(strings.TAB_RAW)
         
-        # HTML Фрейм для GPU карты (вкладка 3D)
+        # HTML Фрейм для GPU карты. messages_enabled=False убирает лишние консольные окна.
         self.gpu_view = HtmlFrame(self.t3d, messages_enabled=False)
         self.gpu_view.pack(fill="both", expand=True)
 
@@ -119,7 +124,7 @@ class App(ctk.CTk):
                 # 2D (CPU)
                 viz.draw_2d_map(self.t2d, self.matrix, bx, by, gx, gy)
                 
-                # 3D (GPU WebGL)
+                # 3D (GPU WebGL) - Загружаем сгенерированный HTML
                 html_res = viz.get_plotly_html(self.matrix, bx, by, gx, gy)
                 self.gpu_view.load_html(html_res)
                 

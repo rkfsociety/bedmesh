@@ -8,11 +8,12 @@ import matplotlib.patheffects as path_effects
 BG_COLOR = "#1a1a1a"
 
 def clear_tab(tab):
+    """Очистка вкладки от старых элементов"""
     for w in tab.winfo_children():
         w.destroy()
 
 def draw_2d_map(tab, matrix, bx, by, gx, gy):
-    """2D карта остается на Matplotlib (CPU достаточно)"""
+    """2D карта на Matplotlib (CPU)"""
     clear_tab(tab)
     plt.style.use('dark_background')
     fig = plt.figure(figsize=(6, 6), dpi=100)
@@ -36,7 +37,7 @@ def draw_2d_map(tab, matrix, bx, by, gx, gy):
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
 def get_plotly_html(matrix, bx, by, gx, gy):
-    """Генерация WebGL контента для видеокарты"""
+    """Генерация автономного WebGL контента для GPU"""
     x = np.linspace(0, bx, gx)
     y = np.linspace(0, by, gy)
     
@@ -44,9 +45,7 @@ def get_plotly_html(matrix, bx, by, gx, gy):
         z=matrix, x=x, y=y,
         colorscale='RdYlBu',
         reversescale=True,
-        # Сглаживание и линии рельефа
         contours_z=dict(show=True, usecolormap=True, highlightcolor="white", project_z=True),
-        # Настройка бликов и освещения
         lighting=dict(ambient=0.5, diffuse=0.8, roughness=0.1, specular=1.5)
     )])
 
@@ -63,5 +62,6 @@ def get_plotly_html(matrix, bx, by, gx, gy):
         plot_bgcolor=BG_COLOR
     )
     
-    # Превращаем график в HTML-строку для встраивания
-    return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
+    # include_plotlyjs=True вшивает библиотеку внутрь HTML. 
+    # full_html=True создает законченный документ.
+    return pio.to_html(fig, full_html=True, include_plotlyjs=True)
