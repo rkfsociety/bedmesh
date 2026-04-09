@@ -14,11 +14,12 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.width, self.height = 1350, 900
-        self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
+        self.title(f"{strings_win.APP_TITLE} v0.084-win") # Обновил версию
         self.center_window()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.matrix = None
+        self.recs_data = [] # Для хранения данных отчета
         self.settings = logic_win.load_settings()
         self.update_data = None
 
@@ -29,7 +30,7 @@ class App(ctk.CTk):
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+        # --- SIDEBAR (без изменений) ---
         self.sidebar = ctk.CTkFrame(self, width=300, corner_radius=0); self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
         ctk.CTkLabel(self.sidebar, text=strings_win.SECTION_SSH, font=styles_win.FONTS["title"]).pack(pady=(20, 10))
         self.ip = ui_elements_win.LabeledEntry(self.sidebar, strings_win.LBL_IP, self.settings.get("host", "192.168.1.100"))
@@ -45,24 +46,29 @@ class App(ctk.CTk):
         self.gx = ui_elements_win.LabeledEntry(self.sidebar, strings_win.LBL_GRID_X, self.settings.get("grid_x", "5"))
         self.gy = ui_elements_win.LabeledEntry(self.sidebar, strings_win.LBL_GRID_Y, self.settings.get("grid_y", "5"))
 
-        # Tabs
+        # --- TABS ---
         self.tabs = ctk.CTkTabview(self, corner_radius=15); self.tabs.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
         self.t2d = self.tabs.add(strings_win.TAB_2D)
         self.traw = self.tabs.add(strings_win.TAB_RAW)
         self.text_editor = ctk.CTkTextbox(self.traw, font=styles_win.FONTS["code"]); self.text_editor.pack(fill="both", expand=True)
 
-        # Right Panel
+        # --- RIGHT PANEL ---
         self.right = ctk.CTkFrame(self, width=340); self.right.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew"); self.right.pack_propagate(False)
         ctk.CTkLabel(self.right, text=strings_win.SECTION_ALIGN, font=styles_win.FONTS["ui_bold"]).pack(pady=15)
         self.z_m = ctk.CTkOptionMenu(self.right, values=strings_win.Z_SYSTEMS, command=self.refresh_recs); self.z_m.set(self.settings.get("z_sys", strings_win.Z_SYSTEMS[0])); self.z_m.pack(pady=10, padx=20, fill="x")
         self.p_l = ctk.CTkLabel(self.right, text=strings_win.LBL_PITCH); self.p_l.pack(); self.p_m = ctk.CTkOptionMenu(self.right, values=["0.7", "0.5", "0.8"], command=self.refresh_recs); self.p_m.set(self.settings.get("pitch", "0.7")); self.p_m.pack(pady=5, padx=20, fill="x")
+        
+        # Кнопка копирования
+        self.copy_btn = ctk.CTkButton(self.right, text="📋 КОПИРОВАТЬ ОТЧЕТ", font=styles_win.FONTS["micro"], height=30, fg_color="#333333", command=self.copy_to_clipboard)
+        self.copy_btn.pack(pady=10, padx=20, fill="x")
+
         self.rec_s = ctk.CTkScrollableFrame(self.right, fg_color="transparent"); self.rec_s.pack(fill="both", expand=True, padx=5, pady=10)
         self.empty = ctk.CTkLabel(self.rec_s, text=strings_win.MSG_WAITING, font=(styles_win.FONT_NAME, 10), text_color="#555555"); self.empty.pack(pady=50)
 
         self.btn = ctk.CTkButton(self, text=strings_win.BTN_RUN, height=60, fg_color=styles_win.COLORS["dark"]["success"], font=styles_win.FONTS["title"], command=self.on_click, corner_radius=12)
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
-        updater_win.check_for_updates(logic_win.VERSION, self.show_update_notify)
+        updater_win.check_for_updates("0.084-win", self.show_update_notify)
 
     def center_window(self):
         self.update_idletasks(); sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
@@ -71,6 +77,15 @@ class App(ctk.CTk):
 
     def show_update_notify(self, v, data):
         self.update_data = data; self.btn.configure(text=f"UPDATE v{v}", fg_color="#007acc")
+
+    def copy_to_clipboard(self):
+        if not self.recs_data: return
+        report = "--- Bed Mesh Alignment Report ---\n"
+        for i in self.recs_data:
+            report += f"{i['name']}: {i['val']:.3f} mm ({i['turns']}) -> {i['dir']}\n"
+        self.clipboard_clear()
+        self.clipboard_append(report)
+        messagebox.showinfo("Clipboard", "Отчет скопирован в буфер обмена!")
 
     def on_click(self):
         if self.update_data: updater_win.install_update(self.update_data)
@@ -84,9 +99,9 @@ class App(ctk.CTk):
 
     def refresh_recs(self, _=None):
         if self.matrix is not None:
-            data, is_s = logic_win.get_recs(self.matrix, self.z_m.get(), float(self.p_m.get()), int(self.gx.get()))
+            self.recs_data, is_s = logic_win.get_recs(self.matrix, self.z_m.get(), float(self.p_m.get()), int(self.gx.get()))
             for w in self.rec_s.winfo_children(): w.destroy()
-            for i in data: ui_elements_win.RecCard(self.rec_s, i['name'], i['val'], i['turns'], i['dir'])
+            for i in self.recs_data: ui_elements_win.RecCard(self.rec_s, i['name'], i['val'], i['turns'], i['dir'])
             if is_s: self.p_l.pack(); self.p_m.pack(pady=5, padx=20, fill="x")
             else: self.p_l.pack_forget(); self.p_m.pack_forget()
 
