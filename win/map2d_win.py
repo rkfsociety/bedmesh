@@ -1,47 +1,44 @@
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.patheffects as path_effects
 import numpy as np
 
-BG_COLOR = "#1a1a1a"
+def draw_2d_map(parent, matrix, bed_x, bed_y, gx, gy):
+    """
+    Отрисовка четкой 2D карты: каждый квадрат соответствует точке замера.
+    """
+    # Очистка старого графика
+    for w in parent.winfo_children():
+        w.destroy()
 
-def clear_tab(tab):
-    for w in tab.winfo_children(): w.destroy()
+    # Создание фигуры
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+    fig.patch.set_facecolor('#2b2b2b')
+    ax.set_facecolor('#2b2b2b')
+    
+    # interpolation='nearest' убирает размытие между точками
+    # origin='lower' ставит 0,0 в левый нижний угол
+    im = ax.imshow(matrix, cmap='viridis', interpolation='nearest', origin='lower',
+                   extent=[0, bed_x, 0, bed_y])
+    
+    # Добавление цветовой шкалы
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Отклонение (мм)', color='white')
+    cbar.ax.yaxis.set_tick_params(color='white', labelcolor='white')
+    
+    ax.set_title("Карта высот (Точки замера)", color='white', pad=20)
+    ax.set_xlabel("X (мм)", color='white')
+    ax.set_ylabel("Y (мм)", color='white')
+    ax.tick_params(colors='white')
+    
+    # Настройка сетки, чтобы четко видеть границы квадратов
+    ax.set_xticks(np.linspace(0, bed_x, gx + 1), minor=True)
+    ax.set_yticks(np.linspace(0, bed_y, gy + 1), minor=True)
+    ax.grid(which="minor", color="black", linestyle='-', linewidth=0.5)
+    
+    # Убираем основные линии сетки, оставляем только границы квадратов
+    ax.grid(which="major", visible=False)
 
-def draw_2d_map(tab, matrix, bx, by, gx, gy):
-    """Отрисовка четкой 2D сетки без интерполяции"""
-    clear_tab(tab)
-    plt.style.use('dark_background')
-    fig = plt.figure(figsize=(6, 6), dpi=100)
-    fig.patch.set_facecolor(BG_COLOR)
-    ax = fig.add_subplot(111)
-    ax.set_facecolor(BG_COLOR)
-    
-    im = ax.imshow(matrix, cmap='RdYlBu_r', origin='lower', 
-                   extent=[0, bx, 0, by], interpolation='nearest')
-    
-    dx, dy = bx / gx, by / gy
-    centers_x = np.linspace(dx/2, bx - dx/2, gx)
-    centers_y = np.linspace(dy/2, by - dy/2, gy)
-    
-    z_min, z_max = matrix.min(), matrix.max()
-    threshold = (z_max + z_min) / 2
-    
-    for i in range(gy):
-        for j in range(gx):
-            val = matrix[i, j]
-            t_color = "black" if (val > threshold and val > 0) else "white"
-            t = ax.text(centers_x[j], centers_y[i], f"{val:+.3f}", 
-                        ha="center", va="center", fontweight='bold', color=t_color, fontsize=9)
-            t.set_path_effects([path_effects.withStroke(linewidth=2, 
-                               foreground="#111111" if t_color=="white" else "#eeeeee")])
-    
-    ax.set_aspect('equal')
-    ax.set_xticks(np.linspace(0, bx, gx + 1))
-    ax.set_yticks(np.linspace(0, by, gy + 1))
-    ax.grid(color='#ffffff', linestyle='-', linewidth=0.8, alpha=0.1)
-    for spine in ax.spines.values(): spine.set_visible(False)
-
-    canvas = FigureCanvasTkAgg(fig, master=tab)
+    # Интеграция в Tkinter
+    canvas = FigureCanvasTkAgg(fig, master=parent)
     canvas.draw()
     canvas.get_tk_widget().pack(fill="both", expand=True)
