@@ -1,4 +1,4 @@
-# 📏 Bed Mesh Visualizer v4.5
+# 📏 Bed Mesh Visualizer
 
 Профессиональный инструмент для анализа карты стола 3D-принтера на базе **Klipper**.
 
