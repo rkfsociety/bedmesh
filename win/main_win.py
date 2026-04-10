@@ -10,37 +10,53 @@ import matplotlib.pyplot as plt
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.width, self.height = 1400, 950
-        self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
+        # 1. Сначала настраиваем окно
         self.center_window()
+        self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
         self.set_app_icon()
         
+        # 2. Инициализируем данные
         self.matrix, self.cfg_content = None, ""
         self.last_raw_data = ""
         self.settings = storage_win.load_settings()
         
-        self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
+        # 3. Настраиваем сетку
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        # 4. РИСУЕМ ИНТЕРФЕЙС (Теперь все методы ниже будут доступны)
         self.init_ui()
+        
+        # 5. Проверка обновлений
         updater_win.check_for_updates(logic_win.VERSION, self.show_update_notify)
 
     def init_ui(self):
-        self.sidebar = Sidebar(self, self.settings, self.fetch, self.toggle_log_view)
-        self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        # Контейнер сайдбара
+        self.sb_cont = ctk.CTkFrame(self, width=360, corner_radius=0, fg_color="#2b2b2b")
+        self.sb_cont.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        self.sb_cont.grid_propagate(False)
 
+        # Сайдбар
+        self.sidebar = Sidebar(self.sb_cont, self.settings, self.fetch, self.toggle_log_view)
+        self.sidebar.pack(fill="both", expand=True)
+
+        # Табы
         self.tabs = ctk.CTkTabview(self, corner_radius=15)
         self.tabs.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        
         self.t2d = self.tabs.add(strings_win.TAB_2D)
         self.tset_frame = self.tabs.add("ПАРАМЕТРЫ")
-        self.traw_tab = None # Вкладка лога скрыта
+        self.traw_tab = None
 
+        # Вкладка настроек
         self.settings_tab = SettingsTab(self.tset_frame, self.create_backup, self.restore_backup, self.save_cfg)
         self.settings_tab.pack(fill="both", expand=True)
 
+        # Анализ
         default_z = self.settings.get("z_sys", strings_win.Z_SYSTEMS[0])
         self.analysis = AnalysisPanel(self, default_z, self.settings.get("pitch", "0.7"), self.refresh_recs)
         self.analysis.grid(row=0, column=2, padx=(0, 20), pady=20, sticky="nsew")
         
+        # Кнопка запуска
         self.btn = ctk.CTkButton(self, text=strings_win.BTN_RUN, height=60, command=self.run, corner_radius=12, fg_color="#2e7d32")
         self.btn.grid(row=1, column=1, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
 
@@ -52,8 +68,7 @@ class App(ctk.CTk):
                 self.traw_tab = self.tabs.add(strings_win.TAB_RAW)
                 self.text_editor = ctk.CTkTextbox(self.traw_tab, font=("Consolas", 12))
                 self.text_editor.pack(fill="both", expand=True)
-                if self.last_raw_data:
-                    self.text_editor.insert("end", self.last_raw_data)
+                if self.last_raw_data: self.text_editor.insert("end", self.last_raw_data)
         else:
             if strings_win.TAB_RAW in self.tabs._tab_dict:
                 self.tabs.delete(strings_win.TAB_RAW)
@@ -77,7 +92,7 @@ class App(ctk.CTk):
 
     def save_cfg(self):
         if not self.cfg_content: return
-        if not messagebox.askyesno("Сохранение", "Записать настройки?"): return
+        if not messagebox.askyesno("Сохранение", "Записать конфиг в принтер?"): return
         d, f = self.sidebar.get_data(), self.settings_tab.get_form_data()
         backup_win.create_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"])
         text = config_win.set_cfg_value(self.cfg_content, "cs1237", "sensitivity", f["s1"])
@@ -86,7 +101,7 @@ class App(ctk.CTk):
         text = config_win.set_cfg_value(text, "leviQ3", "bed_temp", f["bed_t"])
         try:
             transport_win.save_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"], text)
-            self.cfg_content = text; messagebox.showinfo("Успех", "OK")
+            self.cfg_content = text; messagebox.showinfo("Успех", "Настройки сохранены")
         except Exception as e: messagebox.showerror("Ошибка", str(e))
 
     def run(self):
@@ -108,7 +123,7 @@ class App(ctk.CTk):
     def create_backup(self):
         d = self.sidebar.get_data()
         if backup_win.create_backup_ssh(d["host"], d["port"], d["user"], d["password"], d["path_cfg"]):
-            messagebox.showinfo("Бэкап", "OK")
+            messagebox.showinfo("Бэкап", "Создан успешно")
 
     def restore_backup(self):
         d = self.sidebar.get_data()
@@ -123,8 +138,10 @@ class App(ctk.CTk):
         except: os._exit(0)
 
     def center_window(self):
-        self.update_idletasks(); sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"1400x950+{int((sw-1400)/2)}+{int((sh-950)/2)}")
+        self.update_idletasks()
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w, h = int(sw * 0.8), int(sh * 0.8)
+        self.geometry(f"{w}x{h}+{int((sw-w)/2)}+{int((sh-h)/2)}")
 
     def set_app_icon(self):
         try: 

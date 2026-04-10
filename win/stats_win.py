@@ -1,47 +1,50 @@
 import customtkinter as ctk
 import numpy as np
-import styles_win
-
-def get_mesh_stats(matrix):
-    """Математический расчет показателей карты высот"""
-    if matrix is None: return None
-    flat = matrix.flatten()
-    return {
-        "min": np.min(flat),
-        "max": np.max(flat),
-        "range": np.max(flat) - np.min(flat),
-        "variance": np.var(flat),
-        "mean": np.mean(flat),
-        "rms": np.sqrt(np.mean(flat**2))
-    }
 
 class StatsBlock(ctk.CTkFrame):
-    """Информационный блок статистики 3x2"""
-    def __init__(self, master):
-        super().__init__(master, fg_color="#222222", corner_radius=12, border_width=1, border_color="#333333")
-        self.labels = {}
-        fields = [
-            ("Mesh Min", "min"), ("Mesh Max", "max"), ("Mesh Range", "range"),
-            ("Mesh Variance", "var"), ("Mesh Mean", "mean"), ("Mesh RMS", "rms")
-        ]
+    def __init__(self, parent):
+        super().__init__(parent, fg_color="#2b2b2b", corner_radius=12)
         
-        for i, (name, key) in enumerate(fields):
-            row, col = divmod(i, 3)
-            cell = ctk.CTkFrame(self, fg_color="#2b2b2b", corner_radius=8)
-            cell.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
-            
-            ctk.CTkLabel(cell, text=name, font=(styles_win.FONT_NAME, 9), text_color="#999999").pack(pady=(5, 0))
-            lbl = ctk.CTkLabel(cell, text="---", font=(styles_win.FONT_NAME, 12, "bold"), text_color="#ffffff")
-            lbl.pack(pady=(0, 5))
-            self.labels[key] = lbl
-            
+        # Настройка сетки: 2 строки, 3 колонки
         self.grid_columnconfigure((0, 1, 2), weight=1)
+        
+        # Стили шрифтов
+        self.label_font = ("Segoe UI", 12, "bold") # Увеличили с 10 до 12
+        self.val_font = ("Segoe UI", 18, "bold")   # Увеличили с 14 до 18
+
+        # Создаем ячейки
+        self.min_v = self._create_stat_cell("Mesh Min", 0, 0)
+        self.max_v = self._create_stat_cell("Mesh Max", 0, 1)
+        self.rng_v = self._create_stat_cell("Mesh Range", 0, 2)
+        
+        self.var_v = self._create_stat_cell("Mesh Variance", 1, 0)
+        self.mean_v = self._create_stat_cell("Mesh Mean", 1, 1)
+        self.rms_v = self._create_stat_cell("Mesh RMS", 1, 2)
+
+    def _create_stat_cell(self, title, row, col):
+        frame = ctk.CTkFrame(self, fg_color="#333333", corner_radius=8)
+        frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        
+        ctk.CTkLabel(frame, text=title, font=self.label_font, text_color="#aaaaaa").pack(pady=(10, 2))
+        val_lbl = ctk.CTkLabel(frame, text="0.000", font=self.val_font, text_color="white")
+        val_lbl.pack(pady=(2, 10))
+        return val_lbl
 
     def update_stats(self, stats):
-        if not stats: return
-        self.labels["min"].configure(text=f"{stats['min']:.3f}")
-        self.labels["max"].configure(text=f"{stats['max']:.3f}")
-        self.labels["range"].configure(text=f"{stats['range']:.3f}")
-        self.labels["var"].configure(text=f"{stats['variance']:.4f}")
-        self.labels["mean"].configure(text=f"{stats['mean']:.3f}")
-        self.labels["rms"].configure(text=f"{stats['rms']:.3f}")
+        self.min_v.configure(text=f"{stats['min']:.3f}")
+        self.max_v.configure(text=f"{stats['max']:.3f}")
+        self.rng_v.configure(text=f"{stats['range']:.3f}")
+        self.var_v.configure(text=f"{stats['variance']:.4f}")
+        self.mean_v.configure(text=f"{stats['mean']:.3f}")
+        self.rms_v.configure(text=f"{stats['rms']:.3f}")
+
+def get_mesh_stats(matrix):
+    """Расчет статистики матрицы"""
+    return {
+        'min': np.min(matrix),
+        'max': np.max(matrix),
+        'range': np.max(matrix) - np.min(matrix),
+        'variance': np.var(matrix),
+        'mean': np.mean(matrix),
+        'rms': np.sqrt(np.mean(matrix**2))
+    }
