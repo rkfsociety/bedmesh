@@ -47,7 +47,7 @@ bed_y = st.sidebar.number_input("Размер Y (мм)", value=250)
 grid_x = st.sidebar.number_input("Точек X", value=default_vals["grid_x"])
 grid_y = st.sidebar.number_input("Точек Y", value=default_vals["grid_y"])
 
-# Ввод данных (на всю ширину)
+# Ввод данных
 data_input = st.text_area("Данные точек (Mesh Points):", value=default_vals["points"], height=100)
 
 if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
@@ -65,15 +65,13 @@ if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
 
 st.divider()
 
-# --- ОСНОВНОЙ КОНТЕНТ (ДВЕ КОЛОНКИ) ---
+# --- ОСНОВНОЙ КОНТЕНТ ---
 if st.session_state.matrix is not None:
     matrix = st.session_state.matrix
     
-    # Создаем колонки: Левая (Графики) и Правая (Рекомендации)
     col_viz, col_rec = st.columns([2, 1], gap="large")
 
     with col_viz:
-        # Метрики внутри колонки визуализации
         v = np.max(matrix) - np.min(matrix)
         m1, m2, m3 = st.columns(3)
         m1.metric("Variance", f"{v:.3f} мм")
@@ -87,30 +85,37 @@ if st.session_state.matrix is not None:
             fig3.update_layout(
                 scene=dict(xaxis=dict(range=[0, grid_x-1]), yaxis=dict(range=[0, grid_y-1])),
                 margin=dict(l=0, r=0, b=0, t=0),
-                width=700, height=700
+                height=500, # Фиксированная высота
+                autosize=True
             )
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            fig2, ax = plt.subplots(figsize=(8, 8))
+            # Для соответствия высоте 500px при стандартном DPI 100 ставим figsize 5x5
+            fig2, ax = plt.subplots(figsize=(5, 5), dpi=100) 
+            fig2.patch.set_facecolor('#f0f2f6')
+            
             xe = np.linspace(0, bed_x, grid_x + 1); ye = np.linspace(0, bed_y, grid_y + 1)
             im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
+            
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(grid_y):
                 for j in range(grid_x):
-                    t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold')
-                    t.set_path_effects([path_effects.withStroke(linewidth=2, foreground="white")])
-            ax.set_aspect('equal'); fig2.colorbar(im); st.pyplot(fig2)
+                    t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=8)
+                    t.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
+            
+            ax.set_aspect('equal')
+            # Убираем лишние отступы Matplotlib для экономии места
+            plt.tight_layout()
+            st.pyplot(fig2)
 
     with col_rec:
         st.subheader("🛠️ Рекомендации")
         
-        # Настройки системы внутри правой колонки
         z_sys = st.selectbox("Тип Z-привода:", 
                             ["Винты (только углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"],
                             key="z_sys_v52")
         
-        # Определяем, является ли система валами (независимые моторы)
         is_shafts = "вала" in z_sys.lower()
         
         pitch = 1.0
@@ -119,7 +124,6 @@ if st.session_state.matrix is not None:
         
         st.write("---")
         
-        # Логика расчета
         points = {}
         if z_sys == "Винты (только углы)":
             points = {"ПЛ (0,0)": matrix[0,0], "ПП (X,0)": matrix[0,-1], "ЗЛ (0,Y)": matrix[-1,0], "ЗП (X,Y)": matrix[-1,-1]}
@@ -132,7 +136,6 @@ if st.session_state.matrix is not None:
 
         low = min(points.values())
         
-        # Вывод карточек вертикально для правой колонки
         for name, val in points.items():
             diff = val - low
             with st.container():
@@ -141,11 +144,8 @@ if st.session_state.matrix is not None:
                     st.success("✅ ОПОРНАЯ ТОЧКА")
                 else:
                     direction = "🔽 ВНИЗ (затянуть)" if diff > 0 else "🔼 ВВЕРХ (отпустить)"
-                    
                     if is_shafts:
-                        # Для валов выводим только миллиметры
                         st.info(f"**{abs(diff):.3f}** мм  \n{direction}")
                     else:
-                        # Для винтов выводим обороты и миллиметры
                         st.warning(f"**{abs(diff/pitch):.2f}** об. (`{diff:+.3f}` мм)  \n{direction}")
                 st.write("")
