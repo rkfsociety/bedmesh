@@ -7,9 +7,9 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.2", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v5.2")
+st.title("📏 Bed Mesh Visualizer Pro v5.4")
 
 # Инициализация состояния сессии
 if 'matrix' not in st.session_state:
@@ -72,12 +72,10 @@ if st.session_state.matrix is not None:
     col_viz, col_rec = st.columns([2, 1], gap="large")
 
     with col_viz:
-        v = np.max(matrix) - np.min(matrix)
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Variance", f"{v:.3f} мм")
-        m2.metric("Max Z", f"{np.max(matrix):.3f} мм")
-        m3.metric("Min Z", f"{np.min(matrix):.3f} мм")
-
+        # Верхние основные метрики (Variance теперь дублируется здесь для акцента)
+        v_range = np.max(matrix) - np.min(matrix)
+        st.subheader("📊 Визуализация")
+        
         tab1, tab2 = st.tabs(["📊 3D Модель", "🗺️ 2D Карта"])
         
         with tab1:
@@ -85,42 +83,55 @@ if st.session_state.matrix is not None:
             fig3.update_layout(
                 scene=dict(xaxis=dict(range=[0, grid_x-1]), yaxis=dict(range=[0, grid_y-1])),
                 margin=dict(l=0, r=0, b=0, t=0),
-                height=500, # Фиксированная высота
+                height=500,
                 autosize=True
             )
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            # Для соответствия высоте 500px при стандартном DPI 100 ставим figsize 5x5
             fig2, ax = plt.subplots(figsize=(5, 5), dpi=100) 
             fig2.patch.set_facecolor('#f0f2f6')
-            
             xe = np.linspace(0, bed_x, grid_x + 1); ye = np.linspace(0, bed_y, grid_y + 1)
             im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
-            
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(grid_y):
                 for j in range(grid_x):
                     t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=8)
                     t.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
-            
             ax.set_aspect('equal')
-            # Убираем лишние отступы Matplotlib для экономии места
             plt.tight_layout()
             st.pyplot(fig2)
 
     with col_rec:
+        # --- МОДУЛЬ АНАЛИЗА МЕША (КАК В WINDOWS) ---
+        st.subheader("📝 Анализ меша")
+        
+        m_col1, m_col2 = st.columns(2)
+        m_col1.metric("Mesh Min", f"{np.min(matrix):.3f}")
+        m_col2.metric("Mesh Max", f"{np.max(matrix):.3f}")
+        
+        m_col3, m_col4 = st.columns(2)
+        m_col3.metric("Mesh Range", f"{np.max(matrix) - np.min(matrix):.3f}")
+        m_col4.metric("Mesh Mean", f"{np.mean(matrix):.3f}")
+        
+        m_col5, m_col6 = st.columns(2)
+        m_col5.metric("Variance", f"{np.var(matrix):.4f}")
+        m_col6.metric("Mesh RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
+        
+        st.write("---")
+        
+        # --- РЕКОМЕНДАЦИИ ---
         st.subheader("🛠️ Рекомендации")
         
         z_sys = st.selectbox("Тип Z-привода:", 
                             ["Винты (только углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"],
-                            key="z_sys_v52")
+                            key="z_sys_v54")
         
         is_shafts = "вала" in z_sys.lower()
         
         pitch = 1.0
         if not is_shafts:
-            pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0, key="pitch_v52")
+            pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0, key="pitch_v54")
         
         st.write("---")
         
