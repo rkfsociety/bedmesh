@@ -7,9 +7,9 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.2", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.3", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.2")
+st.title("📏 Bed Mesh Visualizer Pro v5.4.3")
 
 # Инициализация состояния сессии
 if 'matrix' not in st.session_state:
@@ -76,19 +76,11 @@ if st.session_state.matrix is not None:
         
         tab1, tab2 = st.tabs(["📊 3D Модель", "🗺️ 2D Карта"])
         
-        # Генерируем реальные координаты для осей
         x_coords = np.linspace(0, bed_x, grid_x)
         y_coords = np.linspace(0, bed_y, grid_y)
 
         with tab1:
-            # Передаем x и y координаты в миллиметрах
-            fig3 = go.Figure(data=[go.Surface(
-                z=matrix, 
-                x=x_coords, 
-                y=y_coords, 
-                colorscale='RdYlBu_r'
-            )])
-            
+            fig3 = go.Figure(data=[go.Surface(z=matrix, x=x_coords, y=y_coords, colorscale='RdYlBu_r')])
             fig3.update_layout(
                 scene=dict(
                     xaxis=dict(title='X (мм)', range=[0, bed_x]),
@@ -102,24 +94,28 @@ if st.session_state.matrix is not None:
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            fig2, ax = plt.subplots(figsize=(5, 5), dpi=100) 
+            # УМЕНЬШЕНО: figsize с (5, 5) до (3.8, 3.8)
+            fig2, ax = plt.subplots(figsize=(3.8, 3.8), dpi=100) 
             fig2.patch.set_facecolor('#f0f2f6')
             
-            # Координаты для сетки 2D
             xe = np.linspace(0, bed_x, grid_x + 1)
             ye = np.linspace(0, bed_y, grid_y + 1)
             
-            im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
+            im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=0.8)
             
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(grid_y):
                 for j in range(grid_x):
-                    t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=8)
-                    t.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
+                    # УМЕНЬШЕНО: fontsize до 7 для компактности
+                    t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=7)
+                    t.set_path_effects([path_effects.withStroke(linewidth=1.2, foreground="white")])
             
             ax.set_aspect('equal')
-            ax.set_xlabel("X (мм)")
-            ax.set_ylabel("Y (мм)")
+            ax.set_xlabel("X (мм)", fontsize=8)
+            ax.set_ylabel("Y (мм)", fontsize=8)
+            ax.tick_params(labelsize=7)
+            
+            # Убираем лишние поля
             plt.tight_layout()
             st.pyplot(fig2)
 
