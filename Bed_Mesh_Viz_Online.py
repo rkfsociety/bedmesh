@@ -109,7 +109,13 @@ if st.session_state.matrix is not None:
         z_sys = st.selectbox("Тип Z-привода:", 
                             ["Винты (только углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"],
                             key="z_sys_v52")
-        pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0, key="pitch_v52")
+        
+        # Определяем, является ли система валами (независимые моторы)
+        is_shafts = "вала" in z_sys.lower()
+        
+        pitch = 1.0
+        if not is_shafts:
+            pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0, key="pitch_v52")
         
         st.write("---")
         
@@ -135,5 +141,11 @@ if st.session_state.matrix is not None:
                     st.success("✅ ОПОРНАЯ ТОЧКА")
                 else:
                     direction = "🔽 ВНИЗ (затянуть)" if diff > 0 else "🔼 ВВЕРХ (отпустить)"
-                    st.warning(f"**{abs(diff/pitch):.2f}** об. (`{diff:+.3f}` мм)  \n{direction}")
+                    
+                    if is_shafts:
+                        # Для валов выводим только миллиметры
+                        st.info(f"**{abs(diff):.3f}** мм  \n{direction}")
+                    else:
+                        # Для винтов выводим обороты и миллиметры
+                        st.warning(f"**{abs(diff/pitch):.2f}** об. (`{diff:+.3f}` мм)  \n{direction}")
                 st.write("")
