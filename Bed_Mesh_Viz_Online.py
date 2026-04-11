@@ -7,9 +7,9 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.1", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4")
+st.title("📏 Bed Mesh Visualizer Pro v5.4.1")
 
 # Инициализация состояния сессии
 if 'matrix' not in st.session_state:
@@ -72,8 +72,6 @@ if st.session_state.matrix is not None:
     col_viz, col_rec = st.columns([2, 1], gap="large")
 
     with col_viz:
-        # Верхние основные метрики (Variance теперь дублируется здесь для акцента)
-        v_range = np.max(matrix) - np.min(matrix)
         st.subheader("📊 Визуализация")
         
         tab1, tab2 = st.tabs(["📊 3D Модель", "🗺️ 2D Карта"])
@@ -103,20 +101,20 @@ if st.session_state.matrix is not None:
             st.pyplot(fig2)
 
     with col_rec:
-        # --- МОДУЛЬ АНАЛИЗА МЕША (КАК В WINDOWS) ---
+        # --- МОДУЛЬ АНАЛИЗА МЕША (РУСИФИЦИРОВАННЫЙ) ---
         st.subheader("📝 Анализ меша")
         
         m_col1, m_col2 = st.columns(2)
-        m_col1.metric("Mesh Min", f"{np.min(matrix):.3f}")
-        m_col2.metric("Mesh Max", f"{np.max(matrix):.3f}")
+        m_col1.metric("Мин. точка", f"{np.min(matrix):.3f}")
+        m_col2.metric("Макс. точка", f"{np.max(matrix):.3f}")
         
         m_col3, m_col4 = st.columns(2)
-        m_col3.metric("Mesh Range", f"{np.max(matrix) - np.min(matrix):.3f}")
-        m_col4.metric("Mesh Mean", f"{np.mean(matrix):.3f}")
+        m_col3.metric("Размах (Range)", f"{np.max(matrix) - np.min(matrix):.3f}")
+        m_col4.metric("Среднее (Mean)", f"{np.mean(matrix):.3f}")
         
         m_col5, m_col6 = st.columns(2)
-        m_col5.metric("Variance", f"{np.var(matrix):.4f}")
-        m_col6.metric("Mesh RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
+        m_col5.metric("Вариация", f"{np.var(matrix):.4f}")
+        m_col6.metric("Среднеквадр. (RMS)", f"{np.sqrt(np.mean(matrix**2)):.3f}")
         
         st.write("---")
         
