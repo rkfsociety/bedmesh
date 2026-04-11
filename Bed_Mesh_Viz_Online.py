@@ -7,9 +7,29 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.4", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.5", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.4")
+# --- CSS ДЛЯ ОГРАНИЧЕНИЯ РАЗМЕРА БЛОКОВ КАРТ ---
+st.markdown("""
+    <style>
+    /* Ограничиваем максимальную ширину контейнера с графиками */
+    .stPlotlyChart {
+        max-width: 500px !important;
+        margin: 0 auto;
+    }
+    /* Ограничиваем блок с Matplotlib (2D карта) */
+    [data-testid="stPyplotChart"] {
+        max-width: 500px !important;
+        margin: 0 auto;
+    }
+    /* Убираем лишние отступы у вкладок */
+    .stTabs {
+        max-width: 520px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("📏 Bed Mesh Visualizer Pro v5.4.5")
 
 # Инициализация состояния сессии
 if 'matrix' not in st.session_state:
@@ -80,7 +100,6 @@ if st.session_state.matrix is not None:
         y_coords = np.linspace(0, bed_y, grid_y)
 
         with tab1:
-            # 3D карта 500x500
             fig3 = go.Figure(data=[go.Surface(z=matrix, x=x_coords, y=y_coords, colorscale='RdYlBu_r')])
             fig3.update_layout(
                 scene=dict(
@@ -89,13 +108,13 @@ if st.session_state.matrix is not None:
                     zaxis=dict(title='Z (мм)')
                 ),
                 margin=dict(l=0, r=0, b=0, t=0),
-                width=500, height=500, # Строго 500x500
+                width=500, height=500,
                 autosize=False
             )
+            # Отключаем use_container_width, чтобы сработал наш CSS limit
             st.plotly_chart(fig3, use_container_width=False)
 
         with tab2:
-            # 2D карта 500x500 (5 дюймов * 100 DPI)
             fig2, ax = plt.subplots(figsize=(5, 5), dpi=100) 
             fig2.patch.set_facecolor('#f0f2f6')
             
@@ -114,7 +133,6 @@ if st.session_state.matrix is not None:
             ax.set_xlabel("X (мм)")
             ax.set_ylabel("Y (мм)")
             
-            # Убираем лишние отступы, чтобы вписаться точно в 500px
             plt.tight_layout()
             st.pyplot(fig2)
 
