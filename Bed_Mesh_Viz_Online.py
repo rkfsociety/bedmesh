@@ -7,9 +7,9 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.1", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.2", layout="wide")
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.1")
+st.title("📏 Bed Mesh Visualizer Pro v5.4.2")
 
 # Инициализация состояния сессии
 if 'matrix' not in st.session_state:
@@ -76,10 +76,25 @@ if st.session_state.matrix is not None:
         
         tab1, tab2 = st.tabs(["📊 3D Модель", "🗺️ 2D Карта"])
         
+        # Генерируем реальные координаты для осей
+        x_coords = np.linspace(0, bed_x, grid_x)
+        y_coords = np.linspace(0, bed_y, grid_y)
+
         with tab1:
-            fig3 = go.Figure(data=[go.Surface(z=matrix, colorscale='RdYlBu_r')])
+            # Передаем x и y координаты в миллиметрах
+            fig3 = go.Figure(data=[go.Surface(
+                z=matrix, 
+                x=x_coords, 
+                y=y_coords, 
+                colorscale='RdYlBu_r'
+            )])
+            
             fig3.update_layout(
-                scene=dict(xaxis=dict(range=[0, grid_x-1]), yaxis=dict(range=[0, grid_y-1])),
+                scene=dict(
+                    xaxis=dict(title='X (мм)', range=[0, bed_x]),
+                    yaxis=dict(title='Y (мм)', range=[0, bed_y]),
+                    zaxis=dict(title='Z (мм)')
+                ),
                 margin=dict(l=0, r=0, b=0, t=0),
                 height=500,
                 autosize=True
@@ -89,48 +104,46 @@ if st.session_state.matrix is not None:
         with tab2:
             fig2, ax = plt.subplots(figsize=(5, 5), dpi=100) 
             fig2.patch.set_facecolor('#f0f2f6')
-            xe = np.linspace(0, bed_x, grid_x + 1); ye = np.linspace(0, bed_y, grid_y + 1)
+            
+            # Координаты для сетки 2D
+            xe = np.linspace(0, bed_x, grid_x + 1)
+            ye = np.linspace(0, bed_y, grid_y + 1)
+            
             im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='black', linewidth=1)
+            
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(grid_y):
                 for j in range(grid_x):
                     t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.3f}", ha="center", va="center", fontweight='bold', fontsize=8)
                     t.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
+            
             ax.set_aspect('equal')
+            ax.set_xlabel("X (мм)")
+            ax.set_ylabel("Y (мм)")
             plt.tight_layout()
             st.pyplot(fig2)
 
     with col_rec:
-        # --- МОДУЛЬ АНАЛИЗА МЕША (РУСИФИЦИРОВАННЫЙ) ---
         st.subheader("📝 Анализ меша")
-        
         m_col1, m_col2 = st.columns(2)
         m_col1.metric("Мин. точка", f"{np.min(matrix):.3f}")
         m_col2.metric("Макс. точка", f"{np.max(matrix):.3f}")
-        
         m_col3, m_col4 = st.columns(2)
         m_col3.metric("Размах (Range)", f"{np.max(matrix) - np.min(matrix):.3f}")
         m_col4.metric("Среднее (Mean)", f"{np.mean(matrix):.3f}")
-        
         m_col5, m_col6 = st.columns(2)
         m_col5.metric("Вариация", f"{np.var(matrix):.4f}")
         m_col6.metric("Среднеквадр. (RMS)", f"{np.sqrt(np.mean(matrix**2)):.3f}")
         
         st.write("---")
-        
-        # --- РЕКОМЕНДАЦИИ ---
         st.subheader("🛠️ Рекомендации")
-        
         z_sys = st.selectbox("Тип Z-привода:", 
                             ["Винты (только углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"],
                             key="z_sys_v54")
-        
         is_shafts = "вала" in z_sys.lower()
-        
         pitch = 1.0
         if not is_shafts:
             pitch = st.selectbox("Шаг резьбы (мм):", [0.7, 0.5, 0.8, 1.0, 2.0], index=0, key="pitch_v54")
-        
         st.write("---")
         
         points = {}
@@ -144,7 +157,6 @@ if st.session_state.matrix is not None:
             points = {"Передний Левый": matrix[0,0], "Передний Правый": matrix[0,-1], "Задний Левый": matrix[-1,0], "Задний Правый": matrix[-1,-1]}
 
         low = min(points.values())
-        
         for name, val in points.items():
             diff = val - low
             with st.container():
