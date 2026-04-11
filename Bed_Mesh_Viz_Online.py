@@ -7,35 +7,20 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.8", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.9", layout="wide")
 
-# --- CSS ДЛЯ УМЕНЬШЕНИЯ КАРТЫ В 2 РАЗА ---
+# --- ЧИСТЫЙ CSS БЕЗ ГЛОБАЛЬНЫХ ОГРАНИЧЕНИЙ ---
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; }
-    
-    /* Ограничиваем блок 2D карты до 300 пикселей */
-    [data-testid="stPyplotChart"] { 
-        max-width: 300px !important; 
-        margin: 0 auto;
-    }
-    
-    /* 3D карту тоже чуть подожмем для баланса */
-    .stPlotlyChart { max-width: 450px !important; margin: 0 auto; }
-
-    /* Компактные метрики */
-    [data-testid="stMetricValue"] { font-size: 1rem !important; color: #00ffcc; }
-    [data-testid="stMetricLabel"] { font-size: 0.7rem !important; }
-    
-    /* Уплотняем рекомендации */
-    .stAlert { padding: 5px 10px !important; margin-bottom: 3px !important; }
-    div.stMarkdown p { font-size: 0.85rem !important; }
-    
-    hr { margin: 0.5rem 0 !important; }
+    .block-container { padding-top: 1.5rem; }
+    [data-testid="stMetricValue"] { font-size: 1.1rem !important; color: #00ffcc; }
+    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
+    .stAlert { padding: 8px !important; margin-bottom: 4px !important; }
+    hr { margin: 1rem 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.8")
+st.title("📏 Bed Mesh Visualizer Pro v5.4.9")
 
 if 'matrix' not in st.session_state:
     st.session_state.matrix = None
@@ -64,7 +49,7 @@ with st.sidebar:
     grid_x = st.number_input("Точек X", value=default_vals["grid_x"])
     grid_y = st.number_input("Точек Y", value=default_vals["grid_y"])
 
-data_input = st.text_area("Mesh Points:", value=default_vals["points"])
+data_input = st.text_area("Mesh Points:", value=default_vals["points"], height=100)
 
 if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
     if data_input:
@@ -82,53 +67,66 @@ st.divider()
 # --- MAIN ---
 if st.session_state.matrix is not None:
     matrix = st.session_state.matrix
-    col_viz, col_rec = st.columns([1.5, 1], gap="small")
+    col_viz, col_rec = st.columns([1.6, 1], gap="medium")
 
     with col_viz:
-        tab1, tab2 = st.tabs(["📊 3D", "🗺️ 2D"])
+        tab1, tab2 = st.tabs(["📊 3D Рельеф", "🗺️ 2D Карта"])
         
         with tab1:
+            # 3D карта теперь работает корректно
             x_c, y_c = np.linspace(0, bed_x, grid_x), np.linspace(0, bed_y, grid_y)
             fig3 = go.Figure(data=[go.Surface(z=matrix, x=x_c, y=y_c, colorscale='RdYlBu_r')])
-            fig3.update_layout(margin=dict(l=0, r=0, b=0, t=0), height=450)
+            fig3.update_layout(
+                scene=dict(xaxis_title='X', yaxis_title='Y', zaxis_title='Z'),
+                margin=dict(l=0, r=0, b=0, t=0), 
+                height=500
+            )
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            # Уменьшили размер фигуры до 3x3 дюйма
-            fig2, ax = plt.subplots(figsize=(3, 3), dpi=100) 
-            fig2.patch.set_facecolor('#0e1117')
+            # ТРЮК ДЛЯ УМЕНЬШЕНИЯ: Создаем вложенные колонки внутри вкладки
+            # Это принудительно сожмет 2D карту в 2 раза
+            sub_col1, sub_col2 = st.columns([1, 1]) 
             
-            xe, ye = np.linspace(0, bed_x, grid_x + 1), np.linspace(0, bed_y, grid_y + 1)
-            im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='#1e1e1e', linewidth=0.5)
-            
-            xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
-            for i in range(grid_y):
-                for j in range(grid_x):
-                    # Уменьшили шрифт до 5.5, чтобы влез в маленькие квадраты
-                    t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.2f}", ha="center", va="center", 
-                                color="white", fontsize=5.5, fontweight='bold')
-                    t.set_path_effects([path_effects.withStroke(linewidth=1, foreground="black")])
-            
-            ax.set_aspect('equal')
-            ax.tick_params(colors='gray', labelsize=6)
-            plt.tight_layout(pad=0.1)
-            st.pyplot(fig2)
+            with sub_col1:
+                fig2, ax = plt.subplots(figsize=(4, 4), dpi=100) 
+                fig2.patch.set_facecolor('#0e1117')
+                
+                xe, ye = np.linspace(0, bed_x, grid_x + 1), np.linspace(0, bed_y, grid_y + 1)
+                im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='#1e1e1e', linewidth=0.5)
+                
+                xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
+                for i in range(grid_y):
+                    for j in range(grid_x):
+                        t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.2f}", ha="center", va="center", 
+                                    color="white", fontsize=7, fontweight='bold')
+                        t.set_path_effects([path_effects.withStroke(linewidth=1.2, foreground="black")])
+                
+                ax.set_aspect('equal')
+                ax.tick_params(colors='gray', labelsize=7)
+                plt.tight_layout(pad=0.2)
+                st.pyplot(fig2)
 
     with col_rec:
         st.write("### 📝 Анализ")
-        r1, r2 = st.columns(2), st.columns(2)
-        r1[0].metric("Мин", f"{np.min(matrix):.3f}")
-        r1[1].metric("Макс", f"{np.max(matrix):.3f}")
-        r2[0].metric("Размах", f"{(np.max(matrix) - np.min(matrix)):.3f}")
-        r2[1].metric("RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
+        r1_1, r1_2, r1_3 = st.columns(3)
+        r1_1.metric("Мин", f"{np.min(matrix):.3f}")
+        r1_2.metric("Макс", f"{np.max(matrix):.3f}")
+        r1_3.metric("Размах", f"{(np.max(matrix) - np.min(matrix)):.3f}")
+        
+        r2_1, r2_2, r2_3 = st.columns(3)
+        r2_1.metric("Среднее", f"{np.mean(matrix):.3f}")
+        r2_2.metric("Вариация", f"{np.var(matrix):.3f}")
+        r2_3.metric("RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
         
         st.divider()
         st.write("### 🛠️ Настройка")
-        z_sys = st.selectbox("Привод", ["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"], label_visibility="collapsed")
+        z_sys = st.selectbox("Привод", ["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"])
         is_shafts = "вала" in z_sys.lower()
+        
+        p_val = 0.7
         if not is_shafts:
-            p_val = st.selectbox("Шаг", [0.7, 0.5, 0.4, 0.8, 1.0, 2.0], label_visibility="collapsed")
-        else: p_val = 1.0
+            p_val = st.selectbox("Шаг", [0.7, 0.5, 0.4, 0.8, 1.0, 2.0])
 
         points = {}
         if "Винты" in z_sys or "4 вала" in z_sys:
@@ -136,7 +134,7 @@ if st.session_state.matrix is not None:
         elif "2 вала" in z_sys:
             points = {"Левый": np.mean(matrix[:, 0]), "Правый": np.mean(matrix[:, -1])}
         elif "3 вала" in z_sys:
-            points = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЦ": matrix[-1, grid_x//2]}
+            points = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "З-Центр": matrix[-1, grid_x//2]}
 
         low = min(points.values())
         for name, val in points.items():
