@@ -7,50 +7,43 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.7", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.8", layout="wide")
 
-# --- УЛУЧШЕННЫЙ CSS ---
+# --- CSS ДЛЯ УМЕНЬШЕНИЯ КАРТЫ В 2 РАЗА ---
 st.markdown("""
     <style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 0rem; }
+    .block-container { padding-top: 1rem; }
     
-    /* Контейнеры графиков */
-    .stPlotlyChart { margin: 0 auto; }
+    /* Ограничиваем блок 2D карты до 300 пикселей */
     [data-testid="stPyplotChart"] { 
-        display: flex;
-        justify-content: center;
-        width: 100% !important;
+        max-width: 300px !important; 
+        margin: 0 auto;
     }
-    [data-testid="stPyplotChart"] > img {
-        max-width: 480px !important; /* Ограничиваем физический размер картинки */
-        height: auto;
-    }
+    
+    /* 3D карту тоже чуть подожмем для баланса */
+    .stPlotlyChart { max-width: 450px !important; margin: 0 auto; }
 
-    /* Метрики анализа */
-    [data-testid="stMetricValue"] { font-size: 1.1rem !important; color: #00ffcc; }
-    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
+    /* Компактные метрики */
+    [data-testid="stMetricValue"] { font-size: 1rem !important; color: #00ffcc; }
+    [data-testid="stMetricLabel"] { font-size: 0.7rem !important; }
     
-    /* Рекомендации */
-    .stAlert { padding: 8px !important; margin-bottom: 4px !important; border-radius: 8px; }
-    div.stMarkdown p { font-size: 0.9rem !important; line-height: 1.2; }
+    /* Уплотняем рекомендации */
+    .stAlert { padding: 5px 10px !important; margin-bottom: 3px !important; }
+    div.stMarkdown p { font-size: 0.85rem !important; }
     
-    /* Компактные селекторы */
-    .stSelectbox label { display: none; } /* Прячем текст над селектором */
-    
-    hr { margin: 0.8rem 0 !important; }
+    hr { margin: 0.5rem 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.7")
+st.title("📏 Bed Mesh Visualizer Pro v5.4.8")
 
 if 'matrix' not in st.session_state:
     st.session_state.matrix = None
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("📂 Ввод данных")
+    st.header("📂 Данные")
     uploaded_file = st.file_uploader("Загрузить конфиг", type=['cfg', 'txt', 'json'])
-    
     default_vals = {"grid_x": 5, "grid_y": 5, "points": ""}
     
     if uploaded_file:
@@ -58,8 +51,7 @@ with st.sidebar:
         try:
             if content.strip().startswith('{'):
                 js = json.loads(content).get("bed_mesh default", {})
-                if js:
-                    default_vals.update({"grid_x": int(js.get("x_count", 5)), "grid_y": int(js.get("y_count", 5)), "points": js.get("points", "").strip()})
+                if js: default_vals.update({"grid_x": int(js.get("x_count", 5)), "grid_y": int(js.get("y_count", 5)), "points": js.get("points", "").strip()})
             else:
                 def fnd(p, t, d): return re.search(p, t).group(1) if re.search(p, t) else d
                 default_vals.update({"grid_x": int(fnd(r"x_count\s*=\s*(\d+)", content, 5)), "grid_y": int(fnd(r"y_count\s*=\s*(\d+)", content, 5))})
@@ -67,19 +59,18 @@ with st.sidebar:
                 if pts: default_vals["points"] = pts.group(1).strip()
         except: st.error("Ошибка парсинга.")
 
-    st.header("⚙️ Стол")
     bed_x = st.number_input("Размер X", value=250)
     bed_y = st.number_input("Размер Y", value=250)
     grid_x = st.number_input("Точек X", value=default_vals["grid_x"])
     grid_y = st.number_input("Точек Y", value=default_vals["grid_y"])
 
-data_input = st.text_area("Вставьте Mesh Points здесь:", value=default_vals["points"], placeholder="0.123, 0.456...")
+data_input = st.text_area("Mesh Points:", value=default_vals["points"])
 
-if st.button("🚀 ОБНОВИТЬ ВИЗУАЛИЗАЦИЮ", use_container_width=True):
+if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
     if data_input:
         nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", data_input)]
         if len(nums) < grid_x * grid_y:
-            st.error(f"Нужно {grid_x * grid_y} точек. Найдено: {len(nums)}")
+            st.error(f"Нужно {grid_x * grid_y} точек.")
         else:
             matrix = np.array(nums[:grid_x*grid_y]).reshape((grid_y, grid_x))
             for i in range(len(matrix)):
@@ -91,68 +82,53 @@ st.divider()
 # --- MAIN ---
 if st.session_state.matrix is not None:
     matrix = st.session_state.matrix
-    
-    col_viz, col_rec = st.columns([1.6, 1], gap="medium")
+    col_viz, col_rec = st.columns([1.5, 1], gap="small")
 
     with col_viz:
-        tab1, tab2 = st.tabs(["📊 3D Рельеф", "🗺️ 2D Карта"])
+        tab1, tab2 = st.tabs(["📊 3D", "🗺️ 2D"])
         
         with tab1:
-            x_c = np.linspace(0, bed_x, grid_x)
-            y_c = np.linspace(0, bed_y, grid_y)
+            x_c, y_c = np.linspace(0, bed_x, grid_x), np.linspace(0, bed_y, grid_y)
             fig3 = go.Figure(data=[go.Surface(z=matrix, x=x_c, y=y_c, colorscale='RdYlBu_r')])
-            fig3.update_layout(
-                scene=dict(xaxis_title='X', yaxis_title='Y', zaxis_title='Z'),
-                margin=dict(l=0, r=0, b=0, t=0), height=480
-            )
+            fig3.update_layout(margin=dict(l=0, r=0, b=0, t=0), height=450)
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            # Уменьшаем figsize, чтобы не было гигантизма
-            fig2, ax = plt.subplots(figsize=(4.2, 4.2), dpi=110) 
-            fig2.patch.set_facecolor('#0e1117') # Темный фон под тему
+            # Уменьшили размер фигуры до 3x3 дюйма
+            fig2, ax = plt.subplots(figsize=(3, 3), dpi=100) 
+            fig2.patch.set_facecolor('#0e1117')
             
-            xe = np.linspace(0, bed_x, grid_x + 1)
-            ye = np.linspace(0, bed_y, grid_y + 1)
+            xe, ye = np.linspace(0, bed_x, grid_x + 1), np.linspace(0, bed_y, grid_y + 1)
             im = ax.pcolormesh(xe, ye, matrix, cmap='RdYlBu_r', edgecolors='#1e1e1e', linewidth=0.5)
             
             xc, yc = (xe[:-1] + xe[1:]) / 2, (ye[:-1] + ye[1:]) / 2
             for i in range(grid_y):
                 for j in range(grid_x):
-                    # Шрифт 6.5 - золотая середина, чтобы не слипалось
+                    # Уменьшили шрифт до 5.5, чтобы влез в маленькие квадраты
                     t = ax.text(xc[j], yc[i], f"{matrix[i,j]:.2f}", ha="center", va="center", 
-                                color="white", fontsize=6.5, fontweight='bold')
+                                color="white", fontsize=5.5, fontweight='bold')
                     t.set_path_effects([path_effects.withStroke(linewidth=1, foreground="black")])
             
             ax.set_aspect('equal')
-            ax.tick_params(colors='gray', labelsize=7)
-            for spine in ax.spines.values(): spine.set_edgecolor('#333')
-            plt.tight_layout(pad=0.2)
+            ax.tick_params(colors='gray', labelsize=6)
+            plt.tight_layout(pad=0.1)
             st.pyplot(fig2)
 
     with col_rec:
-        # Анализ (в ряд по 3)
         st.write("### 📝 Анализ")
-        r1_1, r1_2, r1_3 = st.columns(3)
-        r1_1.metric("Мин", f"{np.min(matrix):.3f}")
-        r1_2.metric("Макс", f"{np.max(matrix):.3f}")
-        r1_3.metric("Размах", f"{(np.max(matrix) - np.min(matrix)):.3f}")
-        
-        r2_1, r2_2, r2_3 = st.columns(3)
-        r2_1.metric("Среднее", f"{np.mean(matrix):.3f}")
-        r2_2.metric("Вариация", f"{np.var(matrix):.3f}")
-        r2_3.metric("RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
+        r1, r2 = st.columns(2), st.columns(2)
+        r1[0].metric("Мин", f"{np.min(matrix):.3f}")
+        r1[1].metric("Макс", f"{np.max(matrix):.3f}")
+        r2[0].metric("Размах", f"{(np.max(matrix) - np.min(matrix)):.3f}")
+        r2[1].metric("RMS", f"{np.sqrt(np.mean(matrix**2)):.3f}")
         
         st.divider()
         st.write("### 🛠️ Настройка")
-        
-        # Выбор механики
-        z_sys = st.selectbox("Привод", ["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"])
+        z_sys = st.selectbox("Привод", ["Винты (углы)", "2 вала (Л/П)", "3 вала (Tri-Z)", "4 вала (Quad-Z)"], label_visibility="collapsed")
         is_shafts = "вала" in z_sys.lower()
-        
-        p_val = 0.7
         if not is_shafts:
-            p_val = st.selectbox("Шаг", [0.7, 0.5, 0.4, 0.8, 1.0, 2.0])
+            p_val = st.selectbox("Шаг", [0.7, 0.5, 0.4, 0.8, 1.0, 2.0], label_visibility="collapsed")
+        else: p_val = 1.0
 
         points = {}
         if "Винты" in z_sys or "4 вала" in z_sys:
@@ -160,16 +136,13 @@ if st.session_state.matrix is not None:
         elif "2 вала" in z_sys:
             points = {"Левый": np.mean(matrix[:, 0]), "Правый": np.mean(matrix[:, -1])}
         elif "3 вала" in z_sys:
-            points = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "З-Центр": matrix[-1, grid_x//2]}
+            points = {"ПЛ": matrix[0,0], "ПП": matrix[0,-1], "ЗЦ": matrix[-1, grid_x//2]}
 
         low = min(points.values())
         for name, val in points.items():
             diff = val - low
-            if diff < 0.005:
-                st.success(f"**{name}**: ОПОРА (0.00)")
+            if diff < 0.005: st.success(f"**{name}**: ОПОРА")
             else:
                 direction = "🔽" if diff > 0 else "🔼"
-                if is_shafts:
-                    st.info(f"**{name}**: {abs(diff):.3f} мм {direction}")
-                else:
-                    st.warning(f"**{name}**: {abs(diff/p_val):.2f} об. ({diff:+.2f}) {direction}")
+                if is_shafts: st.info(f"**{name}**: {abs(diff):.3f} мм {direction}")
+                else: st.warning(f"**{name}**: {abs(diff/p_val):.2f} об. {direction}")
