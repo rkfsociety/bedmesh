@@ -7,9 +7,9 @@ import re
 import json
 
 # Настройка страницы
-st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.4.9", layout="wide")
+st.set_page_config(page_title="Bed Mesh Visualizer Pro v5.5.0", layout="wide")
 
-# --- ЧИСТЫЙ CSS БЕЗ ГЛОБАЛЬНЫХ ОГРАНИЧЕНИЙ ---
+# --- CSS ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; }
@@ -20,7 +20,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📏 Bed Mesh Visualizer Pro v5.4.9")
+st.title("📏 Bed Mesh Visualizer Pro v5.5.0")
 
 if 'matrix' not in st.session_state:
     st.session_state.matrix = None
@@ -53,13 +53,18 @@ data_input = st.text_area("Mesh Points:", value=default_vals["points"], height=1
 
 if st.button("🚀 ВИЗУАЛИЗИРОВАТЬ", use_container_width=True):
     if data_input:
+        # Извлекаем все числа
         nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", data_input)]
+        
         if len(nums) < grid_x * grid_y:
-            st.error(f"Нужно {grid_x * grid_y} точек.")
+            st.error(f"Нужно {grid_x * grid_y} точек. Найдено: {len(nums)}")
         else:
+            # НОВАЯ ЛОГИКА: Просто решейпим массив. 
+            # Точки идут слева направо ряд за рядом.
             matrix = np.array(nums[:grid_x*grid_y]).reshape((grid_y, grid_x))
-            for i in range(len(matrix)):
-                if i % 2 != 0: matrix[i] = matrix[i][::-1]
+            
+            # УДАЛЕНО: блок с разворотом нечетных строк matrix[i][::-1]
+            
             st.session_state.matrix = matrix
 
 st.divider()
@@ -73,7 +78,6 @@ if st.session_state.matrix is not None:
         tab1, tab2 = st.tabs(["📊 3D Рельеф", "🗺️ 2D Карта"])
         
         with tab1:
-            # 3D карта теперь работает корректно
             x_c, y_c = np.linspace(0, bed_x, grid_x), np.linspace(0, bed_y, grid_y)
             fig3 = go.Figure(data=[go.Surface(z=matrix, x=x_c, y=y_c, colorscale='RdYlBu_r')])
             fig3.update_layout(
@@ -84,10 +88,8 @@ if st.session_state.matrix is not None:
             st.plotly_chart(fig3, use_container_width=True)
 
         with tab2:
-            # ТРЮК ДЛЯ УМЕНЬШЕНИЯ: Создаем вложенные колонки внутри вкладки
-            # Это принудительно сожмет 2D карту в 2 раза
-            sub_col1, sub_col2 = st.columns([1, 1]) 
-            
+            # Уплотненная колонка для уменьшения 2D карты
+            sub_col1, _ = st.columns([1, 1]) 
             with sub_col1:
                 fig2, ax = plt.subplots(figsize=(4, 4), dpi=100) 
                 fig2.patch.set_facecolor('#0e1117')
