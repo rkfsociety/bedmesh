@@ -19,7 +19,7 @@ BTN_FETCH = "ПОЛУЧИТЬ ДАННЫЕ"
 BTN_RUN = "ПОСТРОИТЬ КАРТУ"
 
 TAB_2D = "2D КАРТА"
-TAB_RAW = "ЛОГ ПРИНТЕРА"
+TAB_RAW = "Printer Mutable"
 
 # Только то, что нужно регулировать
 Z_SYSTEMS = [

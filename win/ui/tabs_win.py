@@ -1,5 +1,5 @@
 import customtkinter as ctk
-import ui_elements_win, styles_win, config_win
+import win.ui.elements_win as elements_win, win.utils.styles_win as styles_win, win.core.config_win as config_win
 
 class SettingsTab(ctk.CTkScrollableFrame):
     def __init__(self, parent, create_bak_cb, restore_bak_cb, save_cb):
@@ -14,12 +14,12 @@ class SettingsTab(ctk.CTkScrollableFrame):
         ctk.CTkButton(bg, text="ВОССТАНОВИТЬ БЭКАП", fg_color="#554444", command=restore_bak_cb).pack(side="left", expand=True, padx=5, pady=5)
         
         ctk.CTkLabel(self, text="Настройка тензодатчика [cs1237]", font=styles_win.FONTS["ui_bold"]).pack(pady=(20, 5))
-        self.s1 = ui_elements_win.LabeledEntry(self, "sensitivity", "")
-        self.s2 = ui_elements_win.LabeledEntry(self, "head_block_sensitivity", "")
-        self.s3 = ui_elements_win.LabeledEntry(self, "scratch_sensitivity", "")
+        self.s1 = elements_win.LabeledEntry(self, "sensitivity", "")
+        self.s2 = elements_win.LabeledEntry(self, "head_block_sensitivity", "")
+        self.s3 = elements_win.LabeledEntry(self, "scratch_sensitivity", "")
         
         ctk.CTkLabel(self, text="Параметры калибровки [leviQ3]", font=styles_win.FONTS["ui_bold"]).pack(pady=(20, 5))
-        self.bed_t = ui_elements_win.LabeledEntry(self, "bed_temp", "")
+        self.bed_t = elements_win.LabeledEntry(self, "bed_temp", "")
         
         ctk.CTkButton(self, text="💾 СОХРАНИТЬ В ПРИНТЕР", height=50, fg_color="#d32f2f", command=save_cb).pack(pady=20, padx=20, fill="x")
 

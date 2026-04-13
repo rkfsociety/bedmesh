@@ -1,24 +1,19 @@
-import customtkinter as ctk
-
-class RecCard(ctk.CTkFrame):
-    def __init__(self, parent, name, val, turns, direction):
-        super().__init__(parent, fg_color="#333333", corner_radius=8)
-        self.pack(fill="x", pady=2, padx=5)
-        
-        # Для валов (независимых моторов) выводим только мм
-        if turns is None:
-            text = f"{name}: {val:+.3f} мм"
-        else:
-            # Для винтов - мм и обороты
-            text = f"{name}: {val:+.3f} мм ({turns:.2f} {direction})"
-            
-        ctk.CTkLabel(self, text=text, font=("Segoe UI", 12)).pack(pady=5)
+import numpy as np
 
 def get_recs(matrix, z_sys, pitch, gx):
+    """
+    Рассчитывает отклонения и обороты. 
+    Возвращает список словарей с данными.
+    """
+    if matrix is None or matrix.size == 0:
+        return []
+        
     gy = matrix.shape[0]
     # Опорная точка всегда центр стола
     ref = matrix[gy//2, gx//2]
     recs = []
+    
+    # Флаг: является ли выбранная система валами
     is_shafts = "Валы" in z_sys
 
     pts_map = {
@@ -41,15 +36,26 @@ def get_recs(matrix, z_sys, pitch, gx):
     }
 
     selected_pts = pts_map.get(z_sys, [])
+    
     for name, val in selected_pts:
         diff = ref - val
+        
         if is_shafts:
-            # Для валов возвращаем чистую разницу
-            recs.append({'name': name, 'val': diff, 'turns': None, 'dir': ""})
+            recs.append({
+                'name': name, 
+                'val': diff, 
+                'turns': None, 
+                'dir': ""
+            })
         else:
-            # Для винтов считаем обороты по шагу резьбы
-            turns = abs(diff) / pitch
+            current_pitch = pitch if pitch > 0 else 1.0
+            turns = abs(diff) / current_pitch
             direction = "CW (по час.)" if diff > 0 else "CCW (против)"
-            recs.append({'name': name, 'val': diff, 'turns': turns, 'dir': direction})
+            recs.append({
+                'name': name, 
+                'val': diff, 
+                'turns': turns, 
+                'dir': direction
+            })
             
-    return recs, None
+    return recs
