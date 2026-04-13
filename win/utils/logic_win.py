@@ -2,7 +2,7 @@ import os
 import sys
 
 # Актуальная версия приложения
-VERSION = "0.150-win" 
+VERSION = "0.151-win" 
 
 def resource_path(relative_path):
     """ Получает абсолютный путь к ресурсам для PyInstaller """
