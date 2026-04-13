@@ -1,8 +1,8 @@
 import os
 import sys
 
-# Актуальная версия
-VERSION = "0.140-win" 
+# Актуальная версия приложения
+VERSION = "0.150-win" 
 
 def resource_path(relative_path):
     """ 

@@ -10,15 +10,15 @@ from ui import left_panel_win, right_panel_win, center_block_win
 
 class App(ctk.CTk):
     def __init__(self):
-        # ПРИНУДИТЕЛЬНАЯ ТЕМА (Фикс белых полос)
+        # 1. Принудительно применяем DARK режим до создания окна
         styles_win.apply_global_styles()
         
         super().__init__()
 
-        # 1. Загрузка настроек
+        # 2. Загрузка настроек
         self.settings = storage_win.load_settings()
         
-        # 2. Базовая настройка окна
+        # 3. Базовая настройка окна
         self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
         self.center_window()
         self.set_app_icon()
@@ -26,7 +26,7 @@ class App(ctk.CTk):
         self.last_raw_data = ""
         self.matrix = None
 
-        # 3. Сетка интерфейса
+        # 4. Сетка интерфейса
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -52,12 +52,12 @@ class App(ctk.CTk):
         )
         self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(0, 10), pady=10)
 
-        # Применение состояния при старте
+        # Применение состояния расширенных настроек при старте
         initial_adv = self.settings.get("show_mutable", False)
         self.toggle_log_view(initial_adv)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        logger_win.info("Приложение запущено в принудительном DARK режиме.")
+        logger_win.info(f"Приложение v{logic_win.VERSION} запущено в режиме FORCE DARK.")
 
     def toggle_log_view(self, state):
         self.settings["show_mutable"] = state
@@ -113,7 +113,7 @@ class App(ctk.CTk):
             else:
                 logger_win.warning("Данные не получены.")
         except Exception as e:
-            logger_win.error(f"Ошибка: {e}")
+            logger_win.error(f"Ошибка в воркере: {e}")
 
     def refresh_ui(self):
         if self.matrix is None: return
