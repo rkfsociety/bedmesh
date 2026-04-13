@@ -1,19 +1,24 @@
-FONT_NAME = "Segoe UI"
-FONTS = {
-    "title": (FONT_NAME, 20, "bold"),
-    "ui": (FONT_NAME, 12),
-    "ui_bold": (FONT_NAME, 12, "bold"),
-    "micro": (FONT_NAME, 10, "bold"),
-    "code": ("Consolas", 11)
+import customtkinter as ctk
+
+# Цветовая палитра
+COLORS = {
+    "bg_dark": "#1a1a1a",
+    "bg_panel": "#2b2b2b",
+    "accent": "#00ffcc",
+    "text_main": "#ffffff",
+    "text_dim": "#aaaaaa",
+    "border": "#3d3d3d"
 }
 
-COLORS = {
-    "dark": {
-        "bg": "#1a1a1a",
-        "card": "#252525",
-        "success": "#2d5a27",
-        "warning": "#8b7500",
-        "error": "#7a2424",
-        "text": "#ffffff"
-    }
+# Шрифты
+FONTS = {
+    "title": ("Segoe UI", 16, "bold"),
+    "ui": ("Segoe UI", 12),
+    "ui_bold": ("Segoe UI", 12, "bold"),
+    "micro": ("Segoe UI", 10)
 }
+
+def apply_global_styles():
+    """Принудительная установка темной темы для всех систем"""
+    ctk.set_appearance_mode("dark")  # Игнорируем светлую тему Windows
+    ctk.set_default_color_theme("blue") # Базовая тема (можно "green" или "dark-blue")

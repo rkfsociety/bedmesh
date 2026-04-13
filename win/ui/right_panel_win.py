@@ -2,65 +2,67 @@ import customtkinter as ctk
 import numpy as np
 from core import calculator_win
 from ui.recs_win import RecCard
+from utils import strings_win
 
 class RightPanel(ctk.CTkFrame):
     def __init__(self, parent, z_sys, pitch, refresh_cb):
-        super().__init__(parent, width=280, fg_color="#2b2b2b", corner_radius=15)
+        # Ширина 320 — теперь стандарт для нормального отображения текста
+        super().__init__(parent, width=320, fg_color="#2b2b2b", corner_radius=15)
         self.refresh_cb = refresh_cb
         self.last_matrix = None
         self.last_gx = 5
         
-        self.init_ui(z_sys, pitch)
-
-    def init_ui(self, z_sys, pitch):
-        ctk.CTkLabel(self, text="📝 АНАЛИЗ МЕША", font=("Segoe UI", 14, "bold")).pack(pady=(15, 10))
+        self.fixed_z_sys = "Валы (2 перед, 1 зад)"
+        self.fixed_pitch = 0.7 
         
+        self.init_ui()
+
+    def init_ui(self):
+        # Заголовок блока анализа
+        ctk.CTkLabel(self, text=strings_win.SECTION_ANALYSIS, font=("Segoe UI", 16, "bold")).pack(pady=(20, 15))
+        
+        # Сетка статистики (Мин, Макс и т.д.)
         self.f_stats = ctk.CTkFrame(self, fg_color="transparent")
         self.f_stats.pack(fill="x", padx=15)
         self.metrics = {}
-        labels = [("Мин", "min"), ("Макс", "max"), ("Размах", "range"), 
-                  ("Среднее", "mean"), ("Варианс", "var"), ("RMS", "rms")]
+        
+        labels = [
+            (strings_win.METRIC_MIN, "min"), (strings_win.METRIC_MAX, "max"), 
+            (strings_win.METRIC_RANGE, "range"), (strings_win.METRIC_MEAN, "mean"), 
+            (strings_win.METRIC_VAR, "var"), (strings_win.METRIC_RMS, "rms")
+        ]
         
         for i, (name, key) in enumerate(labels):
             row, col = divmod(i, 2)
             f = ctk.CTkFrame(self.f_stats, fg_color="#333333", corner_radius=8)
-            f.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
-            ctk.CTkLabel(f, text=name, font=("Segoe UI", 10), text_color="#aaaaaa").pack()
-            self.metrics[key] = ctk.CTkLabel(f, text="0.000", font=("Segoe UI", 12, "bold"), text_color="#00ffcc")
-            self.metrics[key].pack()
+            f.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+            ctk.CTkLabel(f, text=name, font=("Segoe UI", 11), text_color="#aaaaaa").pack(pady=(2, 0))
+            self.metrics[key] = ctk.CTkLabel(f, text="0.000", font=("Segoe UI", 13, "bold"), text_color="#00ffcc")
+            self.metrics[key].pack(pady=(0, 2))
             self.f_stats.grid_columnconfigure(col, weight=1)
 
-        ctk.CTkLabel(self, text="—" * 15, text_color="#3d3d3d").pack(pady=10)
+        ctk.CTkLabel(self, text="—" * 25, text_color="#3d3d3d").pack(pady=15)
         
-        self.z_m = ctk.CTkOptionMenu(self, values=["Винты (4шт)", "Винты (3шт)", "Валы (2 перед, 1 зад)", "Валы (4 по углам)"], 
-                                     command=self._on_ui_change, fg_color="#3d3d3d")
-        self.z_m.set(z_sys)
-        self.z_m.pack(pady=5, padx=15, fill="x")
-        
-        self.p_m = ctk.CTkOptionMenu(self, values=["0.7", "0.5", "0.4", "0.8", "1.0", "2.0"], 
-                                     command=self._on_ui_change, fg_color="#3d3d3d")
-        self.p_m.set(str(pitch))
-        self.p_m.pack(pady=5, padx=15, fill="x")
+        # Текстовые пояснения метода
+        ctk.CTkLabel(self, text=strings_win.ANALYSIS_METHOD, font=("Segoe UI", 12, "bold"), text_color="#ffffff").pack(pady=2)
+        ctk.CTkLabel(self, text=strings_win.ANALYSIS_SUBTEXT, font=("Segoe UI", 10), text_color="#888888").pack(pady=(0, 10))
 
-        self.res_area = ctk.CTkScrollableFrame(self, fg_color="transparent", height=250)
-        self.res_area.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self._check_pitch_visibility(z_sys)
-
-    def _on_ui_change(self, _=None):
-        self._check_pitch_visibility(self.z_m.get())
-        self.refresh_cb()
-        if self.last_matrix is not None:
-            self.update_results(self.last_matrix, self.last_gx)
-
-    def _check_pitch_visibility(self, z_type):
-        if "Валы" in z_type: self.p_m.pack_forget()
-        else: self.p_m.pack(pady=5, padx=15, fill="x", after=self.z_m)
+        # Настраиваемая область со скроллом (на будущее)
+        self.res_area = ctk.CTkScrollableFrame(
+            self, 
+            fg_color="transparent", 
+            height=400,
+            # Скрываем визуально ползунок, пока данных мало
+            scrollbar_button_color="transparent",
+            scrollbar_button_hover_color="#3d3d3d"
+        )
+        self.res_area.pack(fill="both", expand=True, padx=15, pady=5)
 
     def update_results(self, matrix, gx):
         if matrix is None: return
         self.last_matrix, self.last_gx = matrix, gx
         
+        # Обновление цифровых показателей
         flat = matrix.flatten()
         self.metrics["min"].configure(text=f"{np.min(flat):.3f}")
         self.metrics["max"].configure(text=f"{np.max(flat):.3f}")
@@ -69,7 +71,19 @@ class RightPanel(ctk.CTkFrame):
         self.metrics["var"].configure(text=f"{np.var(flat):.4f}")
         self.metrics["rms"].configure(text=f"{np.sqrt(np.mean(matrix**2)):.3f}")
 
-        for w in self.res_area.winfo_children(): w.destroy()
-        recs = calculator_win.get_recs(matrix, self.z_m.get(), float(self.p_m.get()), gx)
+        # Очистка старых карточек
+        for w in self.res_area.winfo_children(): 
+            w.destroy()
+            
+        # Получаем рекомендации (расчет идет от среднего)
+        recs = calculator_win.get_recs(matrix, self.fixed_z_sys, self.fixed_pitch, gx)
+        
         for r in recs:
             RecCard(self.res_area, r['name'], r['val'], r['turns'], r['dir'])
+        
+        # Логика управления скроллом: 
+        # Если карточек (или других элементов в будущем) становится много — проявляем скролл
+        if len(self.res_area.winfo_children()) > 4:
+            self.res_area.configure(scrollbar_button_color="#3d3d3d")
+        else:
+            self.res_area.configure(scrollbar_button_color="transparent")

@@ -2,60 +2,41 @@ import numpy as np
 
 def get_recs(matrix, z_sys, pitch, gx):
     """
-    Рассчитывает отклонения и обороты. 
-    Возвращает список словарей с данными.
+    Расчет коррекции для 3-х точек (2 спереди, 1 сзади по центру)
+    Относительно СРЕДНЕЙ плоскости меша.
     """
-    if matrix is None or matrix.size == 0:
-        return []
-        
-    gy = matrix.shape[0]
-    # Опорная точка всегда центр стола
-    ref = matrix[gy//2, gx//2]
+    if matrix is None: return []
+    
+    # Вычисляем среднее значение всей поверхности
+    mean_val = np.mean(matrix)
+    
+    # Координаты точек (индексы в матрице)
+    # Передний левый (FL): индекс [0, 0]
+    # Передний правый (FR): индекс [0, gx-1]
+    # Задний центр (BC): индекс [gx-1, gx//2]
+    
+    points = [
+        {"name": "Передний Левый", "val": matrix[0, 0] - mean_val},
+        {"name": "Передний Правый", "val": matrix[0, gx-1] - mean_val},
+        {"name": "Задний Центр", "val": matrix[gx-1, gx//2] - mean_val}
+    ]
+    
     recs = []
-    
-    # Флаг: является ли выбранная система валами
-    is_shafts = "Валы" in z_sys
-
-    pts_map = {
-        "Винты (4шт)": [
-            ("Лево-перед", matrix[0, 0]), ("Право-перед", matrix[0, -1]),
-            ("Лево-зад", matrix[-1, 0]), ("Право-зад", matrix[-1, -1])
-        ],
-        "Винты (3шт)": [
-            ("Лево-перед", matrix[0, 0]), ("Право-перед", matrix[0, -1]),
-            ("Центр-зад", matrix[-1, gx//2])
-        ],
-        "Валы (2 перед, 1 зад)": [
-            ("Вал лево-перед", matrix[0, 0]), ("Вал право-перед", matrix[0, -1]),
-            ("Вал центр-зад", matrix[-1, gx//2])
-        ],
-        "Валы (4 по углам)": [
-            ("Вал лево-перед", matrix[0, 0]), ("Вал право-перед", matrix[0, -1]),
-            ("Вал лево-зад", matrix[-1, 0]), ("Вал право-зад", matrix[-1, -1])
-        ]
-    }
-
-    selected_pts = pts_map.get(z_sys, [])
-    
-    for name, val in selected_pts:
-        diff = ref - val
+    for p in points:
+        diff = p["val"]
+        # Если значение > 0, значит точка выше средней -> надо ОПУСТИТЬ
+        # Если значение < 0, значит точка ниже средней -> надо ПОДНЯТЬ
+        direction = "ВНИЗ" if diff > 0 else "ВВЕРХ"
         
-        if is_shafts:
-            recs.append({
-                'name': name, 
-                'val': diff, 
-                'turns': None, 
-                'dir': ""
-            })
-        else:
-            current_pitch = pitch if pitch > 0 else 1.0
-            turns = abs(diff) / current_pitch
-            direction = "CW (по час.)" if diff > 0 else "CCW (против)"
-            recs.append({
-                'name': name, 
-                'val': diff, 
-                'turns': turns, 
-                'dir': direction
-            })
-            
+        # Переводим в обороты (для валов шаг pitch обычно справочный)
+        # Если используем винты на валах, шаг важен. Если просто микроны - оставляем val.
+        turns = abs(diff) / pitch if pitch > 0 else 0
+        
+        recs.append({
+            "name": p["name"],
+            "val": abs(diff),
+            "turns": turns,
+            "dir": direction
+        })
+        
     return recs

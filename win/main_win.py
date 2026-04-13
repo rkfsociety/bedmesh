@@ -4,25 +4,29 @@ import sys
 import threading
 import matplotlib.pyplot as plt
 
-from utils import logic_win, strings_win, storage_win, logger_win
+from utils import logic_win, strings_win, storage_win, logger_win, styles_win
 from core import mesh_parser_win, transport_win
 from ui import left_panel_win, right_panel_win, center_block_win
 
 class App(ctk.CTk):
     def __init__(self):
+        # ПРИНУДИТЕЛЬНАЯ ТЕМА (Фикс белых полос)
+        styles_win.apply_global_styles()
+        
         super().__init__()
 
-        # 1. Базовая настройка
+        # 1. Загрузка настроек
+        self.settings = storage_win.load_settings()
+        
+        # 2. Базовая настройка окна
         self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
         self.center_window()
         self.set_app_icon()
 
-        # 2. Данные и настройки
-        self.settings = storage_win.load_settings()
-        self.last_raw_data = "" # Здесь хранятся скачанные данные
+        self.last_raw_data = ""
         self.matrix = None
 
-        # 3. Сетка
+        # 3. Сетка интерфейса
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -32,41 +36,38 @@ class App(ctk.CTk):
 
         # Левая панель
         self.left_panel = left_panel_win.LeftPanel(
-            self, self.settings, self.on_visualize_click, self.toggle_log_view
+            self, 
+            settings=self.settings, 
+            fetch_callback=self.on_visualize_click, 
+            toggle_log_cb=self.toggle_log_view
         )
         self.left_panel.grid(row=0, column=0, sticky="nsew")
 
         # Правая панель
         self.right_panel = right_panel_win.RightPanel(
             self, 
-            z_sys=self.settings.get("z_sys", "Винты (4шт)"),
-            pitch=float(self.settings.get("pitch", 0.7)),
+            z_sys=None,
+            pitch=0.7,
             refresh_cb=self.on_settings_changed
         )
         self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(0, 10), pady=10)
 
-        # Проверка состояния при старте
+        # Применение состояния при старте
         initial_adv = self.settings.get("show_mutable", False)
         self.toggle_log_view(initial_adv)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        logger_win.info(f"Приложение запущено. Версия: {logic_win.VERSION}")
+        logger_win.info("Приложение запущено в принудительном DARK режиме.")
 
     def toggle_log_view(self, state):
-        """Управляет видимостью вкладки без повторного запроса к SSH"""
         self.settings["show_mutable"] = state
         storage_win.save_settings(self.settings)
-        
         if state:
             self.center_block.show_raw_tab()
-            # ВАЖНО: Если данные уже были загружены ранее, просто отображаем их
             if self.last_raw_data:
-                gx = self.left_panel.get_gx()
-                self.center_block.update_display(self.matrix, gx, self.last_raw_data)
+                self.center_block.update_display(self.matrix, self.left_panel.get_gx(), self.last_raw_data)
         else:
             self.center_block.hide_raw_tab()
-            
-        logger_win.info(f"Режим расширенных настроек: {state}. Вкладка RAW обновлена.")
 
     def set_app_icon(self):
         icon_path = logic_win.resource_path("icon.ico")
@@ -74,45 +75,55 @@ class App(ctk.CTk):
             try:
                 if sys.platform.startswith('win'):
                     self.after(200, lambda: self.iconbitmap(icon_path))
-            except Exception as e:
-                logger_win.error(f"Ошибка иконки: {e}")
+            except: pass
 
     def on_visualize_click(self):
-        logger_win.info("Запуск потока SSH...")
+        self.update_settings_from_ui()
+        storage_win.save_settings(self.settings)
         thread = threading.Thread(target=self.worker_fetch_data, daemon=True)
         thread.start()
+
+    def update_settings_from_ui(self):
+        self.settings["host"] = self.left_panel.ip.get()
+        self.settings["port"] = self.left_panel.port.get()
+        self.settings["user"] = self.left_panel.user.get()
+        self.settings["password"] = self.left_panel.pwd.get()
+        self.settings["path"] = self.left_panel.p_mesh.get()
+        self.settings["path_cfg"] = self.left_panel.p_cfg.get()
+        self.settings["bed_x"] = self.left_panel.bx.get()
+        self.settings["bed_y"] = self.left_panel.by.get()
+        self.settings["grid_x"] = self.left_panel.gx.get()
+        self.settings["grid_y"] = self.left_panel.gy.get()
 
     def worker_fetch_data(self):
         try:
             raw = transport_win.fetch_ssh(
-                self.left_panel.ip.get(), self.left_panel.port.get(),
-                self.left_panel.user.get(), self.left_panel.pwd.get(),
-                self.left_panel.p_mesh.get()
+                self.settings["host"], self.settings["port"],
+                self.settings["user"], self.settings["password"],
+                self.settings["path"]
             )
             if raw:
-                self.last_raw_data = raw # Сохраняем текст файла в память
-                gx, gy = self.left_panel.get_gx(), self.left_panel.get_gy()
+                self.last_raw_data = raw
+                gx = int(self.settings["grid_x"])
+                gy = int(self.settings["grid_y"])
                 matrix, err = mesh_parser_win.parse_points(raw, gx, gy)
                 if matrix is not None:
                     self.matrix = matrix
                     self.after(0, self.refresh_ui)
             else:
-                logger_win.warning("SSH не вернул данных.")
+                logger_win.warning("Данные не получены.")
         except Exception as e:
-            logger_win.error(f"Ошибка в воркере: {e}")
+            logger_win.error(f"Ошибка: {e}")
 
     def refresh_ui(self):
         if self.matrix is None: return
-        self.center_block.update_display(self.matrix, self.left_panel.get_gx(), self.last_raw_data)
-        self.right_panel.update_results(self.matrix, self.left_panel.get_gx())
+        gx = int(self.settings["grid_x"])
+        self.center_block.update_display(self.matrix, gx, self.last_raw_data)
+        self.right_panel.update_results(self.matrix, gx)
 
     def on_settings_changed(self):
-        self.settings["z_sys"] = self.right_panel.z_m.get()
-        if self.right_panel.p_m.winfo_ismapped():
-            self.settings["pitch"] = self.right_panel.p_m.get()
-        storage_win.save_settings(self.settings)
         if self.matrix is not None:
-            self.right_panel.update_results(self.matrix, self.left_panel.get_gx())
+            self.right_panel.update_results(self.matrix, int(self.left_panel.gx.get()))
 
     def center_window(self):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
