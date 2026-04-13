@@ -12,29 +12,33 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Настройка окна
+        # 1. Базовая настройка
         self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
         self.center_window()
+        
+        # Установка иконки
         self.set_app_icon()
 
-        # Загрузка конфига
+        # 2. Данные и настройки
         self.settings = storage_win.load_settings()
         self.last_raw_data = ""
         self.matrix = None
 
-        # Сетка
+        # 3. Сетка интерфейса
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Панели
+        # Левая панель
         self.left_panel = left_panel_win.LeftPanel(
             self, self.settings, self.on_visualize_click, self.toggle_log_view
         )
         self.left_panel.grid(row=0, column=0, sticky="nsew")
 
+        # Центр
         self.center_block = center_block_win.CenterBlock(self)
         self.center_block.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
 
+        # Правая панель
         self.right_panel = right_panel_win.RightPanel(
             self, 
             z_sys=self.settings.get("z_sys", "Винты (4шт)"),
@@ -46,15 +50,28 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         logger_win.info(f"Приложение запущено. Версия: {logic_win.VERSION}")
 
+    def set_app_icon(self):
+        """Исправленная установка иконки для EXE"""
+        icon_path = logic_win.resource_path("icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                if sys.platform.startswith('win'):
+                    # after нужен для надежной инициализации иконки в Windows
+                    self.after(200, lambda: self.iconbitmap(icon_path))
+                logger_win.info("Иконка успешно установлена.")
+            except Exception as e:
+                logger_win.error(f"Ошибка иконки: {e}")
+        else:
+            logger_win.warning(f"Файл иконки не найден: {icon_path}")
+
     def on_visualize_click(self):
-        """Обработка клика: запуск в фоновом потоке"""
-        # Блокируем кнопку на время загрузки (опционально)
-        logger_win.info("Кнопка нажата. Запуск фонового потока SSH...")
+        """Запуск SSH в отдельном потоке, чтобы окно не висло"""
+        logger_win.info("Запуск потока получения данных...")
         thread = threading.Thread(target=self.worker_fetch_data, daemon=True)
         thread.start()
 
     def worker_fetch_data(self):
-        """Метод, работающий в фоновом потоке"""
+        """Работа с сетью в фоне"""
         try:
             raw = transport_win.fetch_ssh(
                 self.left_panel.ip.get(), 
@@ -73,16 +90,17 @@ class App(ctk.CTk):
                 
                 if matrix is not None:
                     self.matrix = matrix
-                    # Обновление UI должно быть в главном потоке
+                    # Возвращаемся в главный поток для обновления UI
                     self.after(0, self.refresh_ui)
                 else:
-                    logger_win.error(f"Парсинг не удался: {err}")
+                    logger_win.error(f"Ошибка парсинга: {err}")
             else:
-                logger_win.warning("Данные с принтера не получены.")
+                logger_win.warning("SSH не вернул данных.")
         except Exception as e:
-            logger_win.error(f"Ошибка в потоке: {e}")
+            logger_win.error(f"Ошибка в воркере: {e}")
 
     def refresh_ui(self):
+        """Обновление всех визуальных компонентов"""
         if self.matrix is None: return
         gx = self.left_panel.get_gx()
         self.center_block.update_display(self.matrix, gx, self.last_raw_data)
@@ -90,20 +108,13 @@ class App(ctk.CTk):
         logger_win.info("Интерфейс обновлен.")
 
     def on_settings_changed(self):
+        """Сохранение настроек при смене типа механики"""
         self.settings["z_sys"] = self.right_panel.z_m.get()
         if self.right_panel.p_m.winfo_ismapped():
             self.settings["pitch"] = self.right_panel.p_m.get()
         storage_win.save_settings(self.settings)
         if self.matrix is not None:
             self.right_panel.update_results(self.matrix, self.left_panel.get_gx())
-
-    def set_app_icon(self):
-        icon_path = logic_win.resource_path("icon.ico")
-        if os.path.exists(icon_path):
-            try:
-                if sys.platform.startswith('win'):
-                    self.after(200, lambda: self.iconbitmap(icon_path))
-            except: pass
 
     def center_window(self):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()

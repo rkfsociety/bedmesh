@@ -9,7 +9,7 @@ class LeftPanel(ctk.CTkScrollableFrame):
         
         self.toggle_log_cb = toggle_log_cb
 
-        # --- 1. ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМА (Теперь в самом верху) ---
+        # --- 1. ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМА (В САМОМ ВЕРХУ) ---
         self.adv_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.adv_frame.pack(pady=(15, 5), padx=20, fill="x")
 
@@ -28,51 +28,50 @@ class LeftPanel(ctk.CTkScrollableFrame):
         # --- 2. Блок SSH ---
         ctk.CTkLabel(self, text=strings_win.SECTION_SSH, font=styles_win.FONTS["title"]).pack(pady=(10, 5))
         
-        # IP всегда виден
+        # Поле IP (всегда видно)
         self.ip = elements_win.LabeledEntry(self, strings_win.LBL_IP, settings.get("host", "192.168.1.1"))
         
-        # Контейнер для скрытых полей SSH
-        self.extra_ssh_frame = ctk.CTkFrame(self, fg_color="transparent")
+        # Контейнер для ВСЕХ скрытых полей (SSH + Геометрия)
+        self.extra_settings_frame = ctk.CTkFrame(self, fg_color="transparent")
         
-        self.port = elements_win.LabeledEntry(self.extra_ssh_frame, strings_win.LBL_PORT, settings.get("port", "2222"))
-        self.user = elements_win.LabeledEntry(self.extra_ssh_frame, strings_win.LBL_USER, settings.get("user", "root"))
-        self.pwd = elements_win.LabeledEntry(self.extra_ssh_frame, strings_win.LBL_PASS, settings.get("password", "rockchip"), show="*")
+        # Скрытые поля SSH
+        self.port = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_PORT, settings.get("port", "2222"))
+        self.user = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_USER, settings.get("user", "root"))
+        self.pwd = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_PASS, settings.get("password", "rockchip"), show="*")
         
-        self.p_mesh = elements_win.LabeledEntry(self.extra_ssh_frame, strings_win.LBL_PATH, settings.get("path", "/userdata/app/gk/printer_mutable.cfg"))
-        self.p_cfg = elements_win.LabeledEntry(self.extra_ssh_frame, strings_win.LBL_PATH_CFG, settings.get("path_cfg", "/userdata/app/gk/printer.cfg"))
+        self.p_mesh = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_PATH, settings.get("path", "/userdata/app/gk/printer_mutable.cfg"))
+        self.p_cfg = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_PATH_CFG, settings.get("path_cfg", "/userdata/app/gk/printer.cfg"))
         
-        # Кнопка получения данных (Всегда видна)
+        # Скрытые поля Геометрии
+        ctk.CTkLabel(self.extra_settings_frame, text=strings_win.SECTION_GEOMETRY, font=styles_win.FONTS["ui_bold"]).pack(pady=(15, 5))
+        self.bx = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_BED_X, settings.get("bed_x", "250"))
+        self.by = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_BED_Y, settings.get("bed_y", "250"))
+        self.gx = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_GRID_X, settings.get("grid_x", "5"))
+        self.gy = elements_win.LabeledEntry(self.extra_settings_frame, strings_win.LBL_GRID_Y, settings.get("grid_y", "5"))
+        
+        # Кнопка получения данных (всегда видна)
         ctk.CTkButton(
             self, 
             text=strings_win.BTN_FETCH, 
             command=fetch_callback, 
             fg_color="#3d3d3d", 
-            height=35,
+            height=40,
             font=styles_win.FONTS["ui_bold"]
-        ).pack(pady=10, padx=25, fill="x")
-        
-        # --- 3. Блок Геометрия ---
-        ctk.CTkLabel(self, text=strings_win.SECTION_GEOMETRY, font=styles_win.FONTS["ui_bold"]).pack(pady=(10, 5))
-        self.bx = elements_win.LabeledEntry(self, strings_win.LBL_BED_X, settings.get("bed_x", "250"))
-        self.by = elements_win.LabeledEntry(self, strings_win.LBL_BED_Y, settings.get("bed_y", "250"))
-        self.gx = elements_win.LabeledEntry(self, strings_win.LBL_GRID_X, settings.get("grid_x", "5"))
-        self.gy = elements_win.LabeledEntry(self, strings_win.LBL_GRID_Y, settings.get("grid_y", "5"))
+        ).pack(pady=20, padx=25, fill="x")
 
-        # Установка начального состояния
+        # Установка начального состояния при запуске
         if settings.get("show_mutable", False):
             self.adv_switch.select()
-            self.extra_ssh_frame.pack(after=self.ip, fill="x")
+            self.extra_settings_frame.pack(after=self.ip, fill="x")
 
     def _on_adv_toggle(self):
-        """Логика показа/скрытия полей при клике на свитч"""
+        """Метод показа/скрытия полей"""
         is_active = self.adv_switch.get()
-        
         if is_active:
-            self.extra_ssh_frame.pack(after=self.ip, fill="x")
+            self.extra_settings_frame.pack(after=self.ip, fill="x")
         else:
-            self.extra_ssh_frame.pack_forget()
+            self.extra_settings_frame.pack_forget()
         
-        # Уведомляем Main о смене режима
         self.toggle_log_cb(is_active)
 
     def get_gx(self):
