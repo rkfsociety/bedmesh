@@ -1,43 +1,42 @@
 import paramiko
+from utils import logger_win
 
 def fetch_ssh(host, port, user, pwd, path):
-    if not path or path.strip() == "": 
-        return ""
-    
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
+    logger_win.info(f"--- SSH START: {host}:{port} ---")
+    
     try:
-        client.connect(host, int(port), user, pwd, timeout=10)
-        sftp = client.open_sftp()
-        try:
-            with sftp.open(path, 'rb') as f:
-                content = f.read().decode('utf-8', errors='ignore')
-            return content
-        finally:
-            sftp.close() # Закрываем SFTP в любом случае
-    except Exception as e:
-        print(f"SSH Fetch Error: {e}")
-        return ""
-    finally:
-        client.close() # Закрываем сессию SSH, чтобы процесс не висел
-
-def save_ssh(host, port, user, pwd, path, content):
-    if not path or path.strip() == "":
-        return
+        # timeout=5 не даст программе висеть дольше 5 секунд при плохом соединении
+        logger_win.info("Подключение к серверу...")
+        client.connect(
+            hostname=host, 
+            port=int(port), 
+            username=user, 
+            password=pwd, 
+            timeout=5, 
+            auth_timeout=5
+        )
         
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
-    try:
-        client.connect(host, int(port), user, pwd, timeout=10)
+        logger_win.info(f"Запрос файла по пути: {path}")
         sftp = client.open_sftp()
-        try:
-            with sftp.open(path, 'wb') as f: 
-                f.write(content.encode('utf-8'))
-        finally:
-            sftp.close()
+        
+        with sftp.open(path, "r") as f:
+            content = f.read().decode('utf-8', errors='ignore')
+        
+        sftp.close()
+        logger_win.info(f"Данные получены успешно ({len(content)} байт)")
+        return content
+
+    except paramiko.AuthenticationException:
+        logger_win.error("Ошибка: Неверный логин или пароль")
+    except paramiko.SSHException as e:
+        logger_win.error(f"Ошибка протокола SSH: {e}")
     except Exception as e:
-        print(f"SSH Save Error: {e}")
+        logger_win.error(f"Ошибка соединения: {str(e)}")
     finally:
         client.close()
+        logger_win.info("--- SSH END ---")
+            
+    return ""
