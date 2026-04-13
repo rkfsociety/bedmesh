@@ -5,15 +5,17 @@ import sys
 VERSION = "0.150-win" 
 
 def resource_path(relative_path):
-    """ 
-    Получает абсолютный путь к ресурсам. 
-    Необходим для того, чтобы PyInstaller видел иконку внутри .exe
-    """
+    """ Получает абсолютный путь к ресурсам для PyInstaller """
     try:
-        # Путь временной папки PyInstaller
         base_path = sys._MEIPASS
     except Exception:
-        # Обычный путь при запуске через VS Code
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+def check_updates():
+    """ 
+    Заглушка для совместимости. 
+    Основная логика теперь в updater_win.py 
+    """
+    return True

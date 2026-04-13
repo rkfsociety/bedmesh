@@ -3,140 +3,125 @@ import os
 import sys
 import threading
 import matplotlib.pyplot as plt
+from tkinter import messagebox
+import ctypes # Добавлено для фикса иконки в таскбаре
 
-from utils import logic_win, strings_win, storage_win, logger_win, styles_win
-from core import mesh_parser_win, transport_win
+from utils import logic_win, strings_win, storage_win, logger_win, styles_win, updater_win
+from core import mesh_parser_win, transport_win, backup_win, config_editor_win
 from ui import left_panel_win, right_panel_win, center_block_win
 
 class App(ctk.CTk):
     def __init__(self):
-        # 1. Принудительно применяем DARK режим до создания окна
         styles_win.apply_global_styles()
-        
         super().__init__()
 
-        # 2. Загрузка настроек
         self.settings = storage_win.load_settings()
-        
-        # 3. Базовая настройка окна
         self.title(f"{strings_win.APP_TITLE} v{logic_win.VERSION}")
-        self.center_window()
+        
+        # 1. Сначала ставим иконку
         self.set_app_icon()
+        # 2. Потом центруем
+        self.center_window()
 
-        self.last_raw_data = ""
+        self.last_raw_mutable = ""
+        self.last_raw_config = ""
         self.matrix = None
 
-        # 4. Сетка интерфейса
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Центр
         self.center_block = center_block_win.CenterBlock(self)
         self.center_block.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
 
-        # Левая панель
-        self.left_panel = left_panel_win.LeftPanel(
-            self, 
-            settings=self.settings, 
-            fetch_callback=self.on_visualize_click, 
-            toggle_log_cb=self.toggle_log_view
-        )
+        self.left_panel = left_panel_win.LeftPanel(self, self.settings, self.on_visualize_click, self.toggle_log_view)
         self.left_panel.grid(row=0, column=0, sticky="nsew")
 
-        # Правая панель
-        self.right_panel = right_panel_win.RightPanel(
-            self, 
-            z_sys=None,
-            pitch=0.7,
-            refresh_cb=self.on_settings_changed
-        )
+        self.right_panel = right_panel_win.RightPanel(self, None, 0.7, self.on_settings_changed)
         self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(0, 10), pady=10)
 
-        # Применение состояния расширенных настроек при старте
-        initial_adv = self.settings.get("show_mutable", False)
-        self.toggle_log_view(initial_adv)
-
+        updater_win.check_for_updates(logic_win.VERSION, self.on_update_found)
+        self.toggle_log_view(self.settings.get("show_mutable", False))
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        logger_win.info(f"Приложение v{logic_win.VERSION} запущено в режиме FORCE DARK.")
 
     def toggle_log_view(self, state):
         self.settings["show_mutable"] = state
         storage_win.save_settings(self.settings)
         if state:
             self.center_block.show_raw_tab()
-            if self.last_raw_data:
-                self.center_block.update_display(self.matrix, self.left_panel.get_gx(), self.last_raw_data)
+            self.center_block.show_config_editor_tab(self.on_save_config_request, self.on_restore_backup_request)
+            if self.last_raw_mutable:
+                self.center_block.update_display(self.matrix, int(self.settings["grid_x"]), self.last_raw_mutable)
         else:
             self.center_block.hide_raw_tab()
-
-    def set_app_icon(self):
-        icon_path = logic_win.resource_path("icon.ico")
-        if os.path.exists(icon_path):
-            try:
-                if sys.platform.startswith('win'):
-                    self.after(200, lambda: self.iconbitmap(icon_path))
-            except: pass
+            self.center_block.hide_config_editor_tab()
 
     def on_visualize_click(self):
         self.update_settings_from_ui()
         storage_win.save_settings(self.settings)
-        thread = threading.Thread(target=self.worker_fetch_data, daemon=True)
-        thread.start()
-
-    def update_settings_from_ui(self):
-        self.settings["host"] = self.left_panel.ip.get()
-        self.settings["port"] = self.left_panel.port.get()
-        self.settings["user"] = self.left_panel.user.get()
-        self.settings["password"] = self.left_panel.pwd.get()
-        self.settings["path"] = self.left_panel.p_mesh.get()
-        self.settings["path_cfg"] = self.left_panel.p_cfg.get()
-        self.settings["bed_x"] = self.left_panel.bx.get()
-        self.settings["bed_y"] = self.left_panel.by.get()
-        self.settings["grid_x"] = self.left_panel.gx.get()
-        self.settings["grid_y"] = self.left_panel.gy.get()
+        self.right_panel.set_status("busy")
+        threading.Thread(target=self.worker_fetch_data, daemon=True).start()
 
     def worker_fetch_data(self):
+        h, p, u, pw = self.settings["host"], self.settings["port"], self.settings["user"], self.settings["password"]
+        p_mesh, p_cfg = self.settings["path"], self.settings["path_cfg"]
         try:
-            raw = transport_win.fetch_ssh(
-                self.settings["host"], self.settings["port"],
-                self.settings["user"], self.settings["password"],
-                self.settings["path"]
-            )
-            if raw:
-                self.last_raw_data = raw
-                gx = int(self.settings["grid_x"])
-                gy = int(self.settings["grid_y"])
-                matrix, err = mesh_parser_win.parse_points(raw, gx, gy)
+            backup_win.auto_backup_if_missing(h, p, u, pw, p_cfg)
+            backups = backup_win.get_backup_list(h, p, u, pw, p_cfg)
+            self.after(0, lambda: self.center_block.update_backup_list(backups))
+            raw_m = transport_win.fetch_ssh(h, p, u, pw, p_mesh)
+            raw_c = transport_win.fetch_ssh(h, p, u, pw, p_cfg)
+            if raw_m and raw_c:
+                self.last_raw_mutable = raw_m
+                self.last_raw_config = raw_c
+                gx, gy = int(self.settings["grid_x"]), int(self.settings["grid_y"])
+                matrix, _ = mesh_parser_win.parse_points(raw_m, gx, gy)
                 if matrix is not None:
                     self.matrix = matrix
-                    self.after(0, self.refresh_ui)
-            else:
-                logger_win.warning("Данные не получены.")
-        except Exception as e:
-            logger_win.error(f"Ошибка в воркере: {e}")
+                    self.after(0, lambda: self.center_block.update_display(matrix, gx, raw_m))
+                    self.after(0, lambda: self.right_panel.update_results(matrix, gx))
+                    self.after(0, lambda: self.right_panel.set_status("ready"))
+            else: self.after(0, lambda: self.right_panel.set_status("error"))
+        except: self.after(0, lambda: self.right_panel.set_status("error"))
 
-    def refresh_ui(self):
-        if self.matrix is None: return
-        gx = int(self.settings["grid_x"])
-        self.center_block.update_display(self.matrix, gx, self.last_raw_data)
-        self.right_panel.update_results(self.matrix, gx)
+    def on_save_config_request(self): pass 
+    def on_restore_backup_request(self, file): pass 
+
+    def update_settings_from_ui(self):
+        self.settings.update({
+            "host": self.left_panel.ip.get(), "port": self.left_panel.port.get(),
+            "user": self.left_panel.user.get(), "password": self.left_panel.pwd.get(),
+            "path": self.left_panel.p_mesh.get(), "path_cfg": self.left_panel.p_cfg.get(),
+            "grid_x": self.left_panel.gx.get(), "grid_y": self.left_panel.gy.get(),
+            "bed_x": self.left_panel.bx.get(), "bed_y": self.left_panel.by.get(),
+        })
 
     def on_settings_changed(self):
-        if self.matrix is not None:
-            self.right_panel.update_results(self.matrix, int(self.left_panel.gx.get()))
+        if self.matrix is not None: self.right_panel.update_results(self.matrix, int(self.left_panel.gx.get()))
+    def on_update_found(self, new_ver, data):
+        self.after(0, lambda: self.right_panel.show_update_available(lambda: updater_win.install_update(data)))
 
     def center_window(self):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w, h = int(sw * 0.8), int(sh * 0.8)
+        w, h = int(sw * 0.9), int(sh * 0.85)
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
-        self.minsize(1200, 750)
+        self.minsize(1350, 800)
 
     def on_closing(self):
-        plt.close('all')
-        self.quit()
-        self.destroy()
-        os._exit(0)
+        plt.close('all'); self.quit(); self.destroy(); os._exit(0)
+
+    def set_app_icon(self):
+        """Установка иконки окна и фикс отображения в таскбаре"""
+        icon_path = logic_win.resource_path("icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                # Фикс для Windows: создаем отдельный ID приложения, чтобы иконка в таскбаре не слетала
+                myappid = f'mycompany.myproduct.subproduct.{logic_win.VERSION}'
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                
+                # Установка иконки для окна
+                self.iconbitmap(icon_path)
+            except Exception as e:
+                print(f"Не удалось установить иконку: {e}")
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    app = App(); app.mainloop()

@@ -1,35 +1,55 @@
+import json
 import numpy as np
-import re
+from utils import logger_win
 
-def parse_points(raw_data, gx, gy):
+def parse_points(raw_text, gx, gy):
     """
-    Парсит данные Mesh Points, ограничивая поиск только нужной секцией.
+    Парсит точки из JSON формата файла printer_mutable.cfg
     """
     try:
-        # 1. Пытаемся найти именно блок points в JSON или CFG
-        # Ищем текст между "points": " и ближайшей кавычкой или концом блока
-        points_match = re.search(r'"points":\s*"([\s\S]+?)"', raw_data)
+        # Загружаем текст как JSON объект
+        data = json.loads(raw_text)
         
-        # Если не нашли в стиле JSON, ищем в стиле Klipper CFG
-        if not points_match:
-            points_match = re.search(r'points\s*=\s*([\s\S]+?)(?=\n\s*[a-zA-Z_]+\s*=|\[|\Z)', raw_data)
+        # Ищем ключ, который начинается на "bed_mesh"
+        # Обычно это "bed_mesh default", но может меняться
+        mesh_key = None
+        for key in data.keys():
+            if key.startswith("bed_mesh"):
+                mesh_key = key
+                break
         
-        if points_match:
-            search_area = points_match.group(1)
-        else:
-            # Если структуру найти не удалось, берем весь текст (fallback)
-            search_area = raw_data
+        if not mesh_key or "points" not in data[mesh_key]:
+            return None, "Секция bed_mesh или ключ points не найдены в JSON"
 
-        # 2. Извлекаем числа только из найденной области
-        nums = [float(n) for n in re.findall(r"[-+]?\d*\.\d+|\d+", search_area)]
+        # Извлекаем строку с точками
+        points_str = data[mesh_key]["points"]
         
-        if len(nums) < gx * gy:
-            return None, f"Найдено {len(nums)} точек, ожидалось {gx * gy}"
+        # Очищаем строку и превращаем в список чисел
+        # Заменяем переносы строк на пробелы, убираем запятые
+        clean_str = points_str.replace('\n', ' ').replace(',', ' ')
+        points = [float(p) for p in clean_str.split() if p.strip()]
+
+        if not points:
+            return None, "Список точек пуст"
+
+        # Проверка количества точек
+        expected = gx * gy
+        if len(points) < expected:
+            return None, f"Мало точек: в файле {len(points)}, нужно {expected}"
         
-        # 3. Строим матрицу: точки заполняются последовательно слева направо (Linear Scan)
-        matrix = np.array(nums[:gx*gy]).reshape((gy, gx))
+        # Если точек больше (например, сетка в файле не совпадает с настройкой в GUI), 
+        # берем первые gx*gy
+        points = points[:expected]
+        
+        # Превращаем в матрицу
+        matrix = np.array(points).reshape((gy, gx))
+        logger_win.info(f"Матрица {gx}x{gy} успешно распарсена из JSON")
         
         return matrix, None
-        
+
+    except json.JSONDecodeError:
+        logger_win.error("Файл не является валидным JSON")
+        return None, "Ошибка: Файл должен быть в формате JSON"
     except Exception as e:
-        return None, f"Ошибка парсера: {str(e)}"
+        logger_win.error(f"Ошибка парсинга JSON: {e}")
+        return None, str(e)

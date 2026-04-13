@@ -20,6 +20,7 @@ BTN_RUN = "ПОСТРОИТЬ КАРТУ"
 
 TAB_2D = "2D КАРТА"
 TAB_RAW = "Printer Mutable"
+TAB_CONFIG = "Настройка Принтера"
 
 # Текст для правой панели
 ANALYSIS_METHOD = "КОРРЕКЦИЯ ОТ СРЕДНЕГО"
@@ -34,7 +35,16 @@ METRIC_MEAN = "Среднее"
 METRIC_VAR = "Варианс"
 METRIC_RMS = "RMS"
 
-# Названия точек (для калькулятора и карточек)
+# Статусы
+STATUS_VER = "Версия:"
+STATUS_UPD_OK = "Актуальна"
+STATUS_UPD_OLD = "Доступно обновление"
+STATUS_CONNECT = "Статус:"
+STATUS_READY = "Готов к работе"
+STATUS_BUSY = "Подключение..."
+STATUS_ERROR = "Ошибка связи"
+
+# Названия точек
 POINT_FL = "Передний Левый"
 POINT_FR = "Передний Правый"
 POINT_BC = "Задний Центр"
@@ -44,3 +54,8 @@ DIR_UP = "ВВЕРХ"
 DIR_DOWN = "ВНИЗ"
 
 LBL_PITCH = "Шаг резьбы винта (мм)"
+
+# Кнопки редактора
+BTN_SAVE_CFG = "СОХРАНИТЬ ИЗМЕНЕНИЯ В PRINTER.CFG"
+MSG_SAVE_CONFIRM = "Записать изменения в printer.cfg на принтере?"
+MSG_SAVE_SUCCESS = "Конфиг успешно обновлен!"

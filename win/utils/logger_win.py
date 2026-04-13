@@ -2,25 +2,34 @@ import logging
 import os
 import sys
 
-# Определяем путь к папке с логами (рядом с .exe или скриптом)
-if getattr(sys, 'frozen', False):
-    base_path = os.path.dirname(sys.executable)
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.dirname(base_path) # Выход из utils в корень
+# Настройка путей
+log_file = "debug.log"
 
-LOG_FILE = os.path.join(base_path, "app.log")
+# Создаем форматтер
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
-        logging.StreamHandler(sys.stdout) # Дублируем в консоль VS Code
-    ]
-)
+# Настройка логгера
+logger = logging.getLogger("BedMeshDebug")
+logger.setLevel(logging.DEBUG)
 
-def info(msg): logging.info(msg)
-def error(msg): logging.error(msg)
-def warning(msg): logging.warning(msg)
+# Обработчик для записи в файл
+file_handler = logging.FileHandler(log_file, encoding='utf-8')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Обработчик для вывода в консоль
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+def info(msg):
+    logger.info(msg)
+
+def error(msg):
+    logger.error(msg)
+
+def warning(msg):
+    logger.warning(msg)
+
+def debug(msg):
+    logger.debug(msg)
