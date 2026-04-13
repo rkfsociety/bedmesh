@@ -6,9 +6,9 @@ class CenterBlock(ctk.CTkTabview):
     def __init__(self, parent):
         super().__init__(parent, fg_color="#2b2b2b")
         
-        # Основная вкладка 2D
+        # Основная вкладка 2D карты
         self.add(strings_win.TAB_2D)
-        # Растягиваем контейнер графика на всё пространство
+        # Устанавливаем холст для карты и заставляем его растягиваться (fill="both", expand=True)
         self.map2d = map2d_win.MapCanvas(self.tab(strings_win.TAB_2D))
         self.map2d.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -17,28 +17,32 @@ class CenterBlock(ctk.CTkTabview):
         self.entries_config = {}
 
     def show_raw_tab(self):
+        """Создание вкладки с сырым JSON данными"""
         if not self.raw_tab_exists:
             name = strings_win.TAB_RAW
             self.add(name)
+            # Текстовое поле теперь занимает всё пространство вкладки
             self.text_mutable = ctk.CTkTextbox(self.tab(name), font=("Consolas", 12))
             self.text_mutable.pack(fill="both", expand=True, padx=10, pady=10)
             self.raw_tab_exists = True
 
     def hide_raw_tab(self):
+        """Удаление вкладки сырых данных"""
         if self.raw_tab_exists:
             self.delete(strings_win.TAB_RAW)
             self.raw_tab_exists = False
 
     def show_config_editor_tab(self, save_callback, restore_callback):
+        """Создание вкладки редактора конфигурации принтера"""
         if not self.config_tab_exists:
             name = "Настройка Принтера"
             self.add(name)
             
-            # Главный контейнер редактора, который тянется
+            # Главный контейнер для редактора
             main_frame = ctk.CTkFrame(self.tab(name), fg_color="transparent")
             main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-            # Левая колонка с параметрами (скроллбаром)
+            # Левая колонка с параметрами (скролл-зона) - растягивается максимально
             left_col = ctk.CTkScrollableFrame(main_frame, fg_color="#242424", label_text="ПАРАМЕТРЫ")
             left_col.pack(side="left", fill="both", expand=True, padx=(0, 5))
 
@@ -52,7 +56,7 @@ class CenterBlock(ctk.CTkTabview):
             self.entries_config["mesh_min"] = self._create_row(left_col, "mesh_min")
             self.entries_config["mesh_max"] = self._create_row(left_col, "mesh_max")
 
-            # Правая колонка управления (фиксированная ширина)
+            # Правая колонка с кнопками управления - фиксированная ширина 300
             right_col = ctk.CTkFrame(main_frame, fg_color="#242424", width=300)
             right_col.pack(side="right", fill="y", padx=(5, 0))
             right_col.pack_propagate(False)
@@ -74,6 +78,7 @@ class CenterBlock(ctk.CTkTabview):
             self.config_tab_exists = True
 
     def _create_row(self, master, label):
+        """Вспомогательный метод для создания строки ввода в редакторе"""
         f = ctk.CTkFrame(master, fg_color="transparent")
         f.pack(fill="x", pady=2)
         ctk.CTkLabel(f, text=label, width=130, anchor="w").pack(side="left")
@@ -82,12 +87,14 @@ class CenterBlock(ctk.CTkTabview):
         return e
 
     def update_backup_list(self, backups):
+        """Обновление выпадающего списка бэкапов"""
         if self.config_tab_exists and backups:
             formatted = backups[::-1]
             self.backup_menu.configure(values=formatted)
             self.backup_var.set(formatted[0])
 
     def fill_config_fields(self, data):
+        """Заполнение полей редактора данными из конфига"""
         if not self.config_tab_exists: return
         for k, v in data.items():
             if k in self.entries_config:
@@ -95,6 +102,7 @@ class CenterBlock(ctk.CTkTabview):
                 self.entries_config[k].insert(0, str(v))
 
     def update_display(self, matrix, gx, raw_mutable):
+        """Синхронное обновление графики и текстового лога"""
         if matrix is not None:
             self.map2d.draw(matrix, gx)
         if raw_mutable and hasattr(self, 'text_mutable') and self.text_mutable:
@@ -102,6 +110,7 @@ class CenterBlock(ctk.CTkTabview):
             self.text_mutable.insert("end", raw_mutable)
 
     def hide_config_editor_tab(self):
+        """Скрытие вкладки редактора"""
         if self.config_tab_exists:
             self.delete("Настройка Принтера")
             self.config_tab_exists = False
