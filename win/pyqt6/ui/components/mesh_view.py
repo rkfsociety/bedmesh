@@ -1,6 +1,7 @@
-import pyqtgraph as pg
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
-from PyQt6.QtGui import QFont
+import numpy as np
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QFont, QColor
+from PyQt6.QtCore import Qt
 from core.mesh_parser import BedMeshData
 
 class MeshView(QWidget):
@@ -9,66 +10,84 @@ class MeshView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        self.view = pg.GraphicsLayoutWidget()
-        layout.addWidget(self.view)
-        self.view.clear()
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setStyleSheet("background-color: #1e1e1e;")
+        layout.addWidget(self.label)
 
-        cmap_pos = [0.0, 0.25, 0.5, 0.75, 1.0]
-        cmap_col = [
-            pg.mkColor('#0000FF'), pg.mkColor('#8080FF'), pg.mkColor('#FFFFFF'),
-            pg.mkColor('#FF8080'), pg.mkColor('#FF0000')
-        ]
-        self.custom_cmap = pg.ColorMap(pos=cmap_pos, color=cmap_col)
-
-        self.colorbar = pg.ColorBarItem(values=(-0.5, 0.5), colorMap=self.custom_cmap, label='Отклонение (мм)')
-
-        self.plot = self.view.addPlot(row=0, col=0)
-        self.plot.setAspectLocked(True)
-        self.plot.setLabels(left="Ось Y (мм)", bottom="Ось X (мм)")
-        self.plot.setMouseEnabled(x=False, y=False)
-        self.plot.enableAutoRange(x=False, y=False)
-
-        self.img = pg.ImageItem()
-        self.plot.addItem(self.img)
-        self.colorbar.setImageItem(self.img)
-        self.view.addItem(self.colorbar, row=0, col=1)
-
-        self.text_items = []
+        self.data = None
 
     def update_mesh(self, data: BedMeshData):
-        for item in self.text_items:
-            self.plot.removeItem(item)
-        self.text_items.clear()
+        self.data = data
+        self._render_image()
 
-        self.img.setImage(data.z)
-        x_range = data.max_x - data.min_x
-        y_range = data.max_y - data.min_y
-        self.img.setRect(data.min_x, data.min_y, x_range, y_range)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.data:
+            self._render_image()
 
-        z_min, z_max = data.z.min(), data.z.max()
-        margin = (z_max - z_min) * 0.05
-        self.colorbar.setLevels([z_min - margin, z_max + margin])
+    def _render_image(self):
+        if not self.data:
+            return
 
-        self.plot.setXRange(data.min_x, data.max_x, padding=0)
-        self.plot.setYRange(data.min_y, data.max_y, padding=0)
+        z = self.data.z
+        h, w = z.shape
+        z_min, z_max = z.min(), z.max()
 
-        dx = x_range / data.x_count
-        dy = y_range / data.y_count
+        # Вычисляем доступное пространство внутри вкладки
+        avail_w = self.width() - 20
+        avail_h = self.height() - 20
+        if avail_w <= 0 or avail_h <= 0:
+            return
 
-        for i in range(data.y_count):
-            for j in range(data.x_count):
-                val = data.z[i, j]
-                sign = "+" if val >= 0 else ""
-                text_str = f"{sign}{val:.3f}"
-                cx = data.min_x + j * dx + dx / 2
-                cy = data.min_y + i * dy + dy / 2
+        # Динамический размер ячейки, чтобы сетка влезала в окно
+        cell_size = min(avail_w / w, avail_h / h)
+        cell_size = max(20, int(cell_size))
 
-                ratio = (val - z_min) / (z_max - z_min + 1e-9)
-                txt_color = "black" if 0.25 < ratio < 0.75 else "white"
+        # Нормализация для цвета
+        if z_max == z_min:
+            norm_z = np.zeros_like(z)
+        else:
+            norm_z = (z - z_min) / (z_max - z_min)
 
-                text_item = pg.TextItem(text_str, anchor=(0.5, 0.5), color=txt_color)
-                text_item.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
-                text_item.setPos(cx, cy)
+        # Палитра Синий -> Белый -> Красный
+        r = np.where(norm_z < 0.5, 0, (2 * norm_z - 1) * 255)
+        g = np.where(norm_z < 0.5, (2 * norm_z) * 255, (2 - 2 * norm_z) * 255)
+        b = np.where(norm_z < 0.5, (2 * (1 - norm_z)) * 255, 0)
 
-                self.plot.addItem(text_item)
-                self.text_items.append(text_item)
+        rgb = np.stack([r, g, b], axis=-1).astype(np.uint8)
+        scaled_rgb = np.repeat(np.repeat(rgb, cell_size, axis=0), cell_size, axis=1).copy()
+
+        img_h, img_w, _ = scaled_rgb.shape
+        q_img = QImage(scaled_rgb.data, img_w, img_h, img_w * 3, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_img)
+
+        # Рисуем значения
+        painter = QPainter(pixmap)
+        painter.setFont(QFont("Consolas", int(cell_size * 0.35), QFont.Weight.Bold))
+
+        for i in range(h):
+            for j in range(w):
+                val = z[i, j]
+                txt = f"{val:+.3f}"
+                norm = norm_z[i, j]
+                painter.setPen(QColor(0,0,0) if 0.3 < norm < 0.7 else QColor(255,255,255))
+
+                cx = j * cell_size + cell_size // 2
+                cy = i * cell_size + cell_size // 2
+                fm = painter.fontMetrics()
+                rect = fm.boundingRect(txt)
+                painter.drawText(cx - rect.width() // 2, cy + rect.height() // 3, txt)
+
+        # Оси координат
+        painter.setPen(QColor(150, 150, 150))
+        painter.setFont(QFont("Arial", max(8, int(cell_size * 0.25))))
+        for j in range(w + 1):
+            x_val = self.data.min_x + j * (self.data.max_x - self.data.min_x) / w
+            painter.drawText(j * cell_size + 2, img_h + 15, f"{int(x_val)}")
+        for i in range(h + 1):
+            y_val = self.data.min_y + i * (self.data.max_y - self.data.min_y) / h
+            painter.drawText(2, i * cell_size + cell_size // 3, f"{int(y_val)}")
+
+        painter.end()
+        self.label.setPixmap(pixmap)

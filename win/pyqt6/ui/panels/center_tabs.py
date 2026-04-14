@@ -29,4 +29,4 @@ class CenterTabs(QWidget):
         self.raw_text.setReadOnly(True)
         self.raw_text.setStyleSheet("font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4;")
         r_layout.addWidget(self.raw_text)
-        self.tabs.addTab(self.raw_tab, "📄 Сырой CFG")
+        self.tabs.addTab(self.raw_tab, "📄 Printer Mutable")
