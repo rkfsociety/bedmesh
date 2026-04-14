@@ -5,11 +5,9 @@ from utils import strings_win, styles_win
 class CenterBlock(ctk.CTkTabview):
     def __init__(self, parent):
         super().__init__(parent, fg_color="#2b2b2b")
-        
         self.add(strings_win.TAB_2D)
         self.map2d = map2d_win.MapCanvas(self.tab(strings_win.TAB_2D))
         self.map2d.pack(fill="both", expand=True, padx=5, pady=5)
-
         self.raw_tab_exists = False
         self.config_tab_exists = False
         self.entries_config = {} 
@@ -31,27 +29,21 @@ class CenterBlock(ctk.CTkTabview):
         if not self.config_tab_exists:
             name = "Настройка Принтера"
             self.add(name)
-            
             main_frame = ctk.CTkFrame(self.tab(name), fg_color="transparent")
             main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
             left_col = ctk.CTkScrollableFrame(main_frame, fg_color="#242424", label_text="РЕДАКТОР КОНФИГУРАЦИИ")
             left_col.pack(side="left", fill="both", expand=True, padx=(0, 5))
 
-            # СЕКЦИЯ 1
             self._create_header(left_col, "🌐 ПАРАМЕТРЫ СЕТКИ (BED MESH)")
             self.entries_config["mesh_min"] = self._create_row(left_col, "mesh_min")
             self.entries_config["mesh_max"] = self._create_row(left_col, "mesh_max")
             self.entries_config["probe_count"] = self._create_row(left_col, "probe_count")
-
             ctk.CTkLabel(left_col, text="", height=10).pack()
 
-            # СЕКЦИЯ 2
             self._create_header(left_col, "🚀 УСКОРЕНИЕ ACE PRO")
             self.entries_config["ace_feed"] = self._create_row(left_col, "v2_feed_speed")
             self.entries_config["ace_unwind"] = self._create_row(left_col, "v2_unwind_speed")
 
-            # Правая колонка
             right_col = ctk.CTkFrame(main_frame, fg_color="#242424", width=300)
             right_col.pack(side="right", fill="y", padx=(5, 0))
             right_col.pack_propagate(False)
@@ -59,17 +51,13 @@ class CenterBlock(ctk.CTkTabview):
             ctk.CTkLabel(right_col, text="УПРАВЛЕНИЕ", font=styles_win.FONTS["ui_bold"]).pack(pady=10)
             btn_save = ctk.CTkButton(right_col, text="💾 СОХРАНИТЬ", fg_color="#28a745", hover_color="#218838", command=save_callback, height=45)
             btn_save.pack(fill="x", padx=15, pady=10)
-
             ctk.CTkLabel(right_col, text="—" * 15, text_color="#3d3d3d").pack()
-            
             ctk.CTkLabel(right_col, text="ИСТОРИЯ (БЭКАПЫ):", font=("Segoe UI", 11)).pack(pady=(10, 0))
             self.backup_var = ctk.StringVar(value="Нет данных")
             self.backup_menu = ctk.CTkOptionMenu(right_col, values=["Нет данных"], variable=self.backup_var, fg_color="#3d3d3d")
             self.backup_menu.pack(fill="x", padx=15, pady=5)
-
             btn_restore = ctk.CTkButton(right_col, text="⏪ ВОССТАНОВИТЬ", fg_color="#a83232", hover_color="#7a2424", command=lambda: restore_callback(self.backup_var.get()))
             btn_restore.pack(fill="x", padx=15, pady=10)
-
             self.config_tab_exists = True
 
     def _create_header(self, master, text):
@@ -86,14 +74,7 @@ class CenterBlock(ctk.CTkTabview):
         return e
 
     def get_all_fields(self):
-        """Сбор данных из всех полей для сохранения"""
         return {k: v.get() for k, v in self.entries_config.items()}
-
-    def update_backup_list(self, backups):
-        if self.config_tab_exists and backups:
-            formatted = backups[::-1]
-            self.backup_menu.configure(values=formatted)
-            self.backup_var.set(formatted[0])
 
     def fill_config_fields(self, data):
         if not self.config_tab_exists: return
@@ -102,9 +83,14 @@ class CenterBlock(ctk.CTkTabview):
                 self.entries_config[k].delete(0, "end")
                 self.entries_config[k].insert(0, str(v))
 
+    def update_backup_list(self, backups):
+        if self.config_tab_exists and backups:
+            formatted = backups[::-1]
+            self.backup_menu.configure(values=formatted)
+            self.backup_var.set(formatted[0])
+
     def update_display(self, matrix, gx, raw_mutable):
-        if matrix is not None:
-            self.map2d.draw(matrix, gx)
+        if matrix is not None: self.map2d.draw(matrix, gx)
         if raw_mutable and hasattr(self, 'text_mutable') and self.text_mutable:
             self.text_mutable.delete("1.0", "end")
             self.text_mutable.insert("end", raw_mutable)
