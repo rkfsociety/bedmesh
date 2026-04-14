@@ -13,7 +13,6 @@ class MeshView(QWidget):
         layout.addWidget(self.view)
         self.view.clear()
 
-        # 🎨 Палитра: Синий -> Белый -> Красный
         cmap_pos = [0.0, 0.25, 0.5, 0.75, 1.0]
         cmap_col = [
             pg.mkColor('#0000FF'), pg.mkColor('#8080FF'), pg.mkColor('#FFFFFF'),
@@ -27,8 +26,6 @@ class MeshView(QWidget):
         self.plot.setAspectLocked(True)
         self.plot.setLabels(left="Ось Y (мм)", bottom="Ось X (мм)")
         self.plot.setMouseEnabled(x=False, y=False)
-
-        # 🔒 Отключаем авто-масштабирование, чтобы карта не "улетала" и не было черноты
         self.plot.enableAutoRange(x=False, y=False)
 
         self.img = pg.ImageItem()
@@ -38,8 +35,7 @@ class MeshView(QWidget):
 
         self.text_items = []
 
-    # ⬇️ ИСПРАВЛЕНО: явно прописано имя параметра 'data'
-    def update_mesh(self,  BedMeshData):
+    def update_mesh(self, data: BedMeshData):
         for item in self.text_items:
             self.plot.removeItem(item)
         self.text_items.clear()
@@ -53,7 +49,6 @@ class MeshView(QWidget):
         margin = (z_max - z_min) * 0.05
         self.colorbar.setLevels([z_min - margin, z_max + margin])
 
-        # 📐 Убираем черноту: границы строго по данным, без отступов
         self.plot.setXRange(data.min_x, data.max_x, padding=0)
         self.plot.setYRange(data.min_y, data.max_y, padding=0)
 

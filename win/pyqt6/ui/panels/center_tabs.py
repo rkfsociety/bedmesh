@@ -10,7 +10,6 @@ class CenterTabs(QWidget):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
-        # Вкладка 1: Карта
         self.mesh_tab = QWidget()
         m_layout = QVBoxLayout(self.mesh_tab)
         m_layout.setContentsMargins(0, 0, 0, 0)
@@ -18,13 +17,11 @@ class CenterTabs(QWidget):
         m_layout.addWidget(self.mesh_view)
         self.tabs.addTab(self.mesh_tab, "📊 Карта стола")
 
-        # Вкладка 2: Настройка принтера
         self.settings_tab = QWidget()
         s_layout = QVBoxLayout(self.settings_tab)
         s_layout.addWidget(QLabel("🔧 Настройка параметров принтера (в разработке)"))
         self.tabs.addTab(self.settings_tab, "⚙️ Настройка")
 
-        # Вкладка 3: Сырой CFG
         self.raw_tab = QWidget()
         r_layout = QVBoxLayout(self.raw_tab)
         r_layout.setContentsMargins(5, 5, 5, 5)

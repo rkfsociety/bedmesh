@@ -1,6 +1,6 @@
 import sys
+import logging
 from PyQt6.QtWidgets import QApplication
-
 from PyQt6.QtGui import QIcon
 
 from app import BedMeshApp
@@ -8,14 +8,22 @@ from utils.logger import setup_logger
 from utils.app_config import AppConfig
 
 def main():
-    setup_logger()
-    AppConfig().load()
+    config = AppConfig()
+    config.load()
+    
+    debug = config.get("debug_mode", "true") == "true"
+    setup_logger(level=logging.DEBUG if debug else logging.INFO, debug_mode=debug)
 
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("icon.ico"))
     app.setApplicationName("BedMesh Visualizer")
     app.setOrganizationName("rkfsociety")
     app.setStyle("Fusion")
+    
+    # Иконка (если есть)
+    import os
+    icon_path = os.path.join(os.getcwd(), "icon.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     window = BedMeshApp()
     window.show()
