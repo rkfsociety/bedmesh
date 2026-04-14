@@ -85,6 +85,10 @@ class CenterBlock(ctk.CTkTabview):
         e.pack(side="right", fill="x", expand=True, padx=5)
         return e
 
+    def get_all_fields(self):
+        """Сбор данных из всех полей для сохранения"""
+        return {k: v.get() for k, v in self.entries_config.items()}
+
     def update_backup_list(self, backups):
         if self.config_tab_exists and backups:
             formatted = backups[::-1]

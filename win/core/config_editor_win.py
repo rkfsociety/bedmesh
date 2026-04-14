@@ -4,66 +4,66 @@ from utils import logger_win
 class ConfigEditor:
     def __init__(self, transport):
         self.transport = transport
-        self.config_path = "/home/pi/printer_data/config/printer.cfg" 
+        # Точный путь для KlipperGO на Anycubic S1
+        self.config_path = "/userdata/app/gk/printer.cfg" 
 
     def get_config_parameters(self):
-        """Считывает текущие значения из printer.cfg на принтере"""
+        """Парсинг текущих значений из printer.cfg"""
         try:
+            logger_win.info(f"Запрос файла конфигурации: {self.config_path}")
             content = self.transport.read_file(self.config_path)
-            if not content: return {}
+            if not content: 
+                logger_win.error("Не удалось прочитать файл конфигурации")
+                return {}
 
             params = {}
             lines = content.splitlines()
             current_section = None
 
             for line in lines:
-                line = line.strip()
-                if not line or line.startswith("#"): continue
-                if line.startswith("[") and line.endswith("]"):
-                    current_section = line[1:-1].lower()
+                raw_line = line.strip()
+                if not raw_line or raw_line.startswith("#"): continue
+                
+                if raw_line.startswith("["):
+                    current_section = raw_line.split(']')[0][1:].strip().lower()
                     continue
 
-                if (":" in line or "=" in line) and current_section:
-                    sep = ":" if ":" in line else "="
-                    key, value = line.split(sep, 1)
-                    key = key.strip().lower()
-                    value = value.split("#")[0].strip()
+                # Ищем ключи, учитывая пробелы вокруг : или =
+                if (":" in raw_line or "=" in raw_line) and current_section:
+                    sep = ":" if ":" in raw_line else "="
+                    parts = raw_line.split(sep, 1)
+                    key = parts[0].strip().lower()
+                    value = parts[1].split("#")[0].strip()
 
-                    if current_section == "bed_mesh" and key in ["mesh_min", "mesh_max", "probe_count"]:
-                        params[key] = value
+                    if current_section == "bed_mesh":
+                        if key in ["mesh_min", "mesh_max", "probe_count"]:
+                            params[key] = value
                     elif current_section == "filament_hub":
                         if key == "v2_feed_speed": params["ace_feed"] = value
                         if key == "v2_unwind_speed": params["ace_unwind"] = value
             
             return params
         except Exception as e:
-            logger_win.error(f"Ошибка при чтении параметров: {e}")
+            logger_win.error(f"Ошибка парсинга конфига: {e}")
             return {}
 
     def _validate_params(self, params):
         """Проверка данных перед записью"""
         try:
-            # Проверка координат X,Y
             for key in ["mesh_min", "mesh_max", "probe_count"]:
                 val = params.get(key, "")
-                if "," not in val or len(val.split(",")) != 2:
-                    return False, f"Ошибка в {key}: ожидается формат 'X,Y'"
-            
-            # Проверка скоростей (должны быть числами)
+                if "," not in val: return False, f"Ошибка в {key}: формат X,Y"
             for key in ["ace_feed", "ace_unwind"]:
                 val = params.get(key, "")
-                if not val.replace('.', '', 1).isdigit():
-                    return False, f"Ошибка в {key}: должно быть числом"
-                
+                if not val.replace('.', '', 1).isdigit(): return False, f"Ошибка в {key}: не число"
             return True, ""
-        except Exception as e:
-            return False, str(e)
+        except: return False, "Ошибка валидации"
 
     def save_config(self, new_params):
-        """Безопасное сохранение с сохранением табуляции"""
-        success, error_msg = self._validate_params(new_params)
+        """Безопасное сохранение изменений с сохранением стиля файла"""
+        success, err = self._validate_params(new_params)
         if not success:
-            logger_win.error(f"Валидация отклонена: {error_msg}")
+            logger_win.error(err)
             return False
 
         try:
@@ -73,17 +73,17 @@ class ConfigEditor:
             lines = content.splitlines()
             new_lines = []
             current_section = None
-            modified_count = 0 
+            modified = 0 
 
             for line in lines:
-                original_line = line
+                orig = line
                 stripped = line.strip()
                 
-                if stripped.startswith("[") and stripped.endswith("]"):
-                    current_section = stripped[1:-1].lower()
+                if stripped.startswith("["):
+                    current_section = stripped.split(']')[0][1:].strip().lower()
                 
                 updated = False
-                if current_section in ["bed_mesh", "filament_hub"] and not stripped.startswith("#"):
+                if current_section in ["bed_mesh", "filament_hub"] and stripped and not stripped.startswith("#"):
                     sep = ":" if ":" in stripped else "=" if "=" in stripped else None
                     if sep:
                         key = stripped.split(sep, 1)[0].strip().lower()
@@ -96,24 +96,21 @@ class ConfigEditor:
                             if key == "v2_unwind_speed": val = new_params.get("ace_unwind")
 
                         if val is not None and val != "":
-                            # Сохраняем оригинальный отступ
-                            indent_idx = original_line.find(stripped)
-                            indent = original_line[:indent_idx] if indent_idx != -1 else ""
-                            # Используем двоеточие, как в твоем исходном конфиге
+                            idx = orig.find(stripped)
+                            indent = orig[:idx] if idx != -1 else ""
+                            # Сохраняем стиль KlipperGO (ключ : значение)
                             new_lines.append(f"{indent}{key}: {val}")
                             updated = True
-                            modified_count += 1
+                            modified += 1
 
                 if not updated:
                     new_lines.append(line)
 
-            if modified_count == 0:
-                logger_win.error("Изменения не применены: параметры не найдены в printer.cfg")
-                return False
+            if modified == 0: return False
 
             self.transport.write_file(self.config_path, "\n".join(new_lines))
             self.transport.execute_command("RESTART")
             return True
         except Exception as e:
-            logger_win.error(f"Критическая ошибка записи: {e}")
+            logger_win.error(f"Ошибка сохранения: {e}")
             return False
