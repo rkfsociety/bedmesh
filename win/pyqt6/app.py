@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 
 from ui.panels.left_panel import LeftPanel
 from ui.panels.right_panel import RightPanel
-from ui.components.mesh_view import MeshView
+from ui.panels.center_tabs import CenterTabs
 from core.mesh_parser import MeshParser, BedMeshData
 from core.ssh_client import download_cfg_via_ssh
 from utils.logger import get_logger
@@ -18,6 +18,7 @@ class BedMeshApp(QMainWindow):
         self.logger = get_logger(__name__)
         self.config = AppConfig()
         self.parser = MeshParser()
+        self.settings = self.config.load()
 
         self._init_ui()
         self._restore_geometry()
@@ -35,12 +36,12 @@ class BedMeshApp(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(self.splitter)
 
-        self.left_panel = LeftPanel()
-        self.mesh_view = MeshView()
+        self.left_panel = LeftPanel(self.settings)
+        self.center_tabs = CenterTabs()
         self.right_panel = RightPanel()
 
         self.splitter.addWidget(self.left_panel)
-        self.splitter.addWidget(self.mesh_view)
+        self.splitter.addWidget(self.center_tabs)
         self.splitter.addWidget(self.right_panel)
 
         self.splitter.setStretchFactor(0, 1)
@@ -49,59 +50,61 @@ class BedMeshApp(QMainWindow):
 
         self.left_panel.file_selected.connect(self._handle_file_load)
         self.left_panel.ssh_requested.connect(self._handle_ssh_load)
+        self.left_panel.setting_updated.connect(self._on_setting_changed)
+
+    def _on_setting_changed(self, key: str, value: str):
+        self.settings[key] = value
+        self.config.save()
 
     def _handle_file_load(self, filepath):
         self._process_file(filepath)
 
-    def _handle_ssh_load(self, ip_address):
+    def _handle_ssh_load(self):
         try:
-            self.logger.info(f"Подключение к {ip_address}...")
-            temp_path = download_cfg_via_ssh(ip_address)
-            
+            ip = self.left_panel.input_ip.text()
+            port = int(self.settings.get("ssh_port", 2222))
+            user = self.settings.get("ssh_user", "root")
+            pwd = self.settings.get("ssh_pass", "rockchip")
+            path = self.settings.get("ssh_path", "/userdata/app/gk/printer_mutable.cfg")
+
+            temp_path = download_cfg_via_ssh(ip, port, user, pwd, path)
             if temp_path:
                 self._process_file(temp_path)
             else:
                 QMessageBox.critical(self, "Ошибка SSH", "Не удалось подключиться к принтеру.")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
         finally:
             self.left_panel.btn_ssh.setEnabled(True)
             self.left_panel.btn_ssh.setText("🌐 Загрузить по SSH")
 
     def _process_file(self, filepath):
         try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                raw_content = f.read()
+            self.center_tabs.raw_text.setPlainText(raw_content)
+
             data = self.parser.parse_file(filepath)
-            if data:  # ← ИСПРАВЛЕНО: было обрезано до "if "
-                self.mesh_view.update_mesh(data)
+            if data:
+                self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
-                self.logger.info(f"✅ Mesh загружен: {data.x_count}x{data.y_count}")
+                self.logger.info(f"✅ Mesh loaded")
             else:
                 QMessageBox.warning(self, "Ошибка", "В файле нет данных bed_mesh.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось обработать файл:\n{e}")
 
-    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
+    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:  # ← ИСПРАВЛЕНО
         z_flat = data.z.flatten()
-        
-        min_val = float(np.min(z_flat))
-        max_val = float(np.max(z_flat))
+        min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))
-        range_val = float(max_val - min_val)
-        var_val = float(np.var(z_flat))
-        rms_val = float(np.sqrt(np.mean(z_flat**2)))
-
-        fl_val = float(data.z[0, 0])
-        fr_val = float(data.z[0, -1])
-        center_x_idx = data.x_count // 2
-        bc_val = float(data.z[-1, center_x_idx])
-
-        fl_corr = fl_val - mean_val
-        fr_corr = fr_val - mean_val
-        bc_corr = bc_val - mean_val
-
         return {
-            "min": min_val, "max": max_val, "range": range_val,
-            "mean": mean_val, "var": var_val, "rms": rms_val,
-            "front_left": fl_corr, "front_right": fr_corr, "back_center": bc_corr
+            "min": min_val, "max": max_val, "range": float(max_val - min_val),
+            "mean": mean_val, "var": float(np.var(z_flat)), "rms": float(np.sqrt(np.mean(z_flat**2))),
+            "front_left": float(data.z[0, 0] - mean_val),
+            "front_right": float(data.z[0, -1] - mean_val),
+            "back_center": float(data.z[-1, data.x_count // 2] - mean_val)
         }
 
     def _restore_geometry(self):

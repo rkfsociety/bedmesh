@@ -1,13 +1,13 @@
-import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, QLineEdit, QHBoxLayout
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
+                             QFileDialog, QLineEdit, QHBoxLayout, QCheckBox, QGroupBox)
 from PyQt6.QtCore import pyqtSignal
 
 class LeftPanel(QWidget):
-    # Сигналы для разных действий
     file_selected = pyqtSignal(str)
-    ssh_requested = pyqtSignal(str)
+    ssh_requested = pyqtSignal()
+    setting_updated = pyqtSignal(str, str)
 
-    def __init__(self):
+    def __init__(self, initial_settings: dict):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -16,43 +16,69 @@ class LeftPanel(QWidget):
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
 
-        # --- Блок выбора файла ---
-        lbl_file = QLabel("Локальный файл:")
-        layout.addWidget(lbl_file)
-        
         self.btn_open = QPushButton("📂 Выбрать конфиг (файл)")
         self.btn_open.clicked.connect(self._open_file)
         layout.addWidget(self.btn_open)
 
-        layout.addSpacing(20)
+        layout.addSpacing(15)
 
-        # --- Блок SSH ---
-        lbl_ssh = QLabel("Загрузка с принтера (SSH):")
-        layout.addWidget(lbl_ssh)
-
-        self.input_ip = QLineEdit()
-        self.input_ip.setPlaceholderText("Введите IP адрес принтера...")
-        self.input_ip.setText("192.168.") # Подсказка
+        lbl_ip = QLabel("IP адрес принтера:")
+        layout.addWidget(lbl_ip)
+        self.input_ip = QLineEdit(initial_settings.get("ssh_ip", "192.168."))
+        self.input_ip.textChanged.connect(lambda t: self.setting_updated.emit("ssh_ip", t))
         layout.addWidget(self.input_ip)
 
         self.btn_ssh = QPushButton("🌐 Загрузить по SSH")
         self.btn_ssh.clicked.connect(self._do_ssh_download)
         layout.addWidget(self.btn_ssh)
 
+        # Переключатель расширенных настроек
+        self.chk_advanced = QCheckBox("⚙️ Показать расширенные настройки")
+        self.chk_advanced.setChecked(initial_settings.get("show_advanced", "false") == "true")
+        self.chk_advanced.stateChanged.connect(self._toggle_advanced)
+        layout.addWidget(self.chk_advanced)
+
+        # Группа расширенных настроек
+        self.adv_group = QGroupBox()
+        self.adv_group.setVisible(self.chk_advanced.isChecked())
+        adv_layout = QVBoxLayout(self.adv_group)
+        adv_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.adv_fields = {}
+        fields_cfg = [
+            ("ssh_port", "Порт", initial_settings.get("ssh_port", "2222")),
+            ("ssh_user", "Логин", initial_settings.get("ssh_user", "root")),
+            ("ssh_pass", "Пароль", initial_settings.get("ssh_pass", "rockchip")),
+            ("ssh_path", "Путь к файлу", initial_settings.get("ssh_path", "/userdata/app/gk/printer_mutable.cfg"))
+        ]
+
+        for key, label_text, default in fields_cfg:
+            row = QHBoxLayout()
+            lbl = QLabel(label_text + ":")
+            lbl.setFixedWidth(80)
+            row.addWidget(lbl)
+            line = QLineEdit(default)
+            if key == "ssh_pass":
+                line.setEchoMode(QLineEdit.EchoMode.Password)
+            line.textChanged.connect(lambda t, k=key: self.setting_updated.emit(k, t))
+            row.addWidget(line)
+            adv_layout.addLayout(row)
+            self.adv_fields[key] = line
+
+        layout.addWidget(self.adv_group)
         layout.addStretch()
 
     def _open_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Выберите конфиг Klipper", "", "Config Files (*.cfg *.conf);;All Files (*)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Выберите конфиг", "", "Config Files (*.cfg *.conf);;All Files (*)")
         if path:
             self.file_selected.emit(path)
 
     def _do_ssh_download(self):
-        ip = self.input_ip.text()
-        if ip:
-            self.btn_ssh.setEnabled(False)
-            self.btn_ssh.setText("⏳ Подключение...")
-            self.ssh_requested.emit(ip)
-        else:
-            self.input_ip.setStyleSheet("background-color: #ffcccc;") # Красная подсветка если пусто
+        self.btn_ssh.setEnabled(False)
+        self.btn_ssh.setText("⏳ Подключение...")
+        self.ssh_requested.emit()
+
+    def _toggle_advanced(self, state):
+        is_checked = state == 2
+        self.adv_group.setVisible(is_checked)
+        self.setting_updated.emit("show_advanced", str(is_checked).lower())
