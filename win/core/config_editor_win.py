@@ -7,7 +7,7 @@ class ConfigEditor:
         self.config_path = "/home/pi/printer_data/config/printer.cfg" 
 
     def get_config_parameters(self):
-        """Подтягивает текущие значения из printer.cfg"""
+        """Считывает текущие значения из printer.cfg на принтере"""
         try:
             content = self.transport.read_file(self.config_path)
             if not content: return {}
@@ -37,32 +37,34 @@ class ConfigEditor:
             
             return params
         except Exception as e:
-            logger_win.error(f"Ошибка при чтении текущих значений: {e}")
+            logger_win.error(f"Ошибка при чтении параметров: {e}")
             return {}
 
     def _validate_params(self, params):
-        """Проверка корректности введенных данных перед сборкой конфига"""
+        """Проверка данных перед записью"""
         try:
-            # Проверка координат (должно быть X,Y)
+            # Проверка координат X,Y
             for key in ["mesh_min", "mesh_max", "probe_count"]:
                 val = params.get(key, "")
                 if "," not in val or len(val.split(",")) != 2:
-                    raise ValueError(f"Неверный формат {key}: ожидается 'X,Y'")
+                    return False, f"Ошибка в {key}: ожидается формат 'X,Y'"
             
             # Проверка скоростей (должны быть числами)
             for key in ["ace_feed", "ace_unwind"]:
                 val = params.get(key, "")
-                float(val) # Вызовет ошибку, если не число
+                if not val.replace('.', '', 1).isdigit():
+                    return False, f"Ошибка в {key}: должно быть числом"
                 
-            return True
-        except ValueError as e:
-            logger_win.error(f"Валидация не пройдена: {e}")
-            return False
+            return True, ""
+        except Exception as e:
+            return False, str(e)
 
     def save_config(self, new_params):
-        """Безопасная замена параметров с проверкой структуры"""
-        if not self._validate_params(new_params):
-            return False # Прерываем, если данные неверны
+        """Безопасное сохранение с сохранением табуляции"""
+        success, error_msg = self._validate_params(new_params)
+        if not success:
+            logger_win.error(f"Валидация отклонена: {error_msg}")
+            return False
 
         try:
             content = self.transport.read_file(self.config_path)
@@ -71,7 +73,7 @@ class ConfigEditor:
             lines = content.splitlines()
             new_lines = []
             current_section = None
-            modified_count = 0 # Счетчик внесенных изменений
+            modified_count = 0 
 
             for line in lines:
                 original_line = line
@@ -94,8 +96,10 @@ class ConfigEditor:
                             if key == "v2_unwind_speed": val = new_params.get("ace_unwind")
 
                         if val is not None and val != "":
-                            # Сохраняем отступ (табуляцию), если он был в оригинале
-                            indent = original_line[:original_line.find(stripped)]
+                            # Сохраняем оригинальный отступ
+                            indent_idx = original_line.find(stripped)
+                            indent = original_line[:indent_idx] if indent_idx != -1 else ""
+                            # Используем двоеточие, как в твоем исходном конфиге
                             new_lines.append(f"{indent}{key}: {val}")
                             updated = True
                             modified_count += 1
@@ -103,18 +107,13 @@ class ConfigEditor:
                 if not updated:
                     new_lines.append(line)
 
-            # ФИНАЛЬНАЯ ПРОВЕРКА: Если количество строк изменилось критически 
-            # или мы не нашли ни одного параметра — не сохраняем.
             if modified_count == 0:
-                logger_win.error("Изменения не применены: параметры не найдены в файле")
+                logger_win.error("Изменения не применены: параметры не найдены в printer.cfg")
                 return False
 
-            final_content = "\n".join(new_lines)
-            
-            # Записываем и перезагружаем
-            self.transport.write_file(self.config_path, final_content)
+            self.transport.write_file(self.config_path, "\n".join(new_lines))
             self.transport.execute_command("RESTART")
             return True
         except Exception as e:
-            logger_win.error(f"Критическая ошибка при записи конфига: {e}")
+            logger_win.error(f"Критическая ошибка записи: {e}")
             return False
