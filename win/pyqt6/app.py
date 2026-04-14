@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import os
+import traceback
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QVBoxLayout, QWidget, QMessageBox
 from PyQt6.QtCore import Qt
 
@@ -85,17 +86,22 @@ class BedMeshApp(QMainWindow):
             self.center_tabs.raw_text.setPlainText(raw_content)
 
             data = self.parser.parse_file(filepath)
+            
+            # Исправленная проверка
             if data:
                 self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
-                self.logger.info(f"✅ Mesh loaded")
+                self.logger.info(f"✅ Mesh loaded: {data.x_count}x{data.y_count}")
             else:
                 QMessageBox.warning(self, "Ошибка", "В файле нет данных bed_mesh.")
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось обработать файл:\n{e}")
+            error_msg = f"Не удалось обработать файл:\n{e}\n\n{traceback.format_exc()}"
+            self.logger.error(error_msg)
+            QMessageBox.critical(self, "Ошибка", error_msg)
 
-    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:  # ← ИСПРАВЛЕНО
+    # Исправленная функция (добавлено имя аргумента 'data')
+    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))
