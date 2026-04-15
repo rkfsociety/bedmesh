@@ -311,3 +311,19 @@ NameError: name 'data' is not defined
 2026-04-15 12:18:49 [INFO] app: 🔒 Приложение закрыто
 2026-04-15 12:24:11 [INFO] app: ✅ Приложение инициализировано
 2026-04-15 12:26:32 [INFO] app: 🔒 Приложение закрыто
+2026-04-15 12:28:48 [INFO] app: ✅ Приложение инициализировано
+2026-04-15 12:30:05 [INFO] app: ✅ Приложение инициализировано
+2026-04-15 12:30:08 [INFO] app: 🔒 Приложение закрыто
+2026-04-15 12:44:49 [INFO] app: ✅ Приложение инициализировано
+2026-04-15 12:45:04 [ERROR] app: Не удалось обработать файл:
+name 'data' is not defined
+
+Traceback (most recent call last):
+  File "C:\github\bedmesh\win\pyqt6\app.py", line 95, in _process_file
+    stats = self._calculate_advanced_stats(data)
+  File "C:\github\bedmesh\win\pyqt6\app.py", line 106, in _calculate_advanced_stats
+    z_flat = data.z.flatten()
+             ^^^^
+NameError: name 'data' is not defined
+
+2026-04-15 12:45:17 [INFO] app: 🔒 Приложение закрыто

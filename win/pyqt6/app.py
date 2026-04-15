@@ -12,6 +12,7 @@ from core.mesh_parser import MeshParser, BedMeshData
 from core.ssh_client import download_cfg_via_ssh
 from utils.logger import get_logger
 from utils.app_config import AppConfig
+from utils.strings import S
 
 class BedMeshApp(QMainWindow):
     def __init__(self):
@@ -26,7 +27,7 @@ class BedMeshApp(QMainWindow):
         self.logger.info("✅ Приложение инициализировано")
 
     def _init_ui(self):
-        self.setWindowTitle("BedMesh Visualizer")
+        self.setWindowTitle(S.get("app.title"))
         self.resize(1280, 800)
 
         central = QWidget()
@@ -70,11 +71,11 @@ class BedMeshApp(QMainWindow):
 
             self.logger.info(f"Подключение к {ip}...")
             temp_path = download_cfg_via_ssh(ip, port, user, pwd, path)
-            
+
             if temp_path:
                 self._process_file(temp_path)
             else:
-                QMessageBox.critical(self, "Ошибка SSH", "Не удалось подключиться к принтеру.")
+                QMessageBox.critical(self, "Ошибка SSH", S.get("app.msg_ssh_error"))
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
         finally:
@@ -88,20 +89,20 @@ class BedMeshApp(QMainWindow):
             self.center_tabs.raw_text.setPlainText(raw_content)
 
             data = self.parser.parse_file(filepath)
-            
+
             if data:
                 self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
                 self.logger.info(f"✅ Mesh загружен: {data.x_count}x{data.y_count}")
             else:
-                QMessageBox.warning(self, "Ошибка", "В файле нет данных bed_mesh.")
+                QMessageBox.warning(self, "Ошибка", S.get("app.msg_no_mesh"))
         except Exception as e:
-            error_msg = f"Не удалось обработать файл:\n{e}\n\n{traceback.format_exc()}"
+            error_msg = S.get("app.msg_process_error", error=e, traceback=traceback.format_exc())
             self.logger.error(error_msg)
             QMessageBox.critical(self, "Ошибка", error_msg)
 
-    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
+    def _calculate_advanced_stats(self,  BedMeshData) -> dict:
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))

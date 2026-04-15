@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPixmap
 from ui.components.mesh_view import MeshView
 from ui.components.config_editor import ConfigEditor
+from utils.strings import S
 
 class CenterTabs(QWidget):
     def __init__(self):
@@ -19,7 +20,7 @@ class CenterTabs(QWidget):
         m_layout.setContentsMargins(0, 0, 0, 0)
         
         btn_row = QHBoxLayout()
-        btn_copy = QPushButton("📋 Копировать карту")
+        btn_copy = QPushButton(S.get("mesh.copy_btn"))
         btn_copy.setFixedSize(180, 28)
         btn_copy.clicked.connect(self._on_copy_mesh)
         btn_row.addWidget(btn_copy)
@@ -28,7 +29,7 @@ class CenterTabs(QWidget):
         
         self.mesh_view = MeshView()
         m_layout.addWidget(self.mesh_view)
-        self.tabs.addTab(self.mesh_tab, "📊 Карта стола")
+        self.tabs.addTab(self.mesh_tab, S.get("mesh.tab_title"))
 
         # 🔹 Вкладка 2: Редактор конфига
         self.config_tab = QWidget()
@@ -36,9 +37,9 @@ class CenterTabs(QWidget):
         c_layout.setContentsMargins(0, 0, 0, 0)
         self.config_editor = ConfigEditor()
         c_layout.addWidget(self.config_editor)
-        self.tabs.addTab(self.config_tab, "⚙️ Редактор cfg")
+        self.tabs.addTab(self.config_tab, S.get("config.tab_title"))
 
-        # 🔹 Вкладка 3: Сырой CFG (только просмотр)
+        # 🔹 Вкладка 3: Сырой CFG
         self.raw_tab = QWidget()
         r_layout = QVBoxLayout(self.raw_tab)
         r_layout.setContentsMargins(5, 5, 5, 5)
@@ -46,7 +47,7 @@ class CenterTabs(QWidget):
         self.raw_text.setReadOnly(True)
         self.raw_text.setStyleSheet("font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4;")
         r_layout.addWidget(self.raw_text)
-        self.tabs.addTab(self.raw_tab, "📄 Printer Mutable")
+        self.tabs.addTab(self.raw_tab, S.get("raw.tab_title"))
 
     def _on_copy_mesh(self):
         self.mesh_view.copy_to_clipboard()

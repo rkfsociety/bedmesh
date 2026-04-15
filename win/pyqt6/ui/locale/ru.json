@@ -1,0 +1,42 @@
+{
+  "app": {
+    "title": "BedMesh Visualizer",
+    "msg_ssh_error": "Не удалось подключиться к принтеру.",
+    "msg_no_mesh": "В файле нет данных bed_mesh.",
+    "msg_process_error": "Не удалось обработать файл:\n{error}\n\n{traceback}"
+  },
+  "mesh": {
+    "tab_title": "📊 Карта стола",
+    "copy_btn": "📋 Копировать карту"
+  },
+  "config": {
+    "tab_title": "⚙️ Редактор cfg",
+    "btn_load": "📂 Загрузить файл",
+    "btn_save": "💾 Сохранить изменения",
+    "status_ready": "Готов к работе",
+    "status_loaded": "✅ Загружено: {filename}",
+    "status_saved": "💾 Успешно сохранено",
+    "status_missing": "⚠️ Секция [{section}] не найдена",
+    "msg_load_error": "Не удалось загрузить конфиг:\n{error}",
+    "msg_save_ok_title": "Готово",
+    "msg_save_ok_text": "Параметры [bed_mesh] обновлены.\nНе забудьте выполнить FIRMWARE_RESTART в Klipper.",
+    "msg_save_error": "Ошибка сохранения",
+    "sections": {
+      "bed_mesh": {
+        "title": "📦 [bed_mesh]",
+        "fields": {
+          "mesh_min": { "label": "Мин. координаты (X,Y)", "ph": "5,5", "tip": "Левый нижний угол области" },
+          "mesh_max": { "label": "Макс. координаты (X,Y)", "ph": "245,245", "tip": "Правый верхний угол области" },
+          "probe_count": { "label": "Кол-во точек (X,Y)", "ph": "10,10", "tip": "Размер сетки измерений" },
+          "algorithm": { "label": "Алгоритм", "ph": "lagrange", "tip": "Метод интерполяции" }
+        }
+      }
+    }
+  },
+  "raw": {
+    "tab_title": "📄 Printer Mutable"
+  },
+  "tabs": {
+    "settings": "⚙️ Настройка"
+  }
+}
