@@ -234,15 +234,24 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
         f.write(f'del /f /q \"{current_exe}\" >nul 2>&1\n')
         f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
         f.write(f'move /y \"{new_exe_name}\" \"{current_exe}\" >nul\n')
+        # Важно для PyInstaller onefile:
+        # переносим TEMP/TMP в стабильную папку, чтобы распаковка _MEI и python310.dll
+        # не ломалась из-за очистки/блокировок системного %TEMP%.
+        f.write("set \"APP_TMP=%LOCALAPPDATA%\\rkfsociety\\BedMesh Visualizer\\tmp\"\n")
+        f.write("if not exist \"%APP_TMP%\" mkdir \"%APP_TMP%\" >nul 2>&1\n")
+        f.write("set \"TEMP=%APP_TMP%\"\n")
+        f.write("set \"TMP=%APP_TMP%\"\n")
         # Небольшая пауза, чтобы ОС/антивирус успели “подхватить” новый exe до старта.
-        f.write("timeout /t 2 /nobreak > nul\n")
+        f.write("timeout /t 3 /nobreak > nul\n")
         f.write(":startloop\n")
         # Пытаемся стартовать несколько раз — иногда сразу после замены exe может быть временная блокировка.
+        f.write("set \"RUNNING=\"\n")
         f.write(f'start \"\" \"{current_exe}\" >nul 2>&1\n')
-        f.write("if %errorlevel%==0 goto started\n")
         f.write("timeout /t 2 /nobreak > nul\n")
+        f.write(f'for /f \"tokens=*\" %%p in (\'tasklist /fi \"imagename eq {current_exe_name}\" ^| find /i \"{current_exe_name}\" \') do set RUNNING=1\n')
+        f.write("if defined RUNNING goto started\n")
         f.write("set /a tries+=1\n")
-        f.write("if %tries% GEQ 5 goto started\n")
+        f.write("if %tries% GEQ 6 goto started\n")
         f.write("goto startloop\n")
         f.write(":started\n")
         f.write("endlocal\n")
