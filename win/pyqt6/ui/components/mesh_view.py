@@ -43,11 +43,14 @@ class MeshView(QWidget):
         painter.setFont(font)
 
         # 3. Отрисовка ячеек, сетки и текста
+        # В системе координат принтера (0,0) считается слева снизу,
+        # а в координатах изображения (0,0) — слева сверху. Инвертируем Y.
         for i in range(data.y_count):
+            y = (data.y_count - 1 - i) * cell_h
             for j in range(data.x_count):
                 val = data.z[i, j]
                 color = QColor(*lut[idx[i, j]][:3])
-                rect = QRectF(j * cell_w, i * cell_h, cell_w, cell_h)
+                rect = QRectF(j * cell_w, y, cell_w, cell_h)
 
                 painter.fillRect(rect, color)
                 painter.setPen(QColor(80, 80, 80))

@@ -21,6 +21,12 @@ class BedMeshApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        # Дублируем иконку приложения на окно, чтобы она стабильно отображалась на Windows (в т.ч. в панели задач).
+        try:
+            from PyQt6.QtWidgets import QApplication
+            self.setWindowIcon(QApplication.instance().windowIcon())
+        except Exception:
+            pass
         self.logger = get_logger(__name__)
         self.config = AppConfig()
         self.parser = MeshParser()
