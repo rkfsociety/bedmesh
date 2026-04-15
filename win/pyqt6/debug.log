@@ -327,3 +327,6 @@ Traceback (most recent call last):
 NameError: name 'data' is not defined
 
 2026-04-15 12:45:17 [INFO] app: 🔒 Приложение закрыто
+2026-04-15 12:46:53 [INFO] app: ✅ Приложение инициализировано
+2026-04-15 12:47:00 [INFO] app: ✅ Mesh загружен: 10x10
+2026-04-15 12:47:18 [INFO] app: 🔒 Приложение закрыто

@@ -17,3 +17,4 @@ settings*.json
 
 # Файлы спецификации сборки
 *.spec
+win/pyqt6/debug.log
