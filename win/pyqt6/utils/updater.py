@@ -147,10 +147,14 @@ def install_update(release_data: dict, parent=None) -> None:
 
         def download_task():
             try:
+                # если заголовок Content-Length не придёт, используем размер ассета из GitHub API
+                if isinstance(expected_size, int) and expected_size > 0:
+                    state["total"] = expected_size
                 r = requests.get(url, stream=True, timeout=30)
                 r.raise_for_status()
                 total = int(r.headers.get("Content-Length") or 0)
-                state["total"] = total
+                if total > 0:
+                    state["total"] = total
                 with open(new_exe_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=1024 * 256):
                         if not chunk:
@@ -174,7 +178,8 @@ def install_update(release_data: dict, parent=None) -> None:
         t = threading.Thread(target=download_task, daemon=True)
         t.start()
 
-        timer = QTimer()
+        # Важно: таймер должен жить, иначе он может быть GC и окно зависнет “навсегда”.
+        timer = QTimer(dlg)
 
         def on_tick():
             if state["done"]:
@@ -207,7 +212,8 @@ def install_update(release_data: dict, parent=None) -> None:
                 pct = min(100, int(got * 100 / total))
                 dlg.setMaximum(100)
                 dlg.setValue(pct)
-                dlg.setLabelText(f"Скачивание обновления… {pct}%")
+                mb = 1024 * 1024
+                dlg.setLabelText(f"Скачивание обновления… {pct}%  ({got/mb:.1f}/{total/mb:.1f} МБ)")
             else:
                 # Если сервер не дал Content-Length — пусть будет “пульсирующий” прогресс.
                 dlg.setMaximum(0)
