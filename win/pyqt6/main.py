@@ -8,16 +8,15 @@ from utils.logger import setup_logger
 from utils.app_config import AppConfig
 
 def main():
-    config = AppConfig()
-    config.load()
-    
-    debug = config.get("debug_mode", "true") == "true"
-    setup_logger(level=logging.DEBUG if debug else logging.INFO, debug_mode=debug)
-
     app = QApplication(sys.argv)
     app.setApplicationName("BedMesh Visualizer")
     app.setOrganizationName("rkfsociety")
     app.setStyle("Fusion")
+
+    config = AppConfig()
+    config.load()
+    debug = config.get("debug_mode", "true") == "true"
+    setup_logger(level=logging.DEBUG if debug else logging.INFO, debug_mode=debug)
     
     # Иконка (если есть)
     import os

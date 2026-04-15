@@ -1,10 +1,16 @@
 import json
 import os
-from PyQt6.QtCore import QByteArray
+from PyQt6.QtCore import QByteArray, QStandardPaths
 
 class AppConfig:
     def __init__(self):
-        self.file_path = os.path.join(os.getcwd(), "settings.json")
+        base_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+        # AppDataLocation already includes org/app name when set on QApplication.
+        if not base_dir:
+            base_dir = os.path.join(os.getenv("APPDATA") or os.getcwd(), "rkfsociety", "BedMesh Visualizer")
+        os.makedirs(base_dir, exist_ok=True)
+        self.base_dir = base_dir
+        self.file_path = os.path.join(base_dir, "settings.json")
         self.defaults = {
             "ssh_ip": "192.168.",
             "ssh_port": "2222",

@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication, QSizePolicy
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor
 from PyQt6.QtCore import Qt, QRectF
 from core.mesh_parser import BedMeshData
@@ -13,6 +13,10 @@ class MeshView(QWidget):
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("background: #1e1e1e; border: 1px solid #444;")
+        # Prevent layout feedback loop: QLabel's sizeHint depends on pixmap size.
+        # If we keep scaling pixmap to label size, the label may grow to fit the pixmap, triggering endless growth.
+        self.label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.label.setMinimumSize(1, 1)
         layout.addWidget(self.label)
 
         self._pixmap = None
@@ -58,8 +62,22 @@ class MeshView(QWidget):
         painter.end()
 
         self._pixmap = QPixmap.fromImage(img)
+        self._rescale_to_label()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._rescale_to_label()
+
+    def _rescale_to_label(self):
+        if not self._pixmap:
+            return
+        target = self.label.contentsRect().size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
         self.label.setPixmap(self._pixmap.scaled(
-            self.label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            target,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         ))
 
     def _build_lut(self):

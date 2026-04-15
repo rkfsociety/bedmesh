@@ -75,9 +75,9 @@ class BedMeshApp(QMainWindow):
         """Передает управление загрузкой по SSH в ConfigEditor"""
         try:
             self._last_ssh_data = ssh_data
-            # Пользователи ожидают результат именно в редакторе конфига/RAW, поэтому
-            # при SSH-загрузке сразу показываем вкладку редактора.
-            self.center_tabs.tabs.setCurrentWidget(self.center_tabs.config_tab)
+            # Не переключаем вкладки при старте SSH-загрузки, чтобы избежать "мигания":
+            # по завершении загрузки `_process_file` сам переключит на карту, если mesh найден,
+            # а иначе останемся на RAW (см. `_handle_ssh_file_downloaded`).
             self.center_tabs.config_editor.load_from_ssh_data(ssh_data)
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось инициировать загрузку:\n{str(e)}")
@@ -119,6 +119,13 @@ class BedMeshApp(QMainWindow):
                     self.logger.info("No mesh points in %s, trying SSH download: %s", filepath, mutable_path)
                     alt_local = download_cfg_via_ssh(ip, port, user, pwd, mutable_path)
                     if alt_local:
+                        # Показываем в RAW реальный файл, из которого берём points.
+                        try:
+                            with open(alt_local, 'r', encoding='utf-8') as f:
+                                self.center_tabs.raw_text.setPlainText(f.read())
+                        except Exception:
+                            # RAW — вспомогательная вкладка; не ломаем основной флоу из-за ошибки чтения.
+                            self.logger.exception("Failed to update RAW from %s", alt_local)
                         alt_data = self.parser.parse_file(alt_local)
                         if alt_data:
                             self.center_tabs.mesh_view.update_mesh(alt_data)

@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 class StringManager:
     def __init__(self, lang: str = "ru"):
@@ -7,7 +8,12 @@ class StringManager:
         self._load(lang)
 
     def _load(self, lang: str):
-        path = os.path.join(os.path.dirname(__file__), "..", "ui", "locale", f"{lang}.json")
+        # Support PyInstaller onefile builds (resources extracted to sys._MEIPASS).
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            base_dir = sys._MEIPASS
+            path = os.path.join(base_dir, "ui", "locale", f"{lang}.json")
+        else:
+            path = os.path.join(os.path.dirname(__file__), "..", "ui", "locale", f"{lang}.json")
         try:
             with open(path, "r", encoding="utf-8") as f:
                 self._data = json.load(f)
