@@ -126,10 +126,12 @@ def install_update(release_data: dict, parent=None) -> None:
 
         assets = release_data.get("assets") or []
         url = None
+        expected_size = None
         for a in assets:
             name = (a.get("name") or "").lower()
             if name.endswith(".exe"):
                 url = a.get("browser_download_url")
+                expected_size = a.get("size")
                 break
         if not url:
             QMessageBox.warning(parent, "Обновление", "Не найден .exe файл в релизе.")
@@ -181,6 +183,21 @@ def install_update(release_data: dict, parent=None) -> None:
                 if state["error"]:
                     QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось скачать обновление:\n{state['error']}")
                     return
+                # Проверка целостности по размеру ассета (если GitHub отдал размер).
+                if isinstance(expected_size, int) and expected_size > 0 and state["bytes"] != expected_size:
+                    QMessageBox.critical(
+                        parent,
+                        "Ошибка обновления",
+                        "Скачанный файл повреждён (не совпал размер).\n"
+                        f"Ожидалось: {expected_size} байт\n"
+                        f"Скачано: {state['bytes']} байт\n"
+                        "Попробуйте ещё раз.",
+                    )
+                    try:
+                        os.remove(new_exe_path)
+                    except Exception:
+                        pass
+                    return
                 _run_replace_script(current_exe, new_exe_name, base_dir, parent)
                 return
 
@@ -212,7 +229,7 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
         f.write("setlocal\n")
         f.write("set tries=0\n")
         f.write(f'taskkill /f /im "{current_exe_name}" >nul 2>&1\n')
-        f.write("timeout /t 2 /nobreak > nul\n")
+        f.write("timeout /t 4 /nobreak > nul\n")
         f.write(":loop\n")
         f.write(f'del /f /q \"{current_exe}\" >nul 2>&1\n')
         f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
@@ -223,7 +240,7 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
         # Пытаемся стартовать несколько раз — иногда сразу после замены exe может быть временная блокировка.
         f.write(f'start \"\" \"{current_exe}\" >nul 2>&1\n')
         f.write("if %errorlevel%==0 goto started\n")
-        f.write("timeout /t 1 /nobreak > nul\n")
+        f.write("timeout /t 2 /nobreak > nul\n")
         f.write("set /a tries+=1\n")
         f.write("if %tries% GEQ 5 goto started\n")
         f.write("goto startloop\n")
