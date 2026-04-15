@@ -17,7 +17,7 @@ class MeshView(QWidget):
 
         self._pixmap = None
 
-    def update_mesh(self,  BedMeshData):  # ✅ ИСПРАВЛЕНО: добавлено ''
+    def update_mesh(self, data: BedMeshData):
         # 1. Подготовка LUT (палитра)
         lut = self._build_lut()
         z = data.z
