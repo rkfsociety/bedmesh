@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton
 from PyQt6.QtCore import Qt
 
 class RightPanel(QWidget):
@@ -59,7 +59,72 @@ class RightPanel(QWidget):
         layout.addWidget(self.card_fr)
         layout.addWidget(self.card_bc)
 
+        # --- Update / version status (bottom) ---
+        self._update_release_data = None
+        self._on_update_clicked = None
+
+        upd_wrap = QWidget()
+        upd_wrap.setStyleSheet("background-color: #1b1b1b; border-top: 1px solid #333;")
+        upd_l = QVBoxLayout(upd_wrap)
+        upd_l.setContentsMargins(8, 10, 8, 10)
+        upd_l.setSpacing(6)
+
+        self.lbl_version_status = QLabel("v?")
+        self.lbl_version_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        upd_l.addWidget(self.lbl_version_status)
+
+        self.btn_update = QPushButton("Проверить обновления")
+        self.btn_update.setFixedHeight(28)
+        self.btn_update.clicked.connect(self._handle_update_clicked)
+        self.btn_update.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: 1px solid #3a3a3a;
+                border-radius: 6px;
+                padding: 4px 10px;
+                color: #ffffff;
+            }
+            QPushButton:hover { background-color: #333333; }
+            QPushButton:disabled { color: #777; border-color: #2a2a2a; }
+        """)
+        upd_l.addWidget(self.btn_update)
+
+        layout.addWidget(upd_wrap)
         layout.addStretch()
+
+    def set_version_status(self, text: str):
+        self.lbl_version_status.setText(text)
+
+    def set_update_handler(self, handler):
+        self._on_update_clicked = handler
+
+    def set_update_available(self, release_data: dict, latest_tag: str | None = None, current_version: str | None = None):
+        self._update_release_data = release_data
+        latest = (latest_tag or (release_data.get("tag_name") if isinstance(release_data, dict) else None) or "").strip()
+        if latest.lower().startswith("v"):
+            latest = latest[1:]
+        if current_version:
+            self.lbl_version_status.setText(f"Требуется обновление (v{current_version} → v{latest})" if latest else "Требуется обновление")
+        else:
+            self.lbl_version_status.setText(f"Найдена v{latest}" if latest else "Требуется обновление")
+        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #f59e0b; font-weight: bold;")
+        self.btn_update.setText("Обновить")
+
+    def clear_update_available(self, version_text: str):
+        self._update_release_data = None
+        self.lbl_version_status.setText(version_text)
+        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        self.btn_update.setText("Проверить обновления")
+
+    def set_checking_updates(self, checking: bool):
+        self.btn_update.setEnabled(not checking)
+        if checking:
+            self.btn_update.setText("Проверка...")
+
+    def _handle_update_clicked(self):
+        if self._on_update_clicked:
+            self._on_update_clicked(self._update_release_data)
 
     def _create_card(self, title, value, color):
         card = QWidget()

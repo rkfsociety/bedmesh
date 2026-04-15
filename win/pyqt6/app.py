@@ -3,7 +3,7 @@ import numpy as np
 import os
 import traceback
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QVBoxLayout, QWidget, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from ui.panels.left_panel import LeftPanel
 from ui.panels.right_panel import RightPanel
@@ -13,8 +13,12 @@ from core.ssh_client import download_cfg_via_ssh
 from utils.logger import get_logger
 from utils.app_config import AppConfig
 from utils.strings import S
+from utils.version import VERSION
+from utils import updater
 
 class BedMeshApp(QMainWindow):
+    _update_check_done = pyqtSignal(str, object, object)
+
     def __init__(self):
         super().__init__()
         self.logger = get_logger(__name__)
@@ -27,8 +31,15 @@ class BedMeshApp(QMainWindow):
         self._restore_geometry()
         self.logger.info("✅ Приложение инициализировано")
 
+        # Quiet update check: update status in right panel, no popup.
+        self.right_panel.clear_update_available(f"v{VERSION}")
+        self.right_panel.set_update_handler(self._on_update_button_clicked)
+        self._update_release_data = None
+        self._update_check_done.connect(self._apply_update_check_result)
+        self._check_updates_quiet()
+
     def _init_ui(self):
-        self.setWindowTitle(S.get("app.title"))
+        self.setWindowTitle(f"{S.get('app.title')} v{VERSION}")
         self.resize(1280, 800)
 
         central = QWidget()
@@ -63,6 +74,39 @@ class BedMeshApp(QMainWindow):
         self.center_tabs.config_editor.ssh_download_succeeded.connect(self._handle_ssh_file_downloaded)
         
         self.left_panel.setting_updated.connect(self._on_setting_changed)
+
+    def _check_updates_quiet(self):
+        self.right_panel.set_checking_updates(True)
+
+        def on_result(status: str, latest_tag: str | None, data: dict | None):
+            # Emit to GUI thread.
+            self._update_check_done.emit(status, latest_tag, data)
+
+        updater.check_for_updates_detailed(VERSION, on_result)
+
+    def _apply_update_check_result(self, status: str, latest_tag_obj: object, data_obj: object):
+        latest_tag = latest_tag_obj if isinstance(latest_tag_obj, str) else None
+        data = data_obj if isinstance(data_obj, dict) else None
+
+        self.right_panel.set_checking_updates(False)
+        if status == "update" and data:
+            self._update_release_data = data
+            self.right_panel.set_update_available(data, latest_tag=latest_tag, current_version=VERSION)
+        elif status == "none":
+            self._update_release_data = None
+            self.right_panel.clear_update_available(f"v{VERSION}")
+        else:
+            if self._update_release_data:
+                self.right_panel.set_update_available(self._update_release_data)
+            else:
+                self.right_panel.clear_update_available(f"v{VERSION}")
+
+    def _on_update_button_clicked(self, release_data: dict | None):
+        # If update is available -> install; otherwise -> manual check
+        if release_data:
+            updater.install_update(release_data, parent=self)
+        else:
+            self._check_updates_quiet()
 
     def _on_setting_changed(self, key: str, value: str):
         self.settings[key] = value
