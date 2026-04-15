@@ -32,13 +32,11 @@ class LeftPanel(QWidget):
         self.btn_ssh.clicked.connect(self._do_ssh_download)
         layout.addWidget(self.btn_ssh)
 
-        # Переключатель расширенных настроек
-        self.chk_advanced = QCheckBox("⚙️ Показать расширенные настройки")
+        self.chk_advanced = QCheckBox("⚙️ Расширенные настройки")
         self.chk_advanced.setChecked(initial_settings.get("show_advanced", "false") == "true")
         self.chk_advanced.stateChanged.connect(self._toggle_advanced)
         layout.addWidget(self.chk_advanced)
 
-        # Группа расширенных настроек
         self.adv_group = QGroupBox()
         self.adv_group.setVisible(self.chk_advanced.isChecked())
         adv_layout = QVBoxLayout(self.adv_group)
@@ -66,6 +64,12 @@ class LeftPanel(QWidget):
             self.adv_fields[key] = line
 
         layout.addWidget(self.adv_group)
+        
+        layout.addSpacing(15)
+        self.btn_log = QPushButton("📋 Открыть лог")
+        self.btn_log.clicked.connect(self._open_log)
+        layout.addWidget(self.btn_log)
+        
         layout.addStretch()
 
     def _open_file(self):
@@ -82,3 +86,7 @@ class LeftPanel(QWidget):
         is_checked = state == 2
         self.adv_group.setVisible(is_checked)
         self.setting_updated.emit("show_advanced", str(is_checked).lower())
+        
+    def _open_log(self):
+        from utils.logger import open_log_file
+        open_log_file()

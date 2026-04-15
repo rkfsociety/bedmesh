@@ -68,7 +68,9 @@ class BedMeshApp(QMainWindow):
             pwd = self.settings.get("ssh_pass", "rockchip")
             path = self.settings.get("ssh_path", "/userdata/app/gk/printer_mutable.cfg")
 
+            self.logger.info(f"Подключение к {ip}...")
             temp_path = download_cfg_via_ssh(ip, port, user, pwd, path)
+            
             if temp_path:
                 self._process_file(temp_path)
             else:
@@ -87,12 +89,11 @@ class BedMeshApp(QMainWindow):
 
             data = self.parser.parse_file(filepath)
             
-            # Исправленная проверка
             if data:
                 self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
-                self.logger.info(f"✅ Mesh loaded: {data.x_count}x{data.y_count}")
+                self.logger.info(f"✅ Mesh загружен: {data.x_count}x{data.y_count}")
             else:
                 QMessageBox.warning(self, "Ошибка", "В файле нет данных bed_mesh.")
         except Exception as e:
@@ -100,7 +101,6 @@ class BedMeshApp(QMainWindow):
             self.logger.error(error_msg)
             QMessageBox.critical(self, "Ошибка", error_msg)
 
-    # Исправленная функция (добавлено имя аргумента 'data')
     def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))

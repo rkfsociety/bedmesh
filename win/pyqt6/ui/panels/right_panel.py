@@ -10,26 +10,21 @@ class RightPanel(QWidget):
                 color: #ffffff;
                 font-family: 'Segoe UI', sans-serif;
             }
-            QLabel {
-                color: #ffffff;
-            }
+            QLabel { color: #ffffff; }
         """)
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(20)
 
-        # --- Заголовок ---
         title = QLabel("📊 АНАЛИЗ МЕША")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ddd; border-bottom: 1px solid #444; padding-bottom: 10px;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        # --- Сетка статистики ---
         stats_grid = QGridLayout()
         stats_grid.setSpacing(10)
         
-        # Создаем карточки (распаковываем кортежи!)
         self.card_min, self.lbl_min = self._create_card("Мин", "0.000", "#00ffff")
         self.card_max, self.lbl_max = self._create_card("Макс", "0.000", "#ff0000")
         self.card_range, self.lbl_range = self._create_card("Размах", "0.000", "#ffaa00")
@@ -46,7 +41,6 @@ class RightPanel(QWidget):
         
         layout.addLayout(stats_grid)
 
-        # --- Секция коррекции ---
         corr_title = QLabel("🔧 КОРРЕКЦИЯ ОТ СРЕДНЕГО")
         corr_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #bbb; margin-top: 10px;")
         corr_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -69,11 +63,7 @@ class RightPanel(QWidget):
 
     def _create_card(self, title, value, color):
         card = QWidget()
-        card.setStyleSheet("""
-            background-color: #2d2d2d;
-            border-radius: 8px;
-            padding: 8px;
-        """)
+        card.setStyleSheet("background-color: #2d2d2d; border-radius: 8px; padding: 8px;")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -93,12 +83,7 @@ class RightPanel(QWidget):
 
     def _create_correction_card(self, title, val_mm, turns, direction_text):
         card = QWidget()
-        card.setStyleSheet("""
-            background-color: #252525;
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 10px;
-        """)
+        card.setStyleSheet("background-color: #252525; border: 1px solid #333; border-radius: 6px; padding: 10px;")
         layout = QVBoxLayout(card)
         
         lbl_title = QLabel(title)
@@ -121,7 +106,6 @@ class RightPanel(QWidget):
         return card, lbl_mm, lbl_turns
 
     def update_all(self, stats: dict):
-        # Обновляем верхнюю сетку
         self.lbl_min.setText(f"{stats['min']:+.3f}")
         self.lbl_max.setText(f"{stats['max']:+.3f}")
         self.lbl_range.setText(f"{stats['range']:.3f}")
@@ -129,18 +113,16 @@ class RightPanel(QWidget):
         self.lbl_var.setText(f"{stats['var']:.3f}")
         self.lbl_rms.setText(f"{stats['rms']:.3f}")
 
-        # Обновляем коррекцию
         self._update_correction(self.lbl_fl_mm, self.lbl_fl_turns, stats['front_left'])
         self._update_correction(self.lbl_fr_mm, self.lbl_fr_turns, stats['front_right'])
         self._update_correction(self.lbl_bc_mm, self.lbl_bc_turns, stats['back_center'])
 
     def _update_correction(self, lbl_mm, lbl_turns, val_mm):
-        turns = abs(val_mm) / 0.7 # Pitch 0.7mm
+        turns = abs(val_mm) / 0.7
         direction = "ВВЕРХ" if val_mm < 0 else "ВНИЗ"
         
         lbl_mm.setText(f"{val_mm:+.3f} мм")
         lbl_turns.setText(f"({turns:.2f} об. {direction})")
         
-        # Меняем цвет текста направления
         color = '#4ade80' if direction == "ВВЕРХ" else '#f87171'
         lbl_turns.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color}")

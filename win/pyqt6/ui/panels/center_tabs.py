@@ -34,7 +34,6 @@ class CenterTabs(QWidget):
         s_layout.addWidget(QLabel("🔧 Настройка параметров принтера (в разработке)"))
         self.tabs.addTab(self.settings_tab, "⚙️ Настройка")
 
-        # Вкладка 3: Сырой CFG
         self.raw_tab = QWidget()
         r_layout = QVBoxLayout(self.raw_tab)
         r_layout.setContentsMargins(5, 5, 5, 5)
