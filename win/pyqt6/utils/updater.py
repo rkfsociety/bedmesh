@@ -7,7 +7,8 @@ import webbrowser
 from typing import Callable, Optional, Tuple
 
 import requests
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+from PyQt6.QtCore import QTimer, Qt
 
 
 REPO = "rkfsociety/bedmesh"
@@ -131,7 +132,7 @@ def install_update(release_data: dict, parent=None) -> None:
                 url = a.get("browser_download_url")
                 break
         if not url:
-            QMessageBox.warning(parent, "Update", "Не найден .exe файл в релизе.")
+            QMessageBox.warning(parent, "Обновление", "Не найден .exe файл в релизе.")
             return
 
         current_exe = os.path.abspath(sys.executable)
@@ -139,38 +140,105 @@ def install_update(release_data: dict, parent=None) -> None:
         new_exe_name = "BedMesh_Update_Temp.exe"
         new_exe_path = os.path.join(base_dir, new_exe_name)
 
-        r = requests.get(url, stream=True, timeout=30)
-        r.raise_for_status()
-        with open(new_exe_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 256):
-                if chunk:
-                    f.write(chunk)
+        # --- Скачивание в фоне + прогресс, чтобы UI не зависал ---
+        state = {"done": False, "error": None, "bytes": 0, "total": 0}
 
-        current_exe_name = os.path.basename(current_exe)
-        bat_path = os.path.join(base_dir, "updater_pyqt6.bat")
+        def download_task():
+            try:
+                r = requests.get(url, stream=True, timeout=30)
+                r.raise_for_status()
+                total = int(r.headers.get("Content-Length") or 0)
+                state["total"] = total
+                with open(new_exe_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 256):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        state["bytes"] += len(chunk)
+                state["done"] = True
+            except Exception as e:
+                state["error"] = str(e)
+                state["done"] = True
 
-        with open(bat_path, "w", encoding="cp866") as f:
-            f.write("@echo off\n")
-            f.write("title Updating BedMesh Visualizer...\n")
-            f.write(f'echo Closing process "{current_exe_name}"...\n')
-            f.write(f'taskkill /f /im "{current_exe_name}" >nul 2>&1\n')
-            f.write("timeout /t 2 /nobreak > nul\n")
-            f.write(":loop\n")
-            f.write(f'del /f /q "{current_exe}" >nul 2>&1\n')
-            f.write(f'if exist "{current_exe}" (timeout /t 1 /nobreak > nul & goto loop)\n')
-            f.write("echo Installing new version...\n")
-            f.write(f'move /y "{new_exe_name}" "{current_exe}" >nul\n')
-            f.write("echo Starting application...\n")
-            f.write(f'start "" "{current_exe}"\n')
-            f.write('del "%~f0"\n')
+        dlg = QProgressDialog("Скачивание обновления…", None, 0, 100, parent)
+        dlg.setWindowTitle("Обновление")
+        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+        dlg.setCancelButton(None)
+        dlg.show()
 
-        QMessageBox.information(
-            parent,
-            "Update",
-            "Загрузка завершена. Программа закроется на несколько секунд для установки обновления.",
-        )
-        subprocess.Popen(f'start "" "{bat_path}"', shell=True)
-        os._exit(0)
+        t = threading.Thread(target=download_task, daemon=True)
+        t.start()
+
+        timer = QTimer()
+
+        def on_tick():
+            if state["done"]:
+                timer.stop()
+                dlg.close()
+                if state["error"]:
+                    QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось скачать обновление:\n{state['error']}")
+                    return
+                _run_replace_script(current_exe, new_exe_name, base_dir, parent)
+                return
+
+            total = state["total"]
+            got = state["bytes"]
+            if total > 0:
+                dlg.setValue(min(100, int(got * 100 / total)))
+            else:
+                # Если сервер не дал Content-Length — пусть будет “пульсирующий” прогресс.
+                dlg.setMaximum(0)
+
+        timer.timeout.connect(on_tick)
+        timer.start(100)
+        return
     except Exception as e:
-        QMessageBox.critical(parent, "Update Error", f"Не удалось установить обновление:\n{str(e)}")
+        QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось установить обновление:\n{str(e)}")
+
+
+def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, parent=None) -> None:
+    current_exe_name = os.path.basename(current_exe)
+    bat_path = os.path.join(base_dir, "updater_pyqt6.bat")
+
+    with open(bat_path, "w", encoding="cp866") as f:
+        f.write("@echo off\n")
+        f.write("setlocal\n")
+        f.write(f'taskkill /f /im "{current_exe_name}" >nul 2>&1\n')
+        f.write("timeout /t 2 /nobreak > nul\n")
+        f.write(":loop\n")
+        f.write(f'del /f /q \"{current_exe}\" >nul 2>&1\n')
+        f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
+        f.write(f'move /y \"{new_exe_name}\" \"{current_exe}\" >nul\n')
+        # Небольшая пауза, чтобы ОС/антивирус успели “подхватить” новый exe до старта.
+        f.write("timeout /t 1 /nobreak > nul\n")
+        f.write(f'start \"\" \"{current_exe}\"\n')
+        f.write("endlocal\n")
+        f.write('del "%~f0"\n')
+
+    QMessageBox.information(
+        parent,
+        "Обновление",
+        "Обновление скачано. Сейчас приложение перезапустится и обновится.",
+    )
+
+    # Запускаем батник скрыто, чтобы не мелькало окно консоли.
+    try:
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.Popen(
+            [
+                "powershell",
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                f"Start-Process -WindowStyle Hidden -FilePath '{bat_path}'",
+            ],
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except Exception:
+        subprocess.Popen(f'start "" "{bat_path}"', shell=True)
+
+    os._exit(0)
 
