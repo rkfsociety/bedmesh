@@ -1,20 +1,22 @@
-# Папки сборки PyInstaller
-dist/
-build/
-mac/dist/
-mac/build/
+# Виртуальные окружения (САМОЕ ВАЖНОЕ)
+.venv/
+venv/
 
-# Исполняемые файлы
-*.exe
-*.dmg
-
-# Временные файлы Python
+# Кэши Python
 __pycache__/
 *.py[cod]
 
-# Конфиденциальные данные (все файлы настроек)
+# Логи и временные файлы
+debug.log
+temp_download.cfg
+*.log
+*.tmp
+
+# Локальные настройки (пароли, пути)
 settings*.json
 
-# Файлы спецификации сборки
+# Сборка PyInstaller
+dist/
+build/
+*.exe
 *.spec
-win/pyqt6/debug.log
