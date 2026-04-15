@@ -385,3 +385,46 @@ NameError: name 'data' is not defined
 2026-04-15 13:52:42 [DEBUG] paramiko.transport: [chan 0] EOF sent (0)
 2026-04-15 13:52:42 [DEBUG] paramiko.transport: EOF in transport thread
 2026-04-15 13:53:09 [INFO] app: 🔒 Приложение закрыто
+2026-04-15 14:06:25 [INFO] app: ✅ Приложение инициализировано
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: starting thread (client mode): 0xb74f2120
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: Local version/idstring: SSH-2.0-paramiko_4.0.0
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: Remote version/idstring: SSH-2.0-dropbear_2022.83
+2026-04-15 14:06:29 [INFO] paramiko.transport: Connected (version 2.0, client dropbear_2022.83)
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: === Key exchange possibilities ===
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: kex algos: curve25519-sha256, curve25519-sha256@libssh.org, ecdh-sha2-nistp521, ecdh-sha2-nistp384, ecdh-sha2-nistp256, diffie-hellman-group14-sha256, diffie-hellman-group14-sha1, kexguess2@matt.ucc.asn.au
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: server key: rsa-sha2-256, ssh-rsa
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: client encrypt: chacha20-poly1305@openssh.com, aes128-ctr, aes256-ctr
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: server encrypt: chacha20-poly1305@openssh.com, aes128-ctr, aes256-ctr
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: client mac: hmac-sha1, hmac-sha2-256
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: server mac: hmac-sha1, hmac-sha2-256
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: client compress: none
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: server compress: none
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: client lang: <none>
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: server lang: <none>
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: kex follows: False
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: === Key exchange agreements ===
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: Kex: curve25519-sha256@libssh.org
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: HostKey: rsa-sha2-256
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: Cipher: aes128-ctr
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: MAC: hmac-sha2-256
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: Compression: none
+2026-04-15 14:06:29 [DEBUG] paramiko.transport: === End of kex handshake ===
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: kex engine KexCurve25519 specified hash_algo <built-in function openssl_sha256>
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: Switch to new keys ...
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: Adding ssh-rsa host key for [192.168.63.179]:2222: b'89a7067a3e5b5adfb5960b229259105b'
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: Got EXT_INFO: {'server-sig-algs': b'ssh-ed25519,sk-ssh-ed25519@openssh.com,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-256,ssh-rsa,ssh-dss'}
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: userauth is OK
+2026-04-15 14:06:30 [INFO] paramiko.transport: Authentication (password) successful!
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: [chan 0] Max packet in: 32768 bytes
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: [chan 0] Max packet out: 32759 bytes
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: Secsh channel 0 opened.
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: [chan 0] Sesch channel 0 request ok
+2026-04-15 14:06:30 [INFO] paramiko.transport.sftp: [chan 0] Opened sftp connection (server version 3)
+2026-04-15 14:06:30 [DEBUG] paramiko.transport.sftp: [chan 0] stat(b'/userdata/app/gk/printer_mutable.cfg')
+2026-04-15 14:06:30 [DEBUG] paramiko.transport.sftp: [chan 0] open(b'/userdata/app/gk/printer_mutable.cfg', 'rb')
+2026-04-15 14:06:30 [DEBUG] paramiko.transport.sftp: [chan 0] open(b'/userdata/app/gk/printer_mutable.cfg', 'rb') -> 00000000
+2026-04-15 14:06:30 [DEBUG] paramiko.transport.sftp: [chan 0] close(00000000)
+2026-04-15 14:06:30 [INFO] paramiko.transport.sftp: [chan 0] sftp session closed.
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: [chan 0] EOF sent (0)
+2026-04-15 14:06:30 [DEBUG] paramiko.transport: EOF in transport thread
+2026-04-15 14:06:37 [INFO] app: 🔒 Приложение закрыто
