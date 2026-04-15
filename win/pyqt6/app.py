@@ -102,7 +102,8 @@ class BedMeshApp(QMainWindow):
             self.logger.error(error_msg)
             QMessageBox.critical(self, "Ошибка", error_msg)
 
-    def _calculate_advanced_stats(self,  BedMeshData) -> dict:
+    # ✅ ИСПРАВЛЕНО: добавлено 'data:' перед типом
+    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))
