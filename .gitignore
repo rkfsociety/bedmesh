@@ -11,6 +11,7 @@ debug.log
 temp_download.cfg
 *.log
 *.tmp
+download_*.cfg
 
 # Локальные настройки (пароли, пути)
 settings*.json

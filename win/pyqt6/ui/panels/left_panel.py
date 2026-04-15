@@ -48,7 +48,7 @@ class LeftPanel(QWidget):
             ("ssh_port", "Порт", initial_settings.get("ssh_port", "2222")),
             ("ssh_user", "Логин", initial_settings.get("ssh_user", "root")),
             ("ssh_pass", "Пароль", initial_settings.get("ssh_pass", "rockchip")),
-            ("ssh_path", "Путь к файлу", initial_settings.get("ssh_path", "/userdata/app/gk/printer_mutable.cfg"))
+            ("ssh_path", "Путь к файлу", initial_settings.get("ssh_path", "/userdata/app/gk/printer.cfg"))
         ]
 
         for key, label_text, default in fields_cfg:
