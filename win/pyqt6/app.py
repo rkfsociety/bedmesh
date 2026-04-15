@@ -32,6 +32,7 @@ class BedMeshApp(QMainWindow):
         self.parser = MeshParser()
         self.settings = self.config.load()
         self._last_ssh_data = None
+        self._last_mesh_data = None
 
         self._init_ui()
         self._restore_geometry()
@@ -59,6 +60,9 @@ class BedMeshApp(QMainWindow):
         self.left_panel = LeftPanel(self.settings)
         self.center_tabs = CenterTabs()
         self.right_panel = RightPanel()
+
+        # Применяем палитру карты из настроек
+        self.center_tabs.mesh_view.set_palette(self.settings.get("mesh_palette", "soft"))
 
         self.splitter.addWidget(self.left_panel)
         self.splitter.addWidget(self.center_tabs)
@@ -152,6 +156,7 @@ class BedMeshApp(QMainWindow):
             data = self.parser.parse_file(filepath)
 
             if data:
+                self._last_mesh_data = data
                 self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
@@ -178,6 +183,7 @@ class BedMeshApp(QMainWindow):
                             self.logger.exception("Failed to update RAW from %s", alt_local)
                         alt_data = self.parser.parse_file(alt_local)
                         if alt_data:
+                            self._last_mesh_data = alt_data
                             self.center_tabs.mesh_view.update_mesh(alt_data)
                             stats = self._calculate_advanced_stats(alt_data)
                             self.right_panel.update_all(stats)

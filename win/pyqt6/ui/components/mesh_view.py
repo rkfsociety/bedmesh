@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication, QSizePol
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor
 from PyQt6.QtCore import Qt, QRectF
 from core.mesh_parser import BedMeshData
+from ui.components.palettes import build_lut
 
 class MeshView(QWidget):
     def __init__(self):
@@ -20,10 +21,13 @@ class MeshView(QWidget):
         layout.addWidget(self.label)
 
         self._pixmap = None
+        self._palette_key = "soft"
+
+    def set_palette(self, palette_key: str):
+        self._palette_key = palette_key or "classic"
 
     def update_mesh(self, data: BedMeshData):
-        # 1) Яркая LUT-палитра (как было раньше) — точно видно цвет.
-        lut = self._build_lut()
+        lut = build_lut(self._palette_key)
         z = data.z
         z_min, z_max = z.min(), z.max()
         norm = (z - z_min) / (z_max - z_min + 1e-9)
@@ -83,15 +87,6 @@ class MeshView(QWidget):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         ))
-
-    def _build_lut(self):
-        lut = np.zeros((256, 4), dtype=np.uint8)
-        colors = [(0, 0, 255), (128, 128, 255), (255, 255, 255), (255, 128, 128), (255, 0, 0)]
-        pos = [0, 64, 128, 192, 255]
-        for c in range(3):
-            lut[:, c] = np.interp(np.arange(256), pos, [x[c] for x in colors])
-        lut[:, 3] = 255
-        return lut
 
     def copy_to_clipboard(self):
         if self._pixmap:
