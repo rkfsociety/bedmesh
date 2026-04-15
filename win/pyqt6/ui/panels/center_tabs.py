@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QTextEdit, QLabel, QPushButton, QHBoxLayout
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QPixmap
 from ui.components.mesh_view import MeshView
+from ui.components.config_editor import ConfigEditor
 
 class CenterTabs(QWidget):
     def __init__(self):
@@ -28,12 +30,15 @@ class CenterTabs(QWidget):
         m_layout.addWidget(self.mesh_view)
         self.tabs.addTab(self.mesh_tab, "📊 Карта стола")
 
-        # Вкладка 2: Настройка
-        self.settings_tab = QWidget()
-        s_layout = QVBoxLayout(self.settings_tab)
-        s_layout.addWidget(QLabel("🔧 Настройка параметров принтера (в разработке)"))
-        self.tabs.addTab(self.settings_tab, "⚙️ Настройка")
+        # 🔹 Вкладка 2: Редактор конфига
+        self.config_tab = QWidget()
+        c_layout = QVBoxLayout(self.config_tab)
+        c_layout.setContentsMargins(0, 0, 0, 0)
+        self.config_editor = ConfigEditor()
+        c_layout.addWidget(self.config_editor)
+        self.tabs.addTab(self.config_tab, "⚙️ Редактор cfg")
 
+        # 🔹 Вкладка 3: Сырой CFG (только просмотр)
         self.raw_tab = QWidget()
         r_layout = QVBoxLayout(self.raw_tab)
         r_layout.setContentsMargins(5, 5, 5, 5)
