@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m PyInstaller --onefile --noconsole \
             --name "Bed.Mesh.Visualizer" \
+            --icon "win/pyqt6/icon.ico" \
             --add-data "win/pyqt6/ui/locale;ui/locale" \
             win/pyqt6/main.py
 

@@ -166,6 +166,7 @@ def install_update(release_data: dict, parent=None) -> None:
         dlg.setAutoClose(False)
         dlg.setAutoReset(False)
         dlg.setCancelButton(None)
+        dlg.setMinimumDuration(0)
         dlg.show()
 
         t = threading.Thread(target=download_task, daemon=True)
@@ -186,10 +187,14 @@ def install_update(release_data: dict, parent=None) -> None:
             total = state["total"]
             got = state["bytes"]
             if total > 0:
-                dlg.setValue(min(100, int(got * 100 / total)))
+                pct = min(100, int(got * 100 / total))
+                dlg.setMaximum(100)
+                dlg.setValue(pct)
+                dlg.setLabelText(f"Скачивание обновления… {pct}%")
             else:
                 # Если сервер не дал Content-Length — пусть будет “пульсирующий” прогресс.
                 dlg.setMaximum(0)
+                dlg.setLabelText("Скачивание обновления…")
 
         timer.timeout.connect(on_tick)
         timer.start(100)
@@ -205,6 +210,7 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
     with open(bat_path, "w", encoding="cp866") as f:
         f.write("@echo off\n")
         f.write("setlocal\n")
+        f.write("set tries=0\n")
         f.write(f'taskkill /f /im "{current_exe_name}" >nul 2>&1\n')
         f.write("timeout /t 2 /nobreak > nul\n")
         f.write(":loop\n")
@@ -212,8 +218,16 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
         f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
         f.write(f'move /y \"{new_exe_name}\" \"{current_exe}\" >nul\n')
         # Небольшая пауза, чтобы ОС/антивирус успели “подхватить” новый exe до старта.
+        f.write("timeout /t 2 /nobreak > nul\n")
+        f.write(":startloop\n")
+        # Пытаемся стартовать несколько раз — иногда сразу после замены exe может быть временная блокировка.
+        f.write(f'start \"\" \"{current_exe}\" >nul 2>&1\n')
+        f.write("if %errorlevel%==0 goto started\n")
         f.write("timeout /t 1 /nobreak > nul\n")
-        f.write(f'start \"\" \"{current_exe}\"\n')
+        f.write("set /a tries+=1\n")
+        f.write("if %tries% GEQ 5 goto started\n")
+        f.write("goto startloop\n")
+        f.write(":started\n")
         f.write("endlocal\n")
         f.write('del "%~f0"\n')
 
@@ -233,7 +247,7 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
                 "-WindowStyle",
                 "Hidden",
                 "-Command",
-                f"Start-Process -WindowStyle Hidden -FilePath '{bat_path}'",
+                f"Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', '{bat_path}'",
             ],
             creationflags=CREATE_NO_WINDOW,
         )
