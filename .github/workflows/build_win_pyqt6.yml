@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           python -m PyInstaller --onefile --noconsole \
-            --name "BedMeshVisualizer_Win_PyQt6" \
+            --name "Bed.Mesh.Visualizer" \
             --add-data "win/pyqt6/ui/locale;ui/locale" \
             win/pyqt6/main.py
 
@@ -40,12 +40,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BedMeshVisualizer-Win-PyQt6
-          path: dist/BedMeshVisualizer_Win_PyQt6.exe
+          path: dist/Bed.Mesh.Visualizer.exe
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/BedMeshVisualizer_Win_PyQt6.exe
+          files: dist/Bed.Mesh.Visualizer.exe
           name: "${{ github.ref_name }}"
           body: |
             ## Что нового
@@ -53,5 +53,5 @@ jobs:
             - Статус версии и кнопка обновления внизу правой панели
 
             ## Скачать
-            - `BedMeshVisualizer_Win_PyQt6.exe`
+            - `Bed.Mesh.Visualizer.exe`
 
