@@ -9,7 +9,6 @@ from ui.panels.left_panel import LeftPanel
 from ui.panels.right_panel import RightPanel
 from ui.panels.center_tabs import CenterTabs
 from core.mesh_parser import MeshParser, BedMeshData
-from core.ssh_client import download_cfg_via_ssh
 from utils.logger import get_logger
 from utils.app_config import AppConfig
 from utils.strings import S
@@ -50,8 +49,15 @@ class BedMeshApp(QMainWindow):
         self.splitter.setStretchFactor(1, 3)
         self.splitter.setStretchFactor(2, 1)
 
+        # --- Коннекты ---
         self.left_panel.file_selected.connect(self._handle_file_load)
-        self.left_panel.ssh_requested.connect(self._handle_ssh_load)
+        
+        # SSH загрузка через ConfigEditor
+        self.left_panel.ssh_download_requested.connect(self._handle_ssh_load_via_editor)
+        
+        # Сброс кнопки в левой панели после завершения операции в редакторе
+        self.center_tabs.config_editor.ssh_operation_finished.connect(self.left_panel.reset_ssh_button)
+        
         self.left_panel.setting_updated.connect(self._on_setting_changed)
 
     def _on_setting_changed(self, key: str, value: str):
@@ -61,26 +67,13 @@ class BedMeshApp(QMainWindow):
     def _handle_file_load(self, filepath):
         self._process_file(filepath)
 
-    def _handle_ssh_load(self):
+    def _handle_ssh_load_via_editor(self, ssh_data):
+        """Передает управление загрузкой по SSH в ConfigEditor"""
         try:
-            ip = self.left_panel.input_ip.text()
-            port = int(self.settings.get("ssh_port", 2222))
-            user = self.settings.get("ssh_user", "root")
-            pwd = self.settings.get("ssh_pass", "rockchip")
-            path = self.settings.get("ssh_path", "/userdata/app/gk/printer_mutable.cfg")
-
-            self.logger.info(f"Подключение к {ip}...")
-            temp_path = download_cfg_via_ssh(ip, port, user, pwd, path)
-
-            if temp_path:
-                self._process_file(temp_path)
-            else:
-                QMessageBox.critical(self, "Ошибка SSH", S.get("app.msg_ssh_error"))
+            self.center_tabs.config_editor.load_from_ssh_data(ssh_data)
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка", str(e))
-        finally:
-            self.left_panel.btn_ssh.setEnabled(True)
-            self.left_panel.btn_ssh.setText("🌐 Загрузить по SSH")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось инициировать загрузку:\n{str(e)}")
+            self.left_panel.reset_ssh_button()
 
     def _process_file(self, filepath):
         try:
@@ -102,8 +95,7 @@ class BedMeshApp(QMainWindow):
             self.logger.error(error_msg)
             QMessageBox.critical(self, "Ошибка", error_msg)
 
-    # ✅ ИСПРАВЛЕНО: добавлено 'data:' перед типом
-    def _calculate_advanced_stats(self, data: BedMeshData) -> dict:
+    def _calculate_advanced_stats(self, data):
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))

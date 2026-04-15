@@ -20,3 +20,5 @@ dist/
 build/
 *.exe
 *.spec
+win/pyqt6/debug.log
+win/pyqt6/temp_download.cfg

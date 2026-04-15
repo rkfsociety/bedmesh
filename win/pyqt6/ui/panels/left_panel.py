@@ -4,7 +4,8 @@ from PyQt6.QtCore import pyqtSignal
 
 class LeftPanel(QWidget):
     file_selected = pyqtSignal(str)
-    ssh_requested = pyqtSignal()
+    # Отправляем словарь с настройками SSH
+    ssh_download_requested = pyqtSignal(dict)
     setting_updated = pyqtSignal(str, str)
 
     def __init__(self, initial_settings: dict):
@@ -29,7 +30,7 @@ class LeftPanel(QWidget):
         layout.addWidget(self.input_ip)
 
         self.btn_ssh = QPushButton("🌐 Загрузить по SSH")
-        self.btn_ssh.clicked.connect(self._do_ssh_download)
+        self.btn_ssh.clicked.connect(self._request_ssh_download)
         layout.addWidget(self.btn_ssh)
 
         self.chk_advanced = QCheckBox("⚙️ Расширенные настройки")
@@ -77,10 +78,24 @@ class LeftPanel(QWidget):
         if path:
             self.file_selected.emit(path)
 
-    def _do_ssh_download(self):
+    def _request_ssh_download(self):
+        """Собирает данные из полей и отправляет сигнал"""
+        data = {
+            "ip": self.input_ip.text(),
+            "port": self.adv_fields["ssh_port"].text(),
+            "user": self.adv_fields["ssh_user"].text(),
+            "password": self.adv_fields["ssh_pass"].text(),
+            "path": self.adv_fields["ssh_path"].text()
+        }
+        self.ssh_download_requested.emit(data)
+        # Блокируем кнопку до завершения операции
         self.btn_ssh.setEnabled(False)
-        self.btn_ssh.setText("⏳ Подключение...")
-        self.ssh_requested.emit()
+        self.btn_ssh.setText("⏳ Загрузка...")
+
+    def reset_ssh_button(self):
+        """Сброс состояния кнопки после завершения операции"""
+        self.btn_ssh.setEnabled(True)
+        self.btn_ssh.setText("🌐 Загрузить по SSH")
 
     def _toggle_advanced(self, state):
         is_checked = state == 2
