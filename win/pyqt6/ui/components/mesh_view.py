@@ -27,20 +27,28 @@ class MeshView(QWidget):
         z = data.z
         z_min, z_max = z.min(), z.max()
         norm = (z - z_min) / (z_max - z_min + 1e-9)
+        # Лёгкая гамма-коррекция: сохраняем контраст, но без “вырвиглазных” крайних тонов.
+        norm = np.power(norm, 1.05)
         idx = (norm * 255).astype(np.uint8)
 
-        # 2. Создание изображения 700x700
-        size = 700
+        # 2. Создание изображения
+        size = 780
+        pad = 16
         cell_w = size / data.x_count
         cell_h = size / data.y_count
 
-        img = QImage(size, size, QImage.Format.Format_ARGB32)
-        img.fill(QColor("#2b2b2b"))
+        img = QImage(size + pad * 2, size + pad * 2, QImage.Format.Format_ARGB32)
+        img.fill(QColor("#121212"))
 
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        font = QFont("Consolas", 11, QFont.Weight.Bold)
+        font = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
         painter.setFont(font)
+
+        # Фон под сетку (чтобы края выглядели аккуратнее)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#1a1a1a"))
+        painter.drawRoundedRect(QRectF(pad - 2, pad - 2, size + 4, size + 4), 10, 10)
 
         # 3. Отрисовка ячеек, сетки и текста
         # В системе координат принтера (0,0) считается слева снизу,
@@ -49,18 +57,36 @@ class MeshView(QWidget):
             y = (data.y_count - 1 - i) * cell_h
             for j in range(data.x_count):
                 val = data.z[i, j]
-                color = QColor(*lut[idx[i, j]][:3])
-                rect = QRectF(j * cell_w, y, cell_w, cell_h)
+                rgb = lut[idx[i, j]][:3]
+                color = QColor(int(rgb[0]), int(rgb[1]), int(rgb[2]))
+                rect = QRectF(pad + j * cell_w, pad + y, cell_w, cell_h)
 
                 painter.fillRect(rect, color)
-                painter.setPen(QColor(80, 80, 80))
+                painter.setPen(QColor("#262626"))
                 painter.drawRect(rect)
 
                 sign = "+" if val >= 0 else ""
-                ratio = (val - z_min) / (z_max - z_min + 1e-9)
-                txt_color = QColor("black") if 0.25 < ratio < 0.75 else QColor("white")
-                painter.setPen(txt_color)
-                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, f"{sign}{val:.3f}")
+                text = f"{sign}{val:.3f}"
+
+                # Текст всегда читаемый: мягкая тень + основной цвет (по яркости ячейки).
+                lum = 0.2126 * color.red() + 0.7152 * color.green() + 0.0722 * color.blue()
+                main = QColor("#0f0f0f") if lum > 150 else QColor("#f6f6f6")
+                shadow = QColor(0, 0, 0, 140) if lum > 150 else QColor(255, 255, 255, 90)
+
+                # Тень: лёгкий смещённый дубль
+                painter.setPen(shadow)
+                painter.drawText(rect.translated(0.8, 0.8), Qt.AlignmentFlag.AlignCenter, text)
+
+                # Лёгкая “обводка” (4 направления) для стабильной читаемости
+                outline = QColor(0, 0, 0, 110) if main.lightness() > 128 else QColor(255, 255, 255, 70)
+                painter.setPen(outline)
+                painter.drawText(rect.translated(-0.6, 0), Qt.AlignmentFlag.AlignCenter, text)
+                painter.drawText(rect.translated(0.6, 0), Qt.AlignmentFlag.AlignCenter, text)
+                painter.drawText(rect.translated(0, -0.6), Qt.AlignmentFlag.AlignCenter, text)
+                painter.drawText(rect.translated(0, 0.6), Qt.AlignmentFlag.AlignCenter, text)
+
+                painter.setPen(main)
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
         painter.end()
 
@@ -85,7 +111,15 @@ class MeshView(QWidget):
 
     def _build_lut(self):
         lut = np.zeros((256, 4), dtype=np.uint8)
-        colors = [(0,0,255), (128,128,255), (255,255,255), (255,128,128), (255,0,0)]
+        # Достаточно контрастная “diverging” палитра: синий → светлый → красный,
+        # но без чрезмерной насыщенности.
+        colors = [
+            (44, 98, 160),    # глубокий синий
+            (135, 190, 220),  # светло-голубой
+            (245, 247, 250),  # почти белый
+            (245, 170, 150),  # светло-красный
+            (190, 70, 60),    # глубокий красный
+        ]
         pos = [0, 64, 128, 192, 255]
         for c in range(3):
             lut[:, c] = np.interp(np.arange(256), pos, [x[c] for x in colors])
