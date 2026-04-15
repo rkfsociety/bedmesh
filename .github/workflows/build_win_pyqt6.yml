@@ -46,4 +46,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/BedMeshVisualizer_Win_PyQt6.exe
+          name: "${{ github.ref_name }}"
+          body: |
+            ## Что нового
+            - Тихая проверка обновлений при запуске
+            - Статус версии и кнопка обновления внизу правой панели
+
+            ## Скачать
+            - `BedMeshVisualizer_Win_PyQt6.exe`
 
