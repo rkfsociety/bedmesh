@@ -1,10 +1,9 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
-                             QFileDialog, QLineEdit, QHBoxLayout, QCheckBox, QGroupBox, QMessageBox)
+                             QLineEdit, QHBoxLayout, QCheckBox, QGroupBox)
 from PyQt6.QtCore import pyqtSignal
 
 class LeftPanel(QWidget):
-    file_selected = pyqtSignal(str)
     # Отправляем словарь с настройками SSH
     ssh_download_requested = pyqtSignal(dict)
     setting_updated = pyqtSignal(str, str)
@@ -18,12 +17,7 @@ class LeftPanel(QWidget):
         title = QLabel("🔧 Управление")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
-
-        self.btn_open = QPushButton("📂 Выбрать конфиг (файл)")
-        self.btn_open.clicked.connect(self._open_file)
-        layout.addWidget(self.btn_open)
-
-        layout.addSpacing(15)
+        layout.addSpacing(10)
 
         lbl_ip = QLabel("IP адрес принтера:")
         layout.addWidget(lbl_ip)
@@ -75,16 +69,6 @@ class LeftPanel(QWidget):
         layout.addWidget(self.btn_log)
         
         layout.addStretch()
-
-    def _open_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Выберите конфиг", "", "Config Files (*.cfg *.conf);;All Files (*)")
-        if path:
-            # printer_mutable.cfg must be loaded only via SSH
-            base = os.path.basename(path).lower()
-            if "printer_mutable" in base:
-                QMessageBox.information(self, "Ограничение", "printer_mutable.cfg загружается только по SSH.")
-                return
-            self.file_selected.emit(path)
 
     def _request_ssh_download(self):
         """Собирает данные из полей и отправляет сигнал"""

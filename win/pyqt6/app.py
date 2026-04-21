@@ -73,8 +73,6 @@ class BedMeshApp(QMainWindow):
         self.splitter.setStretchFactor(2, 1)
 
         # --- Коннекты ---
-        self.left_panel.file_selected.connect(self._handle_file_load)
-        
         # SSH загрузка через ConfigEditor
         self.left_panel.ssh_download_requested.connect(self._handle_ssh_load_via_editor)
         
@@ -122,9 +120,6 @@ class BedMeshApp(QMainWindow):
     def _on_setting_changed(self, key: str, value: str):
         self.settings[key] = value
         self.config.save()
-
-    def _handle_file_load(self, filepath):
-        self._process_file(filepath)
 
     def _handle_ssh_load_via_editor(self, ssh_data):
         """Передает управление загрузкой по SSH в ConfigEditor"""
