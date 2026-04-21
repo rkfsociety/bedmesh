@@ -84,6 +84,7 @@ class BedMeshApp(QMainWindow):
         self.center_tabs.config_editor.ssh_download_succeeded.connect(self._handle_ssh_file_downloaded)
         
         self.left_panel.setting_updated.connect(self._on_setting_changed)
+        self.left_panel.advanced_toggled.connect(self.center_tabs.set_advanced_visible)
 
     def _check_updates_quiet(self):
         self.right_panel.set_checking_updates(True)

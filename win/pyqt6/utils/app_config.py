@@ -17,7 +17,6 @@ class AppConfig:
             "ssh_user": "root",
             "ssh_pass": "rockchip",
             "ssh_path": "/userdata/app/gk/printer.cfg",
-            "show_advanced": "false",
             "debug_mode": "true",
             "window_geometry": ""
         }
@@ -36,6 +35,8 @@ class AppConfig:
                 with open(self.file_path, 'r', encoding='utf-8') as f:
                     self.settings.update(json.load(f))
             except Exception: pass
+        # This option is UI-only and must not persist.
+        self.settings.pop("show_advanced", None)
         self._migrate()
         return self.settings
 

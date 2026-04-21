@@ -12,14 +12,14 @@
   "config": {
     "tab_title": "⚙️ Настройки Принтера",
     "btn_load": "📂 Загрузить файл",
-    "btn_save": "💾 Сохранить изменения",
+    "btn_save": "💾 Сохранить",
     "status_ready": "Готов к работе",
     "status_loaded": "✅ Загружено: {filename}",
     "status_saved": "💾 Успешно сохранено",
     "status_missing": "⚠️ Секция [{section}] не найдена",
     "msg_load_error": "Не удалось загрузить конфиг:\n{error}",
     "msg_save_ok_title": "Готово",
-    "msg_save_ok_text": "Параметры [bed_mesh] обновлены.\nНе забудьте выполнить FIRMWARE_RESTART в Klipper.",
+    "msg_save_ok_text": "Параметры обновлены. Не забудьте сохранить на принтер",
     "msg_save_error": "Ошибка сохранения",
     "sections": {
       "bed_mesh": {
@@ -29,6 +29,23 @@
           "mesh_max": { "label": "Макс. координаты (X,Y)", "ph": "245,245", "tip": "Правый верхний угол области" },
           "probe_count": { "label": "Кол-во точек (X,Y)", "ph": "10,10", "tip": "Размер сетки измерений" },
           "algorithm": { "label": "Алгоритм", "ph": "lagrange", "tip": "Метод интерполяции" }
+        }
+      },
+      "filament_hub": {
+        "title": "🚀 Ace Pro (скорости подачи/отката)",
+        "fields": {
+          "ace_unwind_speed": { "label": "Скорость отката", "ph": "20", "tip": "Запишется одновременно в v1_unwind_speed и v2_unwind_speed" },
+          "ace_feed_speed": { "label": "Скорость подачи", "ph": "30", "tip": "Запишется одновременно в v1_feed_speed и v2_feed_speed" },
+          "ace_unwind_speed_old": { "label": "Скорость отката (старый Ace)", "ph": "15", "tip": "unwind_speed_old_ace — скорость отката для старого Ace после срабатывания датчика" },
+
+          "unwind_length_after_triggered": { "label": "Откат после срабатывания (мм)", "ph": "1100", "tip": "unwind_length_after_triggered" },
+          "feed_max_length": { "label": "Макс. длина подачи/отката (мм)", "ph": "2600", "tip": "feed_max_length" },
+          "enable_feed_assist": { "label": "Ассист подачи (0/1)", "ph": "1", "tip": "enable_feed_assist" },
+          "enable_rfid": { "label": "RFID (0/1)", "ph": "1", "tip": "enable_rfid" },
+          "delay_before_throw": { "label": "Задержка перед сбросом (с)", "ph": "5", "tip": "delay_before_throw" },
+          "flush_volume_min": { "label": "Промывка: мин. объём", "ph": "107", "tip": "flush_volume_min" },
+          "flush_volume_max": { "label": "Промывка: макс. объём", "ph": "800", "tip": "flush_volume_max" },
+          "flush_multiplier": { "label": "Промывка: множитель", "ph": "1.5", "tip": "flush_multiplier" }
         }
       }
     }

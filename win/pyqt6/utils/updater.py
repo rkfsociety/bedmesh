@@ -6,12 +6,89 @@ import threading
 import webbrowser
 from typing import Callable, Optional, Tuple
 
-import requests
+import json
+import urllib.request
+import urllib.error
+
+try:
+    import requests  # type: ignore
+except Exception:  # pragma: no cover
+    requests = None
 from PyQt6.QtWidgets import QMessageBox, QProgressDialog
 from PyQt6.QtCore import QTimer, Qt
 
 
 REPO = "rkfsociety/bedmesh"
+
+
+def _http_get_json(url: str, timeout: int = 5) -> Optional[dict]:
+    """
+    Lightweight HTTP JSON GET with stdlib fallback.
+    Keep the app runnable even if 'requests' isn't installed.
+    """
+    try:
+        if requests is not None:
+            r = requests.get(url, timeout=timeout)
+            if r.status_code != 200:
+                return None
+            return r.json()
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "rkfsociety-bedmesh-updater",
+                "Accept": "application/vnd.github+json",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return None
+            raw = resp.read()
+        return json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
+def _http_download_stream(
+    url: str,
+    target_path: str,
+    *,
+    chunk_size: int = 1024 * 256,
+    timeout: int = 30,
+    on_chunk=None,
+) -> None:
+    """
+    Streaming download with optional progress callback: on_chunk(bytes_written, total_bytes_or_0)
+    """
+    if requests is not None:
+        r = requests.get(url, stream=True, timeout=timeout)
+        r.raise_for_status()
+        total = int(r.headers.get("Content-Length") or 0)
+        written = 0
+        with open(target_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                written += len(chunk)
+                if on_chunk:
+                    on_chunk(written, total)
+        return
+
+    req = urllib.request.Request(url, headers={"User-Agent": "rkfsociety-bedmesh-updater"}, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        total = int(resp.headers.get("Content-Length") or 0)
+        written = 0
+        with open(target_path, "wb") as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                written += len(chunk)
+                if on_chunk:
+                    on_chunk(written, total)
 
 
 def _parse_version_numbers(v: str) -> Tuple[int, ...]:
@@ -47,10 +124,9 @@ def check_for_updates(current_version: str, update_callback: Callable[[str, dict
 
     def task():
         try:
-            r = requests.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
-            if r.status_code != 200:
+            data = _http_get_json(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            if not data:
                 return
-            data = r.json()
             latest_tag = (data.get("tag_name") or "").strip()  # e.g. "v0.151-win"
             if not latest_tag:
                 return
@@ -85,11 +161,10 @@ def check_for_updates_detailed(
 
     def task():
         try:
-            r = requests.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
-            if r.status_code != 200:
+            data = _http_get_json(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            if not data:
                 result_callback("error", None, None)
                 return
-            data = r.json()
             latest_tag = (data.get("tag_name") or "").strip()
             if not latest_tag:
                 result_callback("error", None, None)
@@ -150,17 +225,12 @@ def install_update(release_data: dict, parent=None) -> None:
                 # если заголовок Content-Length не придёт, используем размер ассета из GitHub API
                 if isinstance(expected_size, int) and expected_size > 0:
                     state["total"] = expected_size
-                r = requests.get(url, stream=True, timeout=30)
-                r.raise_for_status()
-                total = int(r.headers.get("Content-Length") or 0)
-                if total > 0:
-                    state["total"] = total
-                with open(new_exe_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 256):
-                        if not chunk:
-                            continue
-                        f.write(chunk)
-                        state["bytes"] += len(chunk)
+                def on_chunk(written: int, total: int):
+                    state["bytes"] = written
+                    if total > 0:
+                        state["total"] = total
+
+                _http_download_stream(url, new_exe_path, chunk_size=1024 * 256, timeout=30, on_chunk=on_chunk)
                 state["done"] = True
             except Exception as e:
                 state["error"] = str(e)

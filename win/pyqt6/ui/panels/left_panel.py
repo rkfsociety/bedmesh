@@ -1,5 +1,6 @@
+import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
-                             QFileDialog, QLineEdit, QHBoxLayout, QCheckBox, QGroupBox)
+                             QFileDialog, QLineEdit, QHBoxLayout, QCheckBox, QGroupBox, QMessageBox)
 from PyQt6.QtCore import pyqtSignal
 
 class LeftPanel(QWidget):
@@ -7,6 +8,7 @@ class LeftPanel(QWidget):
     # Отправляем словарь с настройками SSH
     ssh_download_requested = pyqtSignal(dict)
     setting_updated = pyqtSignal(str, str)
+    advanced_toggled = pyqtSignal(bool)
 
     def __init__(self, initial_settings: dict):
         super().__init__()
@@ -34,7 +36,8 @@ class LeftPanel(QWidget):
         layout.addWidget(self.btn_ssh)
 
         self.chk_advanced = QCheckBox("⚙️ Расширенные настройки")
-        self.chk_advanced.setChecked(initial_settings.get("show_advanced", "false") == "true")
+        # This toggle is UI-only and must not persist in settings.json.
+        self.chk_advanced.setChecked(False)
         self.chk_advanced.stateChanged.connect(self._toggle_advanced)
         layout.addWidget(self.chk_advanced)
 
@@ -76,6 +79,11 @@ class LeftPanel(QWidget):
     def _open_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Выберите конфиг", "", "Config Files (*.cfg *.conf);;All Files (*)")
         if path:
+            # printer_mutable.cfg must be loaded only via SSH
+            base = os.path.basename(path).lower()
+            if "printer_mutable" in base:
+                QMessageBox.information(self, "Ограничение", "printer_mutable.cfg загружается только по SSH.")
+                return
             self.file_selected.emit(path)
 
     def _request_ssh_download(self):
@@ -100,7 +108,7 @@ class LeftPanel(QWidget):
     def _toggle_advanced(self, state):
         is_checked = state == 2
         self.adv_group.setVisible(is_checked)
-        self.setting_updated.emit("show_advanced", str(is_checked).lower())
+        self.advanced_toggled.emit(is_checked)
         
     def _open_log(self):
         from utils.logger import open_log_file

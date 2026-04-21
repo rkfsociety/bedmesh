@@ -13,6 +13,7 @@ class CenterTabs(QWidget):
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
+        self._advanced_visible = True
 
         # 🔹 Вкладка 1: Карта
         self.mesh_tab = QWidget()
@@ -48,6 +49,47 @@ class CenterTabs(QWidget):
         self.raw_text.setStyleSheet("font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4;")
         r_layout.addWidget(self.raw_text)
         self.tabs.addTab(self.raw_tab, S.get("raw.tab_title"))
+
+        # Default: hide advanced tabs until user enables them.
+        self.set_advanced_visible(False)
+
+    def set_advanced_visible(self, visible: bool):
+        """
+        Show/hide advanced tabs:
+        - Настройки Принтера
+        - Printer Mutable
+        """
+        visible = bool(visible)
+        if visible == self._advanced_visible:
+            return
+        self._advanced_visible = visible
+
+        def _tab_index(widget: QWidget) -> int:
+            try:
+                return self.tabs.indexOf(widget)
+            except Exception:
+                return -1
+
+        if not visible:
+            # If currently on an advanced tab, jump back to mesh.
+            cur = self.tabs.currentWidget()
+            if cur in (self.config_tab, self.raw_tab):
+                self.tabs.setCurrentWidget(self.mesh_tab)
+
+            # Remove in reverse order to keep indices stable.
+            idx_raw = _tab_index(self.raw_tab)
+            if idx_raw >= 0:
+                self.tabs.removeTab(idx_raw)
+            idx_cfg = _tab_index(self.config_tab)
+            if idx_cfg >= 0:
+                self.tabs.removeTab(idx_cfg)
+            return
+
+        # Show: insert after mesh tab in a fixed order.
+        if _tab_index(self.config_tab) < 0:
+            self.tabs.insertTab(1, self.config_tab, S.get("config.tab_title"))
+        if _tab_index(self.raw_tab) < 0:
+            self.tabs.insertTab(2, self.raw_tab, S.get("raw.tab_title"))
 
     def _on_copy_mesh(self):
         self.mesh_view.copy_to_clipboard()

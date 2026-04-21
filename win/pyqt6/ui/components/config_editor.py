@@ -183,6 +183,8 @@ class ConfigEditor(QWidget):
         self.logger = get_logger(__name__)
         self.parser = None
         self.widgets = {}
+        # Pending Ace Pro changes (applied on save)
+        self._ace_pending: dict[str, str] = {}
         self._file_path = None
         self._ssh_config = None 
         self._ssh_thread = None
@@ -237,17 +239,12 @@ class ConfigEditor(QWidget):
 
         toolbar = QHBoxLayout()
         self.btn_load = QPushButton(S.get("config.btn_load"))
-        self.btn_save = QPushButton(S.get("config.btn_save")) # Локальное сохранение
+        self.btn_save = QPushButton(S.get("config.btn_save"))
         self.btn_save.setEnabled(False)
-        
-        # Кнопка сохранения на принтер
-        self.btn_ssh_save = QPushButton("💾 Сохранить на принтер")
-        self.btn_ssh_save.setEnabled(False)
-        self.btn_ssh_save.setStyleSheet("background-color: #2d5a2d; color: white;")
+        self.btn_save.setStyleSheet("background-color: #2d5a2d; color: white;")
         
         toolbar.addWidget(self.btn_load)
         toolbar.addWidget(self.btn_save)
-        toolbar.addWidget(self.btn_ssh_save)
         toolbar.addStretch()
         
         self.status = QLabel(S.get("config.status_ready"))
@@ -268,8 +265,7 @@ class ConfigEditor(QWidget):
         layout.addWidget(scroll)
 
         self.btn_load.clicked.connect(self.load_file)
-        self.btn_save.clicked.connect(self.save_changes_local)
-        self.btn_ssh_save.clicked.connect(self.save_to_printer)
+        self.btn_save.clicked.connect(self.save_to_printer)
         self.btn_backup_refresh.clicked.connect(self._refresh_backups)
         self.btn_backup_create.clicked.connect(lambda: self._run_backup_action("create"))
         self.btn_backup_restore.clicked.connect(lambda: self._run_backup_action("restore"))
@@ -328,7 +324,7 @@ class ConfigEditor(QWidget):
                 self.status.setText("⏳ Обработка файла...")
                 self.repaint()
                 self._process_loaded_file(local_path)
-                self.btn_ssh_save.setEnabled(True)
+                self.btn_save.setEnabled(True)
                 self.status.setText(f"✅ Загружено с принтера ({ip})")
                 self.ssh_download_succeeded.emit(local_path)
 
@@ -438,7 +434,8 @@ class ConfigEditor(QWidget):
             return
 
         self._process_loaded_file(path)
-        self.btn_ssh_save.setEnabled(False)
+        # Local load doesn't imply we can upload; keep Save disabled until SSH load.
+        self.btn_save.setEnabled(False)
 
     def _process_loaded_file(self, path):
         try:
@@ -446,6 +443,7 @@ class ConfigEditor(QWidget):
             self.parser = KlipperConfigParser(path)
             self.parser.load()
             self._file_path = path
+            self._ace_pending = {}
             self._build_ui()
             self.btn_save.setEnabled(False)
             self.status.setText(S.get("config.status_loaded", filename=os.path.basename(path)))
@@ -474,7 +472,7 @@ class ConfigEditor(QWidget):
             self.logger.warning("Build UI: no sections parsed")
             return
 
-        target_sections = ["bed_mesh"]
+        target_sections = ["bed_mesh", "filament_hub"]
         
         for sec_name in target_sections:
             if sec_name not in self.parser.sections:
@@ -495,39 +493,115 @@ class ConfigEditor(QWidget):
             group.setLayout(form)
             
             has_fields = False
-            for key, (val, line_idx) in self.parser.sections[sec_name].items():
-                meta = fields_meta.get(key)
-                if not meta:
-                    continue 
-                
-                label = meta.get('label', key)
-                placeholder = meta.get('ph', '')
-                tooltip = meta.get('tip', '')
-                
-                editor_widget: QWidget
-                if key == "algorithm":
-                    cb = QComboBox()
-                    cb.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
-                    cb.setToolTip(tooltip)
-                    cb.addItems(["lagrange", "bicubic"])
-                    current = (val or "").strip()
-                    idx = cb.findText(current)
-                    if idx >= 0:
-                        cb.setCurrentIndex(idx)
-                    cb.currentTextChanged.connect(self._on_changed)
-                    editor_widget = cb
-                else:
-                    display_val = self._display_bed_mesh_value(key, val)
-                    le = QLineEdit(display_val)
-                    le.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
-                    le.setPlaceholderText(placeholder)
-                    le.setToolTip(tooltip)
-                    le.textChanged.connect(self._on_changed)
-                    editor_widget = le
-                
-                form.addRow(f"{label}:", editor_widget)
-                self.widgets[(sec_name, key)] = editor_widget
+
+            # Special UI for Ace Pro: show 2 unified fields, but write into v1/v2 keys.
+            if sec_name == "filament_hub" and isinstance(fields_meta, dict) and (
+                "ace_feed_speed" in fields_meta or "ace_unwind_speed" in fields_meta
+            ):
+                # Do not show individual params here — only percent selector.
+                # Changes are stored in self._ace_pending and written on Save.
+
+                # "Acceleration" factor for Ace Pro:
+                # - only speeds are scaled relative to STANDARD values
+                # - unwind_length_after_triggered is switched only when >100%
+                # - all other parameters are left untouched
+                standard: dict[str, str] = {
+                    # Speeds (scaled):
+                    "v1_unwind_speed": "20",
+                    "v2_unwind_speed": "20",
+                    "v1_feed_speed": "30",
+                    "v2_feed_speed": "30",
+                    "unwind_speed_old_ace": "15",
+                    # Non-speed param (standard):
+                    "unwind_length_after_triggered": "1300",
+                }
+
+                optimized: dict[str, str] = {
+                    # Tuned for Ace Pro mode.
+                    "unwind_length_after_triggered": "1220",
+                }
+
+                preset_row = QWidget()
+                preset_layout = QHBoxLayout(preset_row)
+                preset_layout.setContentsMargins(0, 0, 0, 0)
+                cb_preset = QComboBox()
+                cb_preset.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                cb_preset.addItems(["100%", "150%", "200%", "250%", "300%"])
+                # Make the dropdown wide enough to read percentages.
+                cb_preset.setMinimumWidth(110)
+                try:
+                    cb_preset.view().setMinimumWidth(110)
+                except Exception:
+                    pass
+
+                def _apply_preset():
+                    pct_text = (cb_preset.currentText() or "100%").strip().replace("%", "")
+                    try:
+                        pct = int(pct_text)
+                    except Exception:
+                        pct = 100
+                    factor = max(0, pct) / 100.0 if pct else 1.0
+                    use_optimized = pct != 100
+
+                    def _scale_int(s: str) -> str:
+                        try:
+                            return str(int(round(float(s) * factor)))
+                        except Exception:
+                            return s
+
+                    # Store pending changes (written on Save).
+                    self._ace_pending = {
+                        "v2_unwind_speed": _scale_int(standard["v2_unwind_speed"]),
+                        "v1_unwind_speed": _scale_int(standard["v1_unwind_speed"]),
+                        "v2_feed_speed": _scale_int(standard["v2_feed_speed"]),
+                        "v1_feed_speed": _scale_int(standard["v1_feed_speed"]),
+                        "unwind_speed_old_ace": _scale_int(standard["unwind_speed_old_ace"]),
+                        "unwind_length_after_triggered": (optimized if use_optimized else standard)["unwind_length_after_triggered"],
+                    }
+
+                    self._on_changed()
+
+                cb_preset.currentTextChanged.connect(lambda _: _apply_preset())
+
+                preset_layout.addWidget(cb_preset)
+                preset_layout.addStretch()
+                form.addRow("Ускорение Ace Pro:", preset_row)
                 has_fields = True
+
+            else:
+                for key, (val, line_idx) in self.parser.sections[sec_name].items():
+                    meta = fields_meta.get(key)
+                    if not meta:
+                        continue 
+                
+                    label = meta.get('label', key)
+                    placeholder = meta.get('ph', '')
+                    tooltip = meta.get('tip', '')
+                
+                    editor_widget: QWidget
+                    if key == "algorithm":
+                        cb = QComboBox()
+                        cb.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                        cb.setToolTip(tooltip)
+                        cb.addItems(["lagrange", "bicubic"])
+                        current = (val or "").strip()
+                        idx = cb.findText(current)
+                        if idx >= 0:
+                            cb.setCurrentIndex(idx)
+                        cb.currentTextChanged.connect(self._on_changed)
+                        editor_widget = cb
+                    else:
+                        display_val = self._display_bed_mesh_value(key, val)
+                        le = QLineEdit(display_val)
+                        le.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                        le.setPlaceholderText(placeholder)
+                        le.setToolTip(tooltip)
+                        le.textChanged.connect(self._on_changed)
+                        editor_widget = le
+                
+                    form.addRow(f"{label}:", editor_widget)
+                    self.widgets[(sec_name, key)] = editor_widget
+                    has_fields = True
             
             if has_fields:
                 self.container_layout.addWidget(group)
@@ -537,9 +611,6 @@ class ConfigEditor(QWidget):
 
     def _on_changed(self):
         self.btn_save.setEnabled(True)
-
-    def save_changes_local(self):
-        self._save_file_changes(silent=False)
 
     def save_to_printer(self):
         if not self._ssh_config:
@@ -582,7 +653,7 @@ class ConfigEditor(QWidget):
             if ok:
                 self.logger.info("SSH UI upload success: remote_path=%s", self._ssh_config.get("path") if self._ssh_config else None)
                 self.status.setText("✅ Сохранено на принтер")
-                QMessageBox.information(self, "Успех", "Файл обновлен на принтере.\nБекап создан.")
+                QMessageBox.information(self, "Успех", "Файл отправлен. Бэкап создан. Не забудьте перезагрузить принтер.")
                 return
 
             if error_text == "backup_failed":
@@ -630,18 +701,29 @@ class ConfigEditor(QWidget):
         
         try:
             changed = False
+
+            def _set_key_value(sec: str, key: str, new_val: str) -> bool:
+                nonlocal changed
+                if sec not in self.parser.sections or key not in self.parser.sections[sec]:
+                    return False
+                old_val, line_idx = self.parser.sections[sec][key]
+                if new_val == old_val:
+                    return False
+                original_line = self.parser.raw_lines[line_idx]
+                indent = original_line[:len(original_line) - len(original_line.lstrip())]
+                self.parser.raw_lines[line_idx] = f"{indent}{key}: {new_val}\n"
+                changed = True
+                return True
+
             for (sec, key), w in self.widgets.items():
                 new_val = self._get_widget_value(w).strip()
                 new_val = self._normalize_bed_mesh_value(key, new_val, w if isinstance(w, QLineEdit) else None)
-                
-                if sec in self.parser.sections and key in self.parser.sections[sec]:
-                    old_val, line_idx = self.parser.sections[sec][key]
-                    
-                    if new_val != old_val:
-                        original_line = self.parser.raw_lines[line_idx]
-                        indent = original_line[:len(original_line) - len(original_line.lstrip())]
-                        self.parser.raw_lines[line_idx] = f"{indent}{key}: {new_val}\n"
-                        changed = True
+                _set_key_value(sec, key, new_val)
+
+            # Ace Pro percent selector writes pending values into [filament_hub]
+            if self._ace_pending:
+                for k, v in (self._ace_pending or {}).items():
+                    _set_key_value("filament_hub", k, str(v).strip())
 
             if changed:
                 with open(self._file_path, 'w', encoding='utf-8') as f:
