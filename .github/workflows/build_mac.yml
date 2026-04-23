@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build-macos:
@@ -17,36 +20,26 @@ jobs:
       - name: Настроить Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Установить зависимости
         run: |
           python -m pip install --upgrade pip
-          pip install customtkinter paramiko requests numpy matplotlib pyinstaller
+          pip install -r bedmesh/win/pyqt6/requirements.txt
+          pip install requests pyinstaller
 
       - name: Сборка и упаковка
         run: |
-          # 1. Заходим в папку с мак-версией
-          cd mac
-          
-          # 2. Проверяем список файлов (для логов, если что-то пойдет не так)
-          ls -la
-          
-          # 3. Запускаем сборку
-          python -m PyInstaller --onefile --windowed \
+          python -m PyInstaller --windowed \
             --name "BedMeshVisualizer_Mac" \
+            --add-data "mac/ui/locale:ui/locale" \
             --add-data "icon.png:." \
-            --collect-all customtkinter \
             --hidden-import=paramiko \
             --hidden-import=requests \
-            --hidden-import=numpy \
-            --hidden-import=matplotlib \
-            main_mac.py
-          
-          # 4. Установка утилиты для DMG (если еще нет)
+            mac/main.py
+
           brew install create-dmg
-          
-          # 5. Создание DMG образа
+
           mkdir -p dist/dmg
           create-dmg \
             --volname "Установщик Bed Mesh Visualizer" \
@@ -56,11 +49,24 @@ jobs:
             --icon "BedMeshVisualizer_Mac.app" 200 190 \
             --hide-extension "BedMeshVisualizer_Mac.app" \
             --app-drop-link 600 185 \
-            "dist/dmg/BedMeshVisualizer_v0.083.dmg" \
+            "dist/dmg/BedMeshVisualizer_Mac.dmg" \
             "dist/BedMeshVisualizer_Mac.app"
 
       - name: Загрузить артефакт
         uses: actions/upload-artifact@v4
         with:
           name: BedMeshVisualizer-MacOS-DMG
-          path: mac/dist/dmg/*.dmg
+          path: dist/dmg/*.dmg
+
+      - name: Опубликовать релиз на GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dmg/BedMeshVisualizer_Mac.dmg
+          name: "${{ github.ref_name }}"
+          body: |
+            ## Что нового
+            - Автосборка macOS (PyQt6)
+            - См. историю коммитов для деталей
+
+            ## Скачать
+            - `BedMeshVisualizer_Mac.dmg`
