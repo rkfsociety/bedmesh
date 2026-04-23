@@ -32,8 +32,8 @@ jobs:
         run: |
           python -m PyInstaller --windowed \
             --name "BedMeshVisualizer_Mac" \
-            --icon "icon.png" \
             --add-data "mac/ui/locale:ui/locale" \
+            --add-data "icon.png:." \
             --hidden-import=paramiko \
             --hidden-import=requests \
             mac/main.py
