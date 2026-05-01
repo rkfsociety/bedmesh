@@ -1,11 +1,14 @@
 package com.rkfsociety.bedmesh.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -68,10 +71,19 @@ fun SshScreen(
 
         val errText = state.lastError
         if (errText != null) {
+            val ctx = LocalContext.current
             AlertDialog(
                 onDismissRequest = onDismissError,
                 confirmButton = {
                     TextButton(onClick = onDismissError) { Text("OK") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            val cm = ctx.getSystemService(ClipboardManager::class.java)
+                            cm?.setPrimaryClip(ClipData.newPlainText("BedMesh error", errText))
+                        },
+                    ) { Text("Копировать") }
                 },
                 title = { Text("Ошибка SSH") },
                 text = {

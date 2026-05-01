@@ -24,9 +24,12 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val ctx = LocalContext.current
 
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Карта", "Config", "RAW", "SSH")
+    val tabs = listOf("SSH", "Карта", "Config", "RAW")
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         topBar = {
             TopAppBar(
                 title = { Text("BedMesh Visualizer") },
@@ -47,7 +50,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ) {
                 tabs.forEachIndexed { i, label ->
                     NavigationBarItem(
                         selected = tab == i,
@@ -97,24 +102,31 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 )
             }
 
-            when (tab) {
-                0 -> MeshScreen(state = state, onCopy = { vm.copyMeshToClipboard(ctx) })
-                1 -> ConfigScreen(
-                    state = state,
-                    onUpdateField = { sec, key, v -> vm.updateConfigField(sec, key, v) },
-                    onSave = { vm.saveConfigToPrinter(ctx) },
-                    onRefreshBackups = { vm.refreshBackups() },
-                    onCreateBackup = { vm.createBackup() },
-                    onRestoreBackup = { p -> vm.restoreBackup(p) },
-                    onDeleteBackup = { p -> vm.deleteBackup(p) },
-                )
-                2 -> RawScreen(rawText = state.rawText)
-                else -> SshScreen(
-                    state = state,
-                    onDownload = { vm.downloadViaSsh(ctx) },
-                    onUpdateField = { k, v -> vm.updateSshField(k, v) },
-                    onDismissError = { vm.clearError() },
-                )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
+                when (tab) {
+                    0 -> SshScreen(
+                        state = state,
+                        onDownload = { vm.downloadViaSsh(ctx) },
+                        onUpdateField = { k, v -> vm.updateSshField(k, v) },
+                        onDismissError = { vm.clearError() },
+                    )
+                    1 -> MeshScreen(state = state, onCopy = { vm.copyMeshToClipboard(ctx) })
+                    2 -> ConfigScreen(
+                        modifier = Modifier.fillMaxWidth(),
+                        state = state,
+                        onUpdateField = { sec, key, v -> vm.updateConfigField(sec, key, v) },
+                        onSave = { vm.saveConfigToPrinter(ctx) },
+                        onRefreshBackups = { vm.refreshBackups() },
+                        onCreateBackup = { vm.createBackup() },
+                        onRestoreBackup = { p -> vm.restoreBackup(p) },
+                        onDeleteBackup = { p -> vm.deleteBackup(p) },
+                    )
+                    3 -> RawScreen(rawText = state.rawText)
+                }
             }
         }
     }

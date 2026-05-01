@@ -1,10 +1,11 @@
 package com.rkfsociety.bedmesh.ui.vm
 
+import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rkfsociety.bedmesh.core.GithubUpdater
 import com.rkfsociety.bedmesh.core.KlipperConfig
@@ -13,6 +14,7 @@ import com.rkfsociety.bedmesh.core.MeshStatsCalculator
 import com.rkfsociety.bedmesh.core.SshClient
 import com.rkfsociety.bedmesh.core.SshBackups
 import com.rkfsociety.bedmesh.core.SshConfig
+import com.rkfsociety.bedmesh.core.SshPrefs
 import com.rkfsociety.bedmesh.core.UpdateState
 import com.rkfsociety.bedmesh.core.formatDiagnostic
 import com.rkfsociety.bedmesh.model.BedMeshData
@@ -25,7 +27,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 data class UiState(
-    val ssh: SshConfig = SshConfig(ip = "192.168.", port = 2222, user = "root", password = "rockchip", path = "/userdata/app/gk/printer.cfg"),
+    val ssh: SshConfig = SshPrefs.defaultConfig(),
     val busy: Boolean = false,
     val rawText: String = "",
     val mesh: BedMeshData? = null,
@@ -46,8 +48,10 @@ private data class SshDownloadOutcome(
     val parseWarning: String?,
 )
 
-class AppViewModel : ViewModel() {
-    private val _uiState = MutableStateFlow(UiState())
+class AppViewModel(application: Application) : AndroidViewModel(application) {
+    private val _uiState = MutableStateFlow(
+        UiState(ssh = SshPrefs.load(application)),
+    )
     val uiState: StateFlow<UiState> = _uiState
 
     fun updateSshField(key: String, value: String) {
@@ -61,6 +65,7 @@ class AppViewModel : ViewModel() {
                 "path" -> cur.copy(path = value)
                 else -> cur
             }
+            SshPrefs.save(getApplication(), next)
             st.copy(ssh = next)
         }
     }
@@ -107,10 +112,13 @@ class AppViewModel : ViewModel() {
                             "rms" to String.format("%.3f", s.rms),
                             "front_left_mm" to String.format("%+.3f", s.frontLeft),
                             "front_left_turns" to String.format("%.2f", s.turnsFor(s.frontLeft)),
+                            "front_left_dir" to if (s.frontLeft < 0) "ВВЕРХ" else "ВНИЗ",
                             "front_right_mm" to String.format("%+.3f", s.frontRight),
                             "front_right_turns" to String.format("%.2f", s.turnsFor(s.frontRight)),
+                            "front_right_dir" to if (s.frontRight < 0) "ВВЕРХ" else "ВНИЗ",
                             "back_center_mm" to String.format("%+.3f", s.backCenter),
                             "back_center_turns" to String.format("%.2f", s.turnsFor(s.backCenter)),
+                            "back_center_dir" to if (s.backCenter < 0) "ВВЕРХ" else "ВНИЗ",
                         )
                     } else {
                         emptyMap()

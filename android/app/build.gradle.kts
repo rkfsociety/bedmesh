@@ -50,10 +50,6 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
-        debug {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
-        }
     }
 
     compileOptions {
@@ -97,8 +93,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-    // SSH/SFTP
+    // SSH/SFTP (явный BC: на Android встроенный провайдер "BC" без X25519 — см. BedMeshApp)
     implementation("com.hierynomus:sshj:0.40.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
 
     // HTTP (GitHub update check)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

@@ -1,13 +1,16 @@
 package com.rkfsociety.bedmesh.ui.screens
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.ui.vm.UiState
 import com.rkfsociety.bedmesh.ui.widgets.Mesh2DView
-import com.rkfsociety.bedmesh.ui.widgets.Mesh3DIsometricView
 
 @Composable
 fun MeshScreen(
@@ -26,11 +29,108 @@ fun MeshScreen(
         }
 
         if (mesh != null) {
-            // 2D + 3D stacked (как "side-by-side" на широких экранах будет позже)
-            Mesh2DView(mesh = mesh, modifier = Modifier.fillMaxWidth().height(320.dp))
-            Mesh3DIsometricView(mesh = mesh, modifier = Modifier.fillMaxWidth().height(260.dp))
-
+            Mesh2DView(
+                mesh = mesh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
+            )
+            ScrewRecommendationsPanel(state = state)
             StatsPanel(state = state)
+        }
+    }
+}
+
+@Composable
+private fun ScrewRecommendationsPanel(state: UiState) {
+    val s = state.stats
+    if (s.isEmpty()) return
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "КОРРЕКЦИЯ ОТ СРЕДНЕГО",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "(минимизирует кручение валов)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            )
+            CorrectionScrewCard(
+                title = "ПЕРЕДНИЙ ЛЕВЫЙ",
+                mm = s["front_left_mm"].orEmpty(),
+                turns = s["front_left_turns"].orEmpty(),
+                direction = s["front_left_dir"].orEmpty(),
+            )
+            CorrectionScrewCard(
+                title = "ПЕРЕДНИЙ ПРАВЫЙ",
+                mm = s["front_right_mm"].orEmpty(),
+                turns = s["front_right_turns"].orEmpty(),
+                direction = s["front_right_dir"].orEmpty(),
+            )
+            CorrectionScrewCard(
+                title = "ЗАДНИЙ ЦЕНТР",
+                mm = s["back_center_mm"].orEmpty(),
+                turns = s["back_center_turns"].orEmpty(),
+                direction = s["back_center_dir"].orEmpty(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CorrectionScrewCard(
+    title: String,
+    mm: String,
+    turns: String,
+    direction: String,
+) {
+    val up = direction == "ВВЕРХ"
+    val dirColor = if (up) Color(0xFF4ADE80) else Color(0xFFF87171)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF333333), MaterialTheme.shapes.medium),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "$mm мм",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    "($turns об. $direction)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = dirColor,
+                )
+            }
         }
     }
 }
@@ -42,15 +142,9 @@ private fun StatsPanel(state: UiState) {
 
     Card {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Анализ", style = MaterialTheme.typography.titleMedium)
+            Text("Анализ сетки", style = MaterialTheme.typography.titleMedium)
             Text("Мин: ${s["min"]}   Макс: ${s["max"]}   Размах: ${s["range"]}")
             Text("Среднее: ${s["mean"]}   Var: ${s["var"]}   RMS: ${s["rms"]}")
-            Divider()
-            Text("Коррекция от среднего (мм / обороты @0.7мм)")
-            Text("Передний левый: ${s["front_left_mm"]}  (${s["front_left_turns"]} об.)")
-            Text("Передний правый: ${s["front_right_mm"]}  (${s["front_right_turns"]} об.)")
-            Text("Задний центр: ${s["back_center_mm"]}  (${s["back_center_turns"]} об.)")
         }
     }
 }
-

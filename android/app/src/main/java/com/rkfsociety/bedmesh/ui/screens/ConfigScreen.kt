@@ -1,8 +1,8 @@
 package com.rkfsociety.bedmesh.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,51 +20,57 @@ fun ConfigScreen(
     onCreateBackup: () -> Unit,
     onRestoreBackup: (String) -> Unit,
     onDeleteBackup: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val cfg = state.config
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val scroll = rememberScrollState()
+    Column(
+        modifier
+            .fillMaxWidth()
+            .verticalScroll(scroll),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Text("Настройки принтера", style = MaterialTheme.typography.titleMedium)
 
         if (cfg == null) {
             Text("Сначала загрузите printer.cfg по SSH.", style = MaterialTheme.typography.bodyMedium)
-            return
-        }
+        } else {
+            BackupPanel(
+                backups = state.backups,
+                busy = state.busy,
+                onRefresh = onRefreshBackups,
+                onCreate = onCreateBackup,
+                onRestore = onRestoreBackup,
+                onDelete = onDeleteBackup,
+            )
 
-        BackupPanel(
-            backups = state.backups,
-            busy = state.busy,
-            onRefresh = onRefreshBackups,
-            onCreate = onCreateBackup,
-            onRestore = onRestoreBackup,
-            onDelete = onDeleteBackup,
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onSave, enabled = !state.busy) {
-                Text(if (state.busy) "Сохранение..." else "Сохранить на принтер")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onSave, enabled = !state.busy) {
+                    Text(if (state.busy) "Сохранение..." else "Сохранить на принтер")
+                }
+                Text(
+                    "Будет создан бекап перед загрузкой.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
             }
-            Text(
-                "Будет создан бекап перед загрузкой.",
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+
+            HorizontalDivider()
+            Text("Редактируемые секции: [bed_mesh], [filament_hub]", style = MaterialTheme.typography.bodySmall)
+
+            SectionEditor(
+                cfg = cfg,
+                section = "bed_mesh",
+                edits = state.configEdits,
+                onUpdateField = onUpdateField,
+            )
+            SectionEditor(
+                cfg = cfg,
+                section = "filament_hub",
+                edits = state.configEdits,
+                onUpdateField = onUpdateField,
             )
         }
-
-        Divider()
-        Text("Редактируемые секции: [bed_mesh], [filament_hub]", style = MaterialTheme.typography.bodySmall)
-
-        SectionEditor(
-            cfg = cfg,
-            section = "bed_mesh",
-            edits = state.configEdits,
-            onUpdateField = onUpdateField,
-        )
-        SectionEditor(
-            cfg = cfg,
-            section = "filament_hub",
-            edits = state.configEdits,
-            onUpdateField = onUpdateField,
-        )
     }
 }
 
@@ -138,11 +144,11 @@ private fun SectionEditor(
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("[$sec]", style = MaterialTheme.typography.titleSmall)
 
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+            Column(
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(keys) { key ->
+                keys.forEach { key ->
                     val mapKey = "$sec.$key"
                     val current = edits[mapKey] ?: cfg.sections[sec]?.get(key)?.value.orEmpty()
                     OutlinedTextField(

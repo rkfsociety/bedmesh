@@ -1,5 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Compose Material3 does not require a Material3 XML theme; use a platform theme to satisfy AAPT. -->
-    <style name="Theme.BedMeshVisualizer" parent="android:Theme.DeviceDefault.NoActionBar" />
+    <style name="Theme.BedMeshVisualizer" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/bedmesh_background</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+    </style>
 </resources>
 
