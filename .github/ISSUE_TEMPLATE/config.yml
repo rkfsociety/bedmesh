@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "🔒 Сообщить об уязвимости (Security)"
+    url: "https://github.com/rkfsociety/bedmesh/security/policy"
+    about: "Пожалуйста, не публикуйте детали уязвимостей публично."
+

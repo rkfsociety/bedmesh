@@ -1,0 +1,77 @@
+name: "🐞 Баг"
+description: "Сообщить о проблеме/ошибке"
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за репорт. Пожалуйста, заполните как можно больше полей — так фикс будет быстрее.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Платформа
+      options:
+        - Android
+        - Windows
+        - macOS
+        - Online
+        - Другое (указать ниже)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия/тег релиза
+      description: Например, v0.163-android / v0.163-win / v0.163-mac
+      placeholder: "v0.xxx-android"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги для воспроизведения
+      description: Пронумерованный список шагов
+      placeholder: |
+        1) ...
+        2) ...
+        3) ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+      placeholder: "Что должно происходить?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение
+      placeholder: "Что происходит на самом деле?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи/скриншоты
+      description: Если есть — приложите скриншот или вставьте лог (можно под спойлер).
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Любая другая полезная информация (модель устройства, конфиг принтера и т.п.)
+    validations:
+      required: false
+

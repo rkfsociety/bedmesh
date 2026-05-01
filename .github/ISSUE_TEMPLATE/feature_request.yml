@@ -1,0 +1,55 @@
+name: "💡 Идея/улучшение"
+description: "Предложить новую фичу или улучшение"
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Опишите, что вы хотите улучшить и зачем. Чем больше контекста — тем лучше.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Платформа
+      options:
+        - Android
+        - Windows
+        - macOS
+        - Online
+        - Общая (для всех)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Проблема/цель
+      placeholder: "Какая боль/задача решается?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Предложение
+      placeholder: "Как вы видите решение? (UI/логика/пример)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      placeholder: "Какие ещё варианты рассматривали?"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Скриншоты, ссылки, примеры конфигов/меша и т.п.
+    validations:
+      required: false
+
