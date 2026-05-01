@@ -6,7 +6,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.core.KlipperConfig
 import com.rkfsociety.bedmesh.core.displayBedMeshPairValue
@@ -225,9 +227,30 @@ private fun BackupPanel(
                 TextButton(onClick = onRefresh, enabled = !busy) { Text("Обновить") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCreate, enabled = !busy) { Text("Создать") }
-                Button(onClick = { selected?.let(onRestore) }, enabled = !busy && selected != null) { Text("Восстановить") }
-                OutlinedButton(onClick = { selected?.let(onDelete) }, enabled = !busy && selected != null) { Text("Удалить") }
+                val buttonText = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp)
+                val tightPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+
+                Button(
+                    onClick = onCreate,
+                    enabled = !busy,
+                    contentPadding = tightPadding,
+                ) {
+                    Text("Создать", style = buttonText, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+                Button(
+                    onClick = { selected?.let(onRestore) },
+                    enabled = !busy && selected != null,
+                    contentPadding = tightPadding,
+                ) {
+                    Text("Восстановить", style = buttonText, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = { selected?.let(onDelete) },
+                    enabled = !busy && selected != null,
+                    contentPadding = tightPadding,
+                ) {
+                    Text("Удалить", style = buttonText, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
             }
             if (backups.isEmpty()) {
                 Text("Бекапов нет.", style = MaterialTheme.typography.bodySmall)
