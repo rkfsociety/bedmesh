@@ -1,7 +1,5 @@
 package com.rkfsociety.bedmesh.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,9 +39,16 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                                 .size(18.dp),
                             strokeWidth = 2.dp,
                         )
-                    } else {
-                        TextButton(onClick = { vm.checkUpdates() }) {
-                            Text("Обновления")
+                    } else if (state.update.downloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(end = 12.dp)
+                                .size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else if (state.update.updateAvailable && state.update.latestTag != null) {
+                        TextButton(onClick = { vm.downloadAndInstallUpdate(ctx) }) {
+                            Text("Обновить")
                         }
                     }
                 },
@@ -85,12 +90,21 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                                 "Доступна ${state.update.latestTag} (сейчас ${state.update.currentVersion})",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                            if (state.update.downloading) {
+                                Spacer(Modifier.height(8.dp))
+                                val p = state.update.downloadProgress
+                                if (p != null) {
+                                    LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                                } else {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
                         }
-                        Button(onClick = {
-                            val url = "https://github.com/rkfsociety/bedmesh/releases/latest"
-                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        }) {
-                            Text("Открыть релиз")
+                        Button(
+                            enabled = !state.update.downloading && state.update.apkUrl != null,
+                            onClick = { vm.downloadAndInstallUpdate(ctx) },
+                        ) {
+                            Text(if (state.update.downloading) "Загрузка..." else "Скачать APK")
                         }
                     }
                 }

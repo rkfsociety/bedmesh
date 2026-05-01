@@ -13,7 +13,11 @@ data class UpdateState(
     val checking: Boolean = false,
     val currentVersion: String,
     val latestTag: String? = null,
+    val apkUrl: String? = null,
     val updateAvailable: Boolean = false,
+    val downloading: Boolean = false,
+    val downloadProgress: Float? = null, // 0..1, null если неизвестно
+    val downloadedApkPath: String? = null,
     val error: String? = null,
 )
 
@@ -53,6 +57,36 @@ object GithubUpdater {
                     }
 
                     return@withContext latest to null
+                }
+            } catch (e: Exception) {
+                null to e.formatDiagnostic()
+            }
+        }
+    }
+
+    suspend fun findApkDownloadUrlForTag(tag: String): Pair<String?, String?> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url("https://api.github.com/repos/$REPO/releases/tags/$tag")
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "rkfsociety-bedmesh-android")
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext null to "http_${resp.code}"
+                    val body = resp.body?.string().orEmpty()
+                    val obj = json.parseToJsonElement(body).jsonObject
+                    val assets = obj["assets"]?.jsonArray ?: return@withContext null to "no_assets"
+                    val apkAsset = assets.firstOrNull { el ->
+                        val name = el.jsonObject["name"]?.jsonPrimitive?.content?.trim().orEmpty().lowercase()
+                        name.endsWith(".apk")
+                    } ?: return@withContext null to "no_apk_asset"
+
+                    val url = apkAsset.jsonObject["browser_download_url"]
+                        ?.jsonPrimitive
+                        ?.content
+                        ?.trim()
+                    return@withContext url to null
                 }
             } catch (e: Exception) {
                 null to e.formatDiagnostic()
