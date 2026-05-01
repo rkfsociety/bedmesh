@@ -23,3 +23,8 @@ build/
 *.spec
 win/pyqt6/debug.log
 win/pyqt6/temp_download.cfg
+
+# Android / Gradle (локальные кэши и артефакты сборки)
+android/.gradle/
+android/**/build/
+android/local.properties

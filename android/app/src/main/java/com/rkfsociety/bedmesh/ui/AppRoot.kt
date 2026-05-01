@@ -17,6 +17,7 @@ import com.rkfsociety.bedmesh.ui.screens.RawScreen
 import com.rkfsociety.bedmesh.ui.screens.SshScreen
 import com.rkfsociety.bedmesh.ui.vm.AppViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: AppViewModel = viewModel()) {
     val state by vm.uiState.collectAsState()

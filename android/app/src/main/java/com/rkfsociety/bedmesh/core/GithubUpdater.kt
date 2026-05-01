@@ -45,7 +45,7 @@ object GithubUpdater {
     fun isNewVersion(current: String, remoteTag: String): Boolean {
         val a = parseVersionNumbers(current)
         val b = parseVersionNumbers(remoteTag)
-        return b > a
+        return compareVersions(b, a) > 0
     }
 
     private fun parseVersionNumbers(v: String): List<Int> {
@@ -55,6 +55,16 @@ object GithubUpdater {
         val parts = s.split(Regex("[^0-9]+")).filter { it.isNotBlank() }
         if (parts.isEmpty()) return listOf(0)
         return parts.map { it.toIntOrNull() ?: 0 }
+    }
+
+    private fun compareVersions(a: List<Int>, b: List<Int>): Int {
+        val n = maxOf(a.size, b.size)
+        for (i in 0 until n) {
+            val ai = a.getOrNull(i) ?: 0
+            val bi = b.getOrNull(i) ?: 0
+            if (ai != bi) return ai.compareTo(bi)
+        }
+        return 0
     }
 }
 
