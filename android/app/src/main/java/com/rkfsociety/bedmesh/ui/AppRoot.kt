@@ -124,6 +124,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                         onCreateBackup = { vm.createBackup() },
                         onRestoreBackup = { p -> vm.restoreBackup(p) },
                         onDeleteBackup = { p -> vm.deleteBackup(p) },
+                        onAceProPreset = { vm.applyAceProPreset(it) },
                     )
                     3 -> RawScreen(rawText = state.rawText)
                 }

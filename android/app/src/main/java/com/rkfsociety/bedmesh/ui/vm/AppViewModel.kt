@@ -16,7 +16,10 @@ import com.rkfsociety.bedmesh.core.SshBackups
 import com.rkfsociety.bedmesh.core.SshConfig
 import com.rkfsociety.bedmesh.core.SshPrefs
 import com.rkfsociety.bedmesh.core.UpdateState
+import com.rkfsociety.bedmesh.core.aceProValuesForPercent
 import com.rkfsociety.bedmesh.core.formatDiagnostic
+import com.rkfsociety.bedmesh.core.normalizeBedMeshPairValue
+import com.rkfsociety.bedmesh.core.resolveSection
 import com.rkfsociety.bedmesh.model.BedMeshData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -160,6 +163,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Как пресет Ace Pro в Windows `config_editor.py` (100%…300%). */
+    fun applyAceProPreset(percent: Int) {
+        val st = _uiState.value
+        val base = st.config ?: return
+        val sec = base.resolveSection("filament_hub") ?: return
+        val values = aceProValuesForPercent(percent)
+        _uiState.update { s ->
+            var edits = s.configEdits
+            for ((k, v) in values) {
+                if (base.sections[sec]?.containsKey(k) == true) {
+                    edits = edits + ("$sec.$k" to v)
+                }
+            }
+            s.copy(configEdits = edits)
+        }
+    }
+
     fun refreshBackups() {
         val cfg = _uiState.value.ssh
         viewModelScope.launch {
@@ -239,7 +259,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     for ((k, v) in st.configEdits) {
                         val parts = k.split(".", limit = 2)
-                        if (parts.size == 2) copy.setValue(parts[0], parts[1], v)
+                        if (parts.size == 2) {
+                            val key = parts[1]
+                            val normalized = normalizeBedMeshPairValue(key, v)
+                            copy.setValue(parts[0], key, normalized)
+                        }
                     }
 
                     SshBackups.createBackup(cfg)

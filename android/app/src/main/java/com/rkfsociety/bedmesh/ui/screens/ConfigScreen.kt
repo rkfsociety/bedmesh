@@ -9,7 +9,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.core.KlipperConfig
+import com.rkfsociety.bedmesh.core.displayBedMeshPairValue
+import com.rkfsociety.bedmesh.core.resolveSection
 import com.rkfsociety.bedmesh.ui.vm.UiState
+
+private data class BedMeshFieldDef(val key: String, val label: String, val placeholder: String)
+
+/** Те же поля, что в `win/pyqt6/ui/locale/ru.json` → `config.sections.bed_mesh.fields`. */
+private val BED_MESH_WHITELIST = listOf(
+    BedMeshFieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5"),
+    BedMeshFieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245"),
+    BedMeshFieldDef("probe_count", "Кол-во точек (X,Y)", "10,10"),
+)
+
+private val ACE_PRESETS = listOf(100, 150, 200, 250, 300)
 
 @Composable
 fun ConfigScreen(
@@ -20,6 +33,7 @@ fun ConfigScreen(
     onCreateBackup: () -> Unit,
     onRestoreBackup: (String) -> Unit,
     onDeleteBackup: (String) -> Unit,
+    onAceProPreset: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cfg = state.config
@@ -55,21 +69,139 @@ fun ConfigScreen(
                 )
             }
 
-            HorizontalDivider()
-            Text("Редактируемые секции: [bed_mesh], [filament_hub]", style = MaterialTheme.typography.bodySmall)
+            val bedSec = cfg.resolveSection("bed_mesh")
+            if (bedSec != null) {
+                BedMeshSectionCard(
+                    cfg = cfg,
+                    section = bedSec,
+                    edits = state.configEdits,
+                    onFieldChange = { key, value -> onUpdateField(bedSec, key, value) },
+                )
+            }
 
-            SectionEditor(
-                cfg = cfg,
-                section = "bed_mesh",
-                edits = state.configEdits,
-                onUpdateField = onUpdateField,
+            if (cfg.resolveSection("filament_hub") != null) {
+                FilamentHubAceProCard(onPreset = onAceProPreset)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BedMeshSectionCard(
+    cfg: KlipperConfig,
+    section: String,
+    edits: Map<String, String>,
+    onFieldChange: (String, String) -> Unit,
+) {
+    val secMap = cfg.sections[section] ?: return
+    var hasAny = false
+    for (def in BED_MESH_WHITELIST) {
+        if (def.key in secMap) {
+            hasAny = true
+            break
+        }
+    }
+    if ("algorithm" in secMap) hasAny = true
+    if (!hasAny) return
+
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("📦 Настройки снятия карты стола", style = MaterialTheme.typography.titleSmall)
+
+            for (def in BED_MESH_WHITELIST) {
+                if (def.key !in secMap) continue
+                val raw = secMap[def.key]?.value.orEmpty()
+                val mapKey = "$section.${def.key}"
+                val shown = edits[mapKey] ?: displayBedMeshPairValue(def.key, raw)
+                OutlinedTextField(
+                    value = shown,
+                    onValueChange = { onFieldChange(def.key, it) },
+                    label = { Text(def.label) },
+                    placeholder = { Text(def.placeholder) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+
+            if ("algorithm" in secMap) {
+                val rawAlg = secMap["algorithm"]?.value.orEmpty().trim()
+                val mapKey = "$section.algorithm"
+                val current = (edits[mapKey] ?: rawAlg).trim().ifEmpty { "lagrange" }
+                var expanded by remember { mutableStateOf(false) }
+                val options = listOf("lagrange", "bicubic")
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = current,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Алгоритм") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        options.forEach { opt ->
+                            DropdownMenuItem(
+                                text = { Text(opt) },
+                                onClick = {
+                                    onFieldChange("algorithm", opt)
+                                    expanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilamentHubAceProCard(onPreset: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedPct by remember { mutableIntStateOf(100) }
+
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("🚀 Ace Pro (скорости подачи/отката)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Ускорение относительно базовых скоростей (как в Windows). Записываются только ключи, уже есть в [filament_hub].",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SectionEditor(
-                cfg = cfg,
-                section = "filament_hub",
-                edits = state.configEdits,
-                onUpdateField = onUpdateField,
-            )
+            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                OutlinedTextField(
+                    value = "$selectedPct%",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Ускорение Ace Pro") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                )
+                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    ACE_PRESETS.forEach { pct ->
+                        DropdownMenuItem(
+                            text = { Text("$pct%") },
+                            onClick = {
+                                selectedPct = pct
+                                onPreset(pct)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -100,7 +232,6 @@ private fun BackupPanel(
             if (backups.isEmpty()) {
                 Text("Бекапов нет.", style = MaterialTheme.typography.bodySmall)
             } else {
-                // Keep it simple: dropdown selector
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                     OutlinedTextField(
@@ -110,7 +241,8 @@ private fun BackupPanel(
                         label = { Text("Выбранный бекап") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(),
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         backups.forEach { p ->
@@ -128,39 +260,3 @@ private fun BackupPanel(
         }
     }
 }
-
-@Composable
-private fun SectionEditor(
-    cfg: KlipperConfig,
-    section: String,
-    edits: Map<String, String>,
-    onUpdateField: (String, String, String) -> Unit,
-) {
-    val sec = cfg.sections.keys.firstOrNull { it == section || it.startsWith("$section ") } ?: return
-    val keys = cfg.sections[sec]?.keys?.toList()?.sorted() ?: return
-    if (keys.isEmpty()) return
-
-    Card {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("[$sec]", style = MaterialTheme.typography.titleSmall)
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                keys.forEach { key ->
-                    val mapKey = "$sec.$key"
-                    val current = edits[mapKey] ?: cfg.sections[sec]?.get(key)?.value.orEmpty()
-                    OutlinedTextField(
-                        value = current,
-                        onValueChange = { onUpdateField(sec, key, it) },
-                        label = { Text(key) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                }
-            }
-        }
-    }
-}
-

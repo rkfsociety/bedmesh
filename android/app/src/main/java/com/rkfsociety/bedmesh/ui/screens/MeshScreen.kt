@@ -2,6 +2,8 @@ package com.rkfsociety.bedmesh.ui.screens
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,7 +20,13 @@ fun MeshScreen(
     onCopy: () -> Unit,
 ) {
     val mesh = state.mesh
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val scroll = rememberScrollState()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scroll),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onCopy, enabled = mesh != null) {
                 Text("Копировать mesh")
