@@ -41,9 +41,12 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                                 .size(18.dp),
                             strokeWidth = 2.dp,
                         )
-                    } else {
-                        TextButton(onClick = { vm.checkUpdates() }) {
-                            Text("Обновления")
+                    } else if (state.update.updateAvailable && state.update.latestTag != null) {
+                        TextButton(onClick = {
+                            val url = "https://github.com/rkfsociety/bedmesh/releases/tag/${state.update.latestTag}"
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }) {
+                            Text("Обновить")
                         }
                     }
                 },
@@ -87,7 +90,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                             )
                         }
                         Button(onClick = {
-                            val url = "https://github.com/rkfsociety/bedmesh/releases/latest"
+                            val url = "https://github.com/rkfsociety/bedmesh/releases/tag/${state.update.latestTag}"
                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                         }) {
                             Text("Открыть релиз")

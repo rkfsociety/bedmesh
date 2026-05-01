@@ -58,6 +58,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
     val uiState: StateFlow<UiState> = _uiState
 
+    init {
+        // Автопроверка обновлений при старте приложения.
+        checkUpdates()
+    }
+
     fun updateSshField(key: String, value: String) {
         _uiState.update { st ->
             val cur = st.ssh
@@ -318,6 +323,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun checkUpdates() {
+        if (_uiState.value.update.checking) return
         val cur = _uiState.value.update.currentVersion
         viewModelScope.launch {
             _uiState.update { it.copy(update = it.update.copy(checking = true, error = null)) }
