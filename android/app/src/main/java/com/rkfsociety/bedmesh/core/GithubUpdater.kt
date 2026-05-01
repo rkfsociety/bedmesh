@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -25,19 +26,36 @@ object GithubUpdater {
         return withContext(Dispatchers.IO) {
             try {
                 val req = Request.Builder()
-                    .url("https://api.github.com/repos/$REPO/releases/latest")
+                    // We need the latest *android* tag, not the global "latest" (which can be mac/win).
+                    .url("https://api.github.com/repos/$REPO/releases?per_page=30")
                     .header("Accept", "application/vnd.github+json")
                     .header("User-Agent", "rkfsociety-bedmesh-android")
                     .build()
                 http.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@withContext null to "http_${resp.code}"
                     val body = resp.body?.string().orEmpty()
-                    val root = json.parseToJsonElement(body).jsonObject
-                    val tag = root["tag_name"]?.jsonPrimitive?.content?.trim()
-                    return@withContext tag to null
+                    val arr = json.parseToJsonElement(body).jsonArray
+                    val tags = arr.mapNotNull { el ->
+                        el.jsonObject["tag_name"]?.jsonPrimitive?.content?.trim()
+                    }
+
+                    val androidTags = tags
+                        .map { it.trim() }
+                        .filter { it.lowercase().contains("-android") }
+
+                    if (androidTags.isEmpty()) {
+                        return@withContext null to "no_android_releases"
+                    }
+
+                    // Pick the highest version among android tags.
+                    val latest = androidTags.maxWithOrNull { a, b ->
+                        compareVersions(parseVersionNumbers(a), parseVersionNumbers(b))
+                    }
+
+                    return@withContext latest to null
                 }
             } catch (e: Exception) {
-                null to (e.message ?: "error")
+                null to e.formatDiagnostic()
             }
         }
     }

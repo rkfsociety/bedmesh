@@ -113,6 +113,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     state = state,
                     onDownload = { vm.downloadViaSsh(ctx) },
                     onUpdateField = { k, v -> vm.updateSshField(k, v) },
+                    onDismissError = { vm.clearError() },
                 )
             }
         }

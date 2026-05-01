@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application") version "8.5.2"
     // Kotlin 1.9.x + Compose compiler extension is the most stable combo across Android Studio installs.
     id("org.jetbrains.kotlin.android") version "1.9.24"
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24"
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+val releaseSigningEnabled = keystorePropertiesFile.exists()
+if (releaseSigningEnabled) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 android {
@@ -19,6 +28,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigningEnabled) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile")!!)
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -26,6 +46,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (releaseSigningEnabled) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"

@@ -28,3 +28,7 @@ win/pyqt6/temp_download.cfg
 android/.gradle/
 android/**/build/
 android/local.properties
+
+# Подпись Android — только локально, переносите на другой ПК вручную (флешка и т.п.)
+android/keystore/*.jks
+android/keystore.properties

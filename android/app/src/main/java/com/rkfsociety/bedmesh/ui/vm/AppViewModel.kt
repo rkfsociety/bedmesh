@@ -3,6 +3,7 @@ package com.rkfsociety.bedmesh.ui.vm
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rkfsociety.bedmesh.core.GithubUpdater
@@ -13,11 +14,14 @@ import com.rkfsociety.bedmesh.core.SshClient
 import com.rkfsociety.bedmesh.core.SshBackups
 import com.rkfsociety.bedmesh.core.SshConfig
 import com.rkfsociety.bedmesh.core.UpdateState
+import com.rkfsociety.bedmesh.core.formatDiagnostic
 import com.rkfsociety.bedmesh.model.BedMeshData
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class UiState(
@@ -31,6 +35,15 @@ data class UiState(
     val backups: List<String> = emptyList(),
     val update: UpdateState = UpdateState(currentVersion = "0.1.0-android"),
     val lastError: String? = null,
+)
+
+private data class SshDownloadOutcome(
+    val rawText: String,
+    val mesh: BedMeshData?,
+    val stats: Map<String, String>,
+    val config: KlipperConfig,
+    val backups: List<String>,
+    val parseWarning: String?,
 )
 
 class AppViewModel : ViewModel() {
@@ -52,65 +65,82 @@ class AppViewModel : ViewModel() {
         }
     }
 
+    fun clearError() {
+        _uiState.update { it.copy(lastError = null) }
+    }
+
     fun downloadViaSsh(context: Context) {
         val cfg = _uiState.value.ssh
+        val appCtx = context.applicationContext
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                val file = SshClient.downloadFile(context, cfg, cfg.path)
-                val text = file.readText()
+                val outcome = withContext(Dispatchers.IO) {
+                    val file = SshClient.downloadFile(appCtx, cfg, cfg.path)
+                    val text = file.readText()
 
-                val parsedCfg = KlipperConfig.parse(text)
-                val backups = runCatching { SshBackups.listBackups(cfg) }.getOrDefault(emptyList())
+                    val parsedCfg = KlipperConfig.parse(text)
+                    val backups = runCatching { SshBackups.listBackups(cfg) }.getOrDefault(emptyList())
 
-                // mirror Windows behavior: if no mesh points found in printer.cfg, try printer_mutable.cfg
-                var parsed = MeshParser.parseText(text)
-                var rawText = text
-                if (parsed == null && cfg.path.endsWith("printer.cfg")) {
-                    val mutablePath = "/userdata/app/gk/printer_mutable.cfg"
-                    val alt = SshClient.downloadFile(context, cfg, mutablePath)
-                    val altText = alt.readText()
-                    val altParsed = MeshParser.parseText(altText)
-                    if (altParsed != null) {
-                        parsed = altParsed
-                        rawText = altText
+                    // mirror Windows behavior: if no mesh points found in printer.cfg, try printer_mutable.cfg
+                    var parsed = MeshParser.parseText(text)
+                    var rawText = text
+                    if (parsed == null && cfg.path.endsWith("printer.cfg")) {
+                        val mutablePath = "/userdata/app/gk/printer_mutable.cfg"
+                        val alt = SshClient.downloadFile(appCtx, cfg, mutablePath)
+                        val altText = alt.readText()
+                        val altParsed = MeshParser.parseText(altText)
+                        if (altParsed != null) {
+                            parsed = altParsed
+                            rawText = altText
+                        }
                     }
-                }
 
-                val stats = if (parsed != null) {
-                    val s = MeshStatsCalculator.compute(parsed)
-                    mapOf(
-                        "min" to String.format("%+.3f", s.min),
-                        "max" to String.format("%+.3f", s.max),
-                        "range" to String.format("%.3f", s.range),
-                        "mean" to String.format("%+.3f", s.mean),
-                        "var" to String.format("%.3f", s.variance),
-                        "rms" to String.format("%.3f", s.rms),
-                        "front_left_mm" to String.format("%+.3f", s.frontLeft),
-                        "front_left_turns" to String.format("%.2f", s.turnsFor(s.frontLeft)),
-                        "front_right_mm" to String.format("%+.3f", s.frontRight),
-                        "front_right_turns" to String.format("%.2f", s.turnsFor(s.frontRight)),
-                        "back_center_mm" to String.format("%+.3f", s.backCenter),
-                        "back_center_turns" to String.format("%.2f", s.turnsFor(s.backCenter)),
+                    val stats = if (parsed != null) {
+                        val s = MeshStatsCalculator.compute(parsed)
+                        mapOf(
+                            "min" to String.format("%+.3f", s.min),
+                            "max" to String.format("%+.3f", s.max),
+                            "range" to String.format("%.3f", s.range),
+                            "mean" to String.format("%+.3f", s.mean),
+                            "var" to String.format("%.3f", s.variance),
+                            "rms" to String.format("%.3f", s.rms),
+                            "front_left_mm" to String.format("%+.3f", s.frontLeft),
+                            "front_left_turns" to String.format("%.2f", s.turnsFor(s.frontLeft)),
+                            "front_right_mm" to String.format("%+.3f", s.frontRight),
+                            "front_right_turns" to String.format("%.2f", s.turnsFor(s.frontRight)),
+                            "back_center_mm" to String.format("%+.3f", s.backCenter),
+                            "back_center_turns" to String.format("%.2f", s.turnsFor(s.backCenter)),
+                        )
+                    } else {
+                        emptyMap()
+                    }
+
+                    SshDownloadOutcome(
+                        rawText = rawText,
+                        mesh = parsed,
+                        stats = stats,
+                        config = parsedCfg,
+                        backups = backups,
+                        parseWarning = if (parsed == null) "Не найден bed_mesh в файле" else null,
                     )
-                } else {
-                    emptyMap()
                 }
 
                 _uiState.update {
                     it.copy(
                         busy = false,
-                        rawText = rawText,
-                        mesh = parsed,
-                        stats = stats,
-                        config = parsedCfg,
+                        rawText = outcome.rawText,
+                        mesh = outcome.mesh,
+                        stats = outcome.stats,
+                        config = outcome.config,
                         configEdits = emptyMap(),
-                        backups = backups,
-                        lastError = if (parsed == null) "Не найден bed_mesh в файле" else null,
+                        backups = outcome.backups,
+                        lastError = outcome.parseWarning,
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                Log.e("BedMesh", "SSH download failed: ${e.formatDiagnostic()}", e)
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -127,10 +157,10 @@ class AppViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                val list = SshBackups.listBackups(cfg)
+                val list = withContext(Dispatchers.IO) { SshBackups.listBackups(cfg) }
                 _uiState.update { it.copy(busy = false, backups = list) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -140,11 +170,13 @@ class AppViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                SshBackups.createBackup(cfg)
-                val list = SshBackups.listBackups(cfg)
+                val list = withContext(Dispatchers.IO) {
+                    SshBackups.createBackup(cfg)
+                    SshBackups.listBackups(cfg)
+                }
                 _uiState.update { it.copy(busy = false, backups = list) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -154,10 +186,10 @@ class AppViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                val ok = SshBackups.restoreBackup(cfg, path)
+                val ok = withContext(Dispatchers.IO) { SshBackups.restoreBackup(cfg, path) }
                 _uiState.update { it.copy(busy = false, lastError = if (!ok) "restore_failed" else null) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -167,11 +199,15 @@ class AppViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                val ok = SshBackups.deleteBackup(cfg, path)
-                val list = SshBackups.listBackups(cfg)
-                _uiState.update { it.copy(busy = false, backups = list, lastError = if (!ok) "delete_failed" else null) }
+                val pair = withContext(Dispatchers.IO) {
+                    val ok = SshBackups.deleteBackup(cfg, path)
+                    ok to SshBackups.listBackups(cfg)
+                }
+                _uiState.update {
+                    it.copy(busy = false, backups = pair.second, lastError = if (!pair.first) "delete_failed" else null)
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -183,29 +219,40 @@ class AppViewModel : ViewModel() {
             _uiState.update { it.copy(lastError = "config_not_loaded") }
             return
         }
+        val appCtx = context.applicationContext
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, lastError = null) }
             try {
-                // Apply edits into a copy (keep original usable until upload succeeds)
-                val copy = KlipperConfig(base.rawLines.toMutableList(), base.sections.toMutableMap().mapValues { it.value.toMutableMap() }.toMutableMap())
-                for ((k, v) in st.configEdits) {
-                    val parts = k.split(".", limit = 2)
-                    if (parts.size == 2) copy.setValue(parts[0], parts[1], v)
+                val uploadResult = withContext(Dispatchers.IO) {
+                    // Apply edits into a copy (keep original usable until upload succeeds)
+                    val copy = KlipperConfig(
+                        base.rawLines.toMutableList(),
+                        base.sections.toMutableMap().mapValues { it.value.toMutableMap() }.toMutableMap(),
+                    )
+                    for ((k, v) in st.configEdits) {
+                        val parts = k.split(".", limit = 2)
+                        if (parts.size == 2) copy.setValue(parts[0], parts[1], v)
+                    }
+
+                    SshBackups.createBackup(cfg)
+
+                    val temp = File(appCtx.cacheDir, "printer_cfg_upload.cfg")
+                    temp.writeText(copy.toText())
+
+                    val ok = SshBackups.uploadWithVerify(cfg, temp, appCtx.cacheDir)
+                    if (!ok) return@withContext null to null
+
+                    val list = runCatching { SshBackups.listBackups(cfg) }.getOrDefault(emptyList())
+                    copy to list
                 }
 
-                // Best-effort backup first (like desktop)
-                SshBackups.createBackup(cfg)
-
-                val temp = File(context.cacheDir, "printer_cfg_upload.cfg")
-                temp.writeText(copy.toText())
-
-                val ok = SshBackups.uploadWithVerify(cfg, temp, context.cacheDir)
-                if (!ok) {
+                if (uploadResult.first == null) {
                     _uiState.update { it.copy(busy = false, lastError = "upload_verify_failed") }
                     return@launch
                 }
 
-                val list = runCatching { SshBackups.listBackups(cfg) }.getOrDefault(emptyList())
+                val copy = uploadResult.first!!
+                val list = uploadResult.second!!
                 _uiState.update {
                     it.copy(
                         busy = false,
@@ -217,7 +264,7 @@ class AppViewModel : ViewModel() {
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(busy = false, lastError = e.message ?: "ошибка") }
+                _uiState.update { it.copy(busy = false, lastError = e.formatDiagnostic()) }
             }
         }
     }
@@ -241,7 +288,7 @@ class AppViewModel : ViewModel() {
         val cur = _uiState.value.update.currentVersion
         viewModelScope.launch {
             _uiState.update { it.copy(update = it.update.copy(checking = true, error = null)) }
-            val (tag, err) = GithubUpdater.checkLatestReleaseTag(cur)
+            val (tag, err) = withContext(Dispatchers.IO) { GithubUpdater.checkLatestReleaseTag(cur) }
             if (tag != null) {
                 val available = GithubUpdater.isNewVersion(cur, tag)
                 _uiState.update {
