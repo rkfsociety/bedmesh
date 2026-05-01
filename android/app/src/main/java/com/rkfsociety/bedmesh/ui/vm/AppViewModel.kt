@@ -7,6 +7,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rkfsociety.bedmesh.BuildConfig
 import com.rkfsociety.bedmesh.core.GithubUpdater
 import com.rkfsociety.bedmesh.core.KlipperConfig
 import com.rkfsociety.bedmesh.core.MeshParser
@@ -38,7 +39,7 @@ data class UiState(
     val config: KlipperConfig? = null,
     val configEdits: Map<String, String> = emptyMap(), // key: "section.key"
     val backups: List<String> = emptyList(),
-    val update: UpdateState = UpdateState(currentVersion = "0.1.0-android"),
+    val update: UpdateState = UpdateState(currentVersion = BuildConfig.VERSION_NAME),
     val lastError: String? = null,
 )
 
