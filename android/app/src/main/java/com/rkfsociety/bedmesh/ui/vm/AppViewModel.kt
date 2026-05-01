@@ -4,9 +4,13 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.content.FileProvider
 import com.rkfsociety.bedmesh.BuildConfig
 import com.rkfsociety.bedmesh.core.GithubUpdater
 import com.rkfsociety.bedmesh.core.KlipperConfig
@@ -326,22 +330,121 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.update.checking) return
         val cur = _uiState.value.update.currentVersion
         viewModelScope.launch {
-            _uiState.update { it.copy(update = it.update.copy(checking = true, error = null)) }
+            _uiState.update {
+                it.copy(
+                    update = it.update.copy(
+                        checking = true,
+                        error = null,
+                        // Сбрасываем данные загрузки при новой проверке
+                        downloading = false,
+                        downloadProgress = null,
+                        downloadedApkPath = null,
+                        apkUrl = null,
+                    ),
+                )
+            }
             val (tag, err) = withContext(Dispatchers.IO) { GithubUpdater.checkLatestReleaseTag(cur) }
             if (tag != null) {
                 val available = GithubUpdater.isNewVersion(cur, tag)
+                val (apkUrl, apkErr) = if (available) {
+                    withContext(Dispatchers.IO) { GithubUpdater.findApkDownloadUrlForTag(tag) }
+                } else {
+                    null to null
+                }
                 _uiState.update {
                     it.copy(
                         update = it.update.copy(
                             checking = false,
                             latestTag = tag,
                             updateAvailable = available,
-                            error = null,
+                            apkUrl = apkUrl,
+                            error = apkErr,
                         ),
                     )
                 }
             } else {
                 _uiState.update { it.copy(update = it.update.copy(checking = false, error = err ?: "error")) }
+            }
+        }
+    }
+
+    fun downloadAndInstallUpdate(context: Context) {
+        val st = _uiState.value.update
+        val url = st.apkUrl
+        if (st.downloading || url.isNullOrBlank()) return
+
+        val appCtx = context.applicationContext
+        viewModelScope.launch {
+            _uiState.update { it.copy(update = it.update.copy(downloading = true, downloadProgress = 0f, error = null)) }
+            try {
+                val outFile = withContext(Dispatchers.IO) {
+                    val req = okhttp3.Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "rkfsociety-bedmesh-android")
+                        .build()
+                    val client = okhttp3.OkHttpClient()
+                    client.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) throw IllegalStateException("http_${resp.code}")
+                        val body = resp.body ?: throw IllegalStateException("empty_body")
+                        val total = body.contentLength().takeIf { it > 0 }
+
+                        val name = "bedmesh-${st.latestTag ?: "update"}.apk"
+                        val out = File(appCtx.cacheDir, name)
+                        body.byteStream().use { input ->
+                            out.outputStream().use { output ->
+                                val buf = ByteArray(64 * 1024)
+                                var read: Int
+                                var done = 0L
+                                while (true) {
+                                    read = input.read(buf)
+                                    if (read <= 0) break
+                                    output.write(buf, 0, read)
+                                    done += read.toLong()
+                                    if (total != null) {
+                                        val p = (done.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 1f)
+                                        _uiState.update { s ->
+                                            s.copy(update = s.update.copy(downloadProgress = p))
+                                        }
+                                    }
+                                }
+                                output.flush()
+                            }
+                        }
+                        out
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(update = it.update.copy(downloading = false, downloadProgress = 1f, downloadedApkPath = outFile.absolutePath))
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val pm = appCtx.packageManager
+                    if (!pm.canRequestPackageInstalls()) {
+                        val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${appCtx.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        appCtx.startActivity(intent)
+                        return@launch
+                    }
+                }
+
+                val apkUri = FileProvider.getUriForFile(
+                    appCtx,
+                    "${appCtx.packageName}.fileprovider",
+                    outFile,
+                )
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                appCtx.startActivity(installIntent)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(update = it.update.copy(downloading = false, downloadProgress = null, error = e.formatDiagnostic()))
+                }
             }
         }
     }
