@@ -47,7 +47,7 @@ class BedMeshApp(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle(f"{S.get('app.title')} v{VERSION}")
-        self.resize(1280, 800)
+        self.resize(1500, 860)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -69,8 +69,8 @@ class BedMeshApp(QMainWindow):
         self.splitter.addWidget(self.right_panel)
 
         self.splitter.setStretchFactor(0, 1)
-        self.splitter.setStretchFactor(1, 3)
-        self.splitter.setStretchFactor(2, 1)
+        self.splitter.setStretchFactor(1, 4)
+        self.splitter.setStretchFactor(2, 2)
 
         # --- Коннекты ---
         # SSH загрузка через ConfigEditor
