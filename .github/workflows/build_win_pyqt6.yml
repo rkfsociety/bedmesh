@@ -36,6 +36,7 @@ jobs:
             --icon "win/pyqt6/icon.ico" \
             --add-data "win/pyqt6/ui/locale;ui/locale" \
             --add-data "win/pyqt6/icon.ico;." \
+            --runtime-tmpdir . \
             win/pyqt6/main.py
 
       - name: Сгенерировать описание релиза
