@@ -13,8 +13,6 @@ class RightPanel(QWidget):
             QLabel { color: #ffffff; }
         """)
         
-        self.setMinimumWidth(320)
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(20)
@@ -102,7 +100,7 @@ class RightPanel(QWidget):
         self._lbl_shaper_rec = QLabel("Нет данных")
         self._lbl_shaper_rec.setStyleSheet("font-size: 10px; color: #888;")
         self._lbl_shaper_rec.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_shaper_rec.setWordWrap(True)
+        self._lbl_shaper_rec.setWordWrap(False)
 
         self._lbl_shaper_accel = QLabel("")
         self._lbl_shaper_accel.setStyleSheet("font-size: 16px; font-weight: bold; color: #4ade80;")
@@ -266,7 +264,7 @@ class RightPanel(QWidget):
             ay = ky * fy ** 2
             rec = int(min(ax, ay) / 500) * 500
             limit_axis = "X" if ax < ay else "Y"
-            self._lbl_shaper_rec.setText(f"Ограничение по оси {limit_axis}")
+            self._lbl_shaper_rec.setText(f"лимит: ось {limit_axis}")
             self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #888;")
             self._lbl_shaper_accel.setText(f"≤ {rec} мм/с²")
             self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80;")
