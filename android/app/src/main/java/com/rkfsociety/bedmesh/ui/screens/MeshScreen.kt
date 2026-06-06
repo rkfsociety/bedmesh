@@ -5,12 +5,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rkfsociety.bedmesh.core.InputShaperData
+import com.rkfsociety.bedmesh.core.ShaperAccelCalc
 import com.rkfsociety.bedmesh.ui.vm.UiState
 import com.rkfsociety.bedmesh.ui.widgets.Mesh2DView
 
@@ -44,6 +47,7 @@ fun MeshScreen(
                     .aspectRatio(1f),
             )
             ScrewRecommendationsPanel(state = state)
+            ShaperPanel(shaper = state.shaper)
             StatsPanel(state = state)
         }
     }
@@ -137,6 +141,60 @@ private fun CorrectionScrewCard(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = dirColor,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShaperPanel(shaper: InputShaperData?) {
+    if (shaper == null) return
+    val result = ShaperAccelCalc.compute(shaper)
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "⚡ ШЕЙПЕР: УСКОРЕНИЯ",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "X: ${shaper.typeX.uppercase()}  ${shaper.freqX} Гц",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Y: ${shaper.typeY.uppercase()}  ${shaper.freqY} Гц",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (result != null) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                Text(
+                    "лимит: ось ${result.limitAxis}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+                Text(
+                    "≤ ${result.maxAccel} мм/с²",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4ADE80),
+                )
+            } else {
+                Text(
+                    "Тип шейпера не распознан",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFF87171),
                 )
             }
         }

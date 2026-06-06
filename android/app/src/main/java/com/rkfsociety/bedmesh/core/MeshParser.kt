@@ -199,5 +199,66 @@ object MeshParser {
         val step = (b - a) / (n - 1)
         return DoubleArray(n) { i -> a + i * step }
     }
+
+    // ── Input shaper ─────────────────────────────────────────────────────────
+
+    /** Парсит секцию [input_shaper] из JSON или текстового cfg. */
+    fun parseInputShaper(text: String): InputShaperData? {
+        val trimmed = text.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+                val root = json.parseToJsonElement(trimmed).jsonObject
+                val sec = root["input_shaper"]?.jsonObject ?: root["[input_shaper]"]?.jsonObject
+                if (sec != null) return extractShaperFields(sec)
+            } catch (_: Exception) { }
+        }
+        return parseShaperCfg(text)
+    }
+
+    private fun extractShaperFields(sec: kotlinx.serialization.json.JsonObject): InputShaperData? {
+        val tx = sec["shaper_type_x"]?.jsonPrimitive?.content?.trim()?.lowercase() ?: return null
+        val ty = sec["shaper_type_y"]?.jsonPrimitive?.content?.trim()?.lowercase() ?: return null
+        val fx = sec["shaper_freq_x"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
+        val fy = sec["shaper_freq_y"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
+        if (fx <= 0 || fy <= 0) return null
+        return InputShaperData(typeX = tx, typeY = ty, freqX = fx, freqY = fy)
+    }
+
+    private fun parseShaperCfg(text: String): InputShaperData? {
+        val lines = text.split("\n")
+        val secLines = mutableListOf<String>()
+        var inSec = false
+        for (raw in lines) {
+            val s = raw.trim()
+            if (s.equals("[input_shaper]", ignoreCase = true)) { inSec = true; secLines.clear(); continue }
+            if (inSec) {
+                if (s.startsWith("[")) break
+                secLines.add(s)
+            }
+        }
+        if (secLines.isEmpty()) return null
+
+        fun get(key: String): String? {
+            for (l in secLines) {
+                val clean = l.split("#", limit = 2)[0].trim()
+                for (sep in listOf(":", "=")) {
+                    if (clean.lowercase().startsWith(key + sep) || clean.lowercase().startsWith("$key $sep")) {
+                        return clean.substringAfter(sep, "").trim()
+                    }
+                }
+            }
+            return null
+        }
+
+        val fx = get("shaper_freq_x")?.toDoubleOrNull() ?: return null
+        val fy = get("shaper_freq_y")?.toDoubleOrNull() ?: return null
+        if (fx <= 0 || fy <= 0) return null
+        return InputShaperData(
+            typeX = get("shaper_type_x")?.trim()?.lowercase() ?: return null,
+            typeY = get("shaper_type_y")?.trim()?.lowercase() ?: return null,
+            freqX = fx,
+            freqY = fy,
+        )
+    }
 }
 
