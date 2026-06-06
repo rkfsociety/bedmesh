@@ -13,6 +13,8 @@ class RightPanel(QWidget):
             QLabel { color: #ffffff; }
         """)
         
+        self.setMinimumWidth(320)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(20)
