@@ -59,6 +59,44 @@ class RightPanel(QWidget):
         layout.addWidget(self.card_fr)
         layout.addWidget(self.card_bc)
 
+        # --- Шейпер ---
+        shaper_title = QLabel("⚡ ШЕЙПЕР: УСКОРЕНИЯ")
+        shaper_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #bbb; margin-top: 10px;")
+        shaper_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(shaper_title)
+
+        self._shaper_block = QWidget()
+        self._shaper_block.setStyleSheet("background-color: #252525; border: 1px solid #333; border-radius: 6px; padding: 8px;")
+        shaper_layout = QVBoxLayout(self._shaper_block)
+        shaper_layout.setSpacing(6)
+        shaper_layout.setContentsMargins(8, 8, 8, 8)
+
+        self._lbl_shaper_x = QLabel("X: —")
+        self._lbl_shaper_x.setStyleSheet("font-size: 12px; color: #ccc;")
+        self._lbl_shaper_y = QLabel("Y: —")
+        self._lbl_shaper_y.setStyleSheet("font-size: 12px; color: #ccc;")
+
+        sep = QLabel()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background-color: #3a3a3a;")
+
+        self._lbl_shaper_rec = QLabel("Нет данных шейпера")
+        self._lbl_shaper_rec.setStyleSheet("font-size: 12px; color: #888;")
+        self._lbl_shaper_rec.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_shaper_rec.setWordWrap(True)
+
+        self._lbl_shaper_accel = QLabel("")
+        self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80;")
+        self._lbl_shaper_accel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        shaper_layout.addWidget(self._lbl_shaper_x)
+        shaper_layout.addWidget(self._lbl_shaper_y)
+        shaper_layout.addWidget(sep)
+        shaper_layout.addWidget(self._lbl_shaper_rec)
+        shaper_layout.addWidget(self._lbl_shaper_accel)
+
+        layout.addWidget(self._shaper_block)
+
         # --- Update / version status (bottom) ---
         self._update_release_data = None
         self._on_update_clicked = None
@@ -169,6 +207,49 @@ class RightPanel(QWidget):
         layout.addLayout(row)
 
         return card, lbl_mm, lbl_turns
+
+    # Klipper smoothing коэффициенты: max_accel = K * f² при smoothing ≤ 0.05
+    _SHAPER_K = {
+        "zv":        3.76,
+        "mzv":       2.92,
+        "zvd":       2.03,
+        "ei":        2.56,
+        "2hump_ei":  1.91,
+        "3hump_ei":  1.24,
+    }
+
+    def update_shaper(self, shaper: dict | None):
+        if not shaper:
+            self._lbl_shaper_x.setText("X: —")
+            self._lbl_shaper_y.setText("Y: —")
+            self._lbl_shaper_rec.setText("Нет данных шейпера")
+            self._lbl_shaper_accel.setText("")
+            return
+
+        tx = shaper.get("shaper_type_x", "?")
+        ty = shaper.get("shaper_type_y", "?")
+        fx = shaper.get("shaper_freq_x", 0.0)
+        fy = shaper.get("shaper_freq_y", 0.0)
+
+        self._lbl_shaper_x.setText(f"X: {tx.upper()}  {fx:.1f} Гц")
+        self._lbl_shaper_y.setText(f"Y: {ty.upper()}  {fy:.1f} Гц")
+
+        kx = self._SHAPER_K.get(tx.lower())
+        ky = self._SHAPER_K.get(ty.lower())
+
+        if kx and ky and fx > 0 and fy > 0:
+            ax = kx * fx ** 2
+            ay = ky * fy ** 2
+            rec = int(min(ax, ay) / 500) * 500
+            limit_axis = "X" if ax < ay else "Y"
+            self._lbl_shaper_rec.setText(f"Ограничение по оси {limit_axis}")
+            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #888;")
+            self._lbl_shaper_accel.setText(f"≤ {rec} мм/с²")
+            self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80;")
+        else:
+            self._lbl_shaper_rec.setText(f"Тип шейпера не распознан")
+            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #f87171;")
+            self._lbl_shaper_accel.setText("")
 
     def update_all(self, stats: dict):
         self.lbl_min.setText(f"{stats['min']:+.3f}")
