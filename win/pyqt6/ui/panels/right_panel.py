@@ -208,14 +208,14 @@ class RightPanel(QWidget):
 
         return card, lbl_mm, lbl_turns
 
-    # Klipper smoothing коэффициенты: max_accel = K * f² при smoothing ≤ 0.05
+    # Klipper smoothing коэффициенты: max_accel = K * f² при smoothing ≤ 0.12 (дефолт SHAPER_CALIBRATE)
     _SHAPER_K = {
-        "zv":        3.76,
-        "mzv":       2.92,
-        "zvd":       2.03,
-        "ei":        2.56,
-        "2hump_ei":  1.91,
-        "3hump_ei":  1.24,
+        "zv":        9.02,
+        "mzv":       7.01,
+        "zvd":       4.87,
+        "ei":        6.14,
+        "2hump_ei":  4.58,
+        "3hump_ei":  2.98,
     }
 
     def update_shaper(self, shaper: dict | None):
