@@ -47,6 +47,7 @@ class BedMeshApp(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle(f"{S.get('app.title')} v{VERSION}")
+        self.setMinimumWidth(1100)
         self.resize(1500, 860)
 
         central = QWidget()
