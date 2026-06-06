@@ -1,7 +1,8 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
-                             QLineEdit, QHBoxLayout, QCheckBox, QGroupBox)
+                             QLineEdit, QHBoxLayout, QGroupBox)
 from PyQt6.QtCore import pyqtSignal
+from ui.components.toggle_switch import ToggleSwitch
 
 class LeftPanel(QWidget):
     # Отправляем словарь с настройками SSH
@@ -29,11 +30,16 @@ class LeftPanel(QWidget):
         self.btn_ssh.clicked.connect(self._request_ssh_download)
         layout.addWidget(self.btn_ssh)
 
-        self.chk_advanced = QCheckBox("⚙️ Расширенные настройки")
-        # This toggle is UI-only and must not persist in settings.json.
-        self.chk_advanced.setChecked(False)
-        self.chk_advanced.stateChanged.connect(self._toggle_advanced)
-        layout.addWidget(self.chk_advanced)
+        toggle_row = QHBoxLayout()
+        self.chk_advanced = ToggleSwitch(checked=False)
+        self.chk_advanced.toggled.connect(self._toggle_advanced)
+        toggle_lbl = QLabel("⚙️ Расширенные настройки")
+        toggle_lbl.setStyleSheet("font-size: 13px;")
+        toggle_row.addWidget(self.chk_advanced)
+        toggle_row.addSpacing(8)
+        toggle_row.addWidget(toggle_lbl)
+        toggle_row.addStretch()
+        layout.addLayout(toggle_row)
 
         self.adv_group = QGroupBox()
         self.adv_group.setVisible(self.chk_advanced.isChecked())
@@ -89,8 +95,7 @@ class LeftPanel(QWidget):
         self.btn_ssh.setEnabled(True)
         self.btn_ssh.setText("🌐 Загрузить по SSH")
 
-    def _toggle_advanced(self, state):
-        is_checked = state == 2
+    def _toggle_advanced(self, is_checked: bool):
         self.adv_group.setVisible(is_checked)
         self.advanced_toggled.emit(is_checked)
         

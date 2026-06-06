@@ -472,7 +472,7 @@ class ConfigEditor(QWidget):
             self.logger.warning("Build UI: no sections parsed")
             return
 
-        target_sections = ["bed_mesh", "filament_hub"]
+        target_sections = ["bed_mesh", "leviQ3", "filament_hub"]
         
         for sec_name in target_sections:
             if sec_name not in self.parser.sections:

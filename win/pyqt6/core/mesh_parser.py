@@ -184,3 +184,64 @@ class MeshParser:
             x_count=x_c, y_count=y_c,
             min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max
         )
+
+    def parse_input_shaper(self, filepath: str) -> Optional[dict]:
+        """Возвращает dict с ключами shaper_type_x/y, shaper_freq_x/y или None."""
+        text = Path(filepath).read_text(encoding='utf-8')
+        try:
+            data = json.loads(text)
+            sec = data.get("input_shaper") or data.get("[input_shaper]")
+            if isinstance(sec, dict):
+                return self._extract_shaper_fields(sec)
+        except json.JSONDecodeError:
+            pass
+        return self._parse_shaper_cfg(text)
+
+    def _extract_shaper_fields(self, sec: dict) -> Optional[dict]:
+        try:
+            result = {
+                "shaper_type_x": str(sec.get("shaper_type_x", "")).strip().lower(),
+                "shaper_type_y": str(sec.get("shaper_type_y", "")).strip().lower(),
+                "shaper_freq_x": float(sec.get("shaper_freq_x", 0)),
+                "shaper_freq_y": float(sec.get("shaper_freq_y", 0)),
+            }
+            if result["shaper_freq_x"] > 0 and result["shaper_freq_y"] > 0:
+                return result
+        except (TypeError, ValueError):
+            pass
+        return None
+
+    def _parse_shaper_cfg(self, text: str) -> Optional[dict]:
+        lines = text.splitlines()
+        sec_lines, in_sec = [], False
+        for line in lines:
+            s = line.strip()
+            if s.lower() in ("[input_shaper]", "input_shaper"):
+                in_sec, sec_lines = True, []
+                continue
+            if in_sec:
+                if s.startswith("["):
+                    break
+                sec_lines.append(s)
+        if not sec_lines:
+            return None
+
+        def get(key):
+            for l in sec_lines:
+                l = l.split("#")[0].strip()
+                for sep in (":", "="):
+                    if l.lower().startswith(key + sep) or l.lower().startswith(key + " " + sep):
+                        return l.split(sep, 1)[1].strip()
+            return None
+
+        try:
+            fx = float(get("shaper_freq_x") or 0)
+            fy = float(get("shaper_freq_y") or 0)
+            tx = (get("shaper_type_x") or "").strip().lower()
+            ty = (get("shaper_type_y") or "").strip().lower()
+            if fx > 0 and fy > 0:
+                return {"shaper_type_x": tx, "shaper_type_y": ty,
+                        "shaper_freq_x": fx, "shaper_freq_y": fy}
+        except (TypeError, ValueError):
+            pass
+        return None

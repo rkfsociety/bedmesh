@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*"
+      - "v*-win"
 
 permissions:
   contents: write
@@ -35,7 +35,23 @@ jobs:
             --name "Bed.Mesh.Visualizer" \
             --icon "win/pyqt6/icon.ico" \
             --add-data "win/pyqt6/ui/locale;ui/locale" \
+            --add-data "win/pyqt6/icon.ico;." \
+            --runtime-tmpdir . \
             win/pyqt6/main.py
+
+      - name: Сгенерировать описание релиза
+        id: notes
+        shell: bash
+        run: |
+          PREV=$(git tag --list "v*-win" --sort=-version:refname | grep -v "${{ github.ref_name }}" | head -1)
+          if [ -z "$PREV" ]; then
+            LOG=$(git log --oneline -20 --pretty="- %s")
+          else
+            LOG=$(git log "${PREV}..HEAD" --oneline --pretty="- %s")
+          fi
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG"     >> $GITHUB_OUTPUT
+          echo "EOF"      >> $GITHUB_OUTPUT
 
       - name: Загрузить артефакт
         uses: actions/upload-artifact@v4
@@ -83,11 +99,10 @@ jobs:
           name: "${{ github.ref_name }}"
           body: |
             ## Что нового
-            - Автосборка Windows (PyQt6)
-            - См. историю коммитов для деталей
+            ${{ steps.notes.outputs.log }}
 
             ## Скачать
-            - `Bed.Mesh.Visualizer.exe`
+            - `Bed.Mesh.Visualizer.exe` — Windows (64-bit)
 
       - name: Удалить старые ассеты из релиза (после публикации)
         uses: actions/github-script@v7
