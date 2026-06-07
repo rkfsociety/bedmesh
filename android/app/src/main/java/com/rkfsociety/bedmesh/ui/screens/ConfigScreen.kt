@@ -15,13 +15,21 @@ import com.rkfsociety.bedmesh.core.displayBedMeshPairValue
 import com.rkfsociety.bedmesh.core.resolveSection
 import com.rkfsociety.bedmesh.ui.vm.UiState
 
-private data class BedMeshFieldDef(val key: String, val label: String, val placeholder: String)
+private data class FieldDef(val key: String, val label: String, val placeholder: String)
 
 /** Те же поля, что в `win/pyqt6/ui/locale/ru.json` → `config.sections.bed_mesh.fields`. */
 private val BED_MESH_WHITELIST = listOf(
-    BedMeshFieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5"),
-    BedMeshFieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245"),
-    BedMeshFieldDef("probe_count", "Кол-во точек (X,Y)", "10,10"),
+    FieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5"),
+    FieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245"),
+    FieldDef("probe_count", "Кол-во точек (X,Y)", "10,10"),
+)
+
+/** Поля секции [leviQ3] — температуры калибровки стола. */
+private val LEVI_Q3_WHITELIST = listOf(
+    FieldDef("bed_temp",          "Температура стола (°C)",           "60"),
+    FieldDef("extru_temp",        "Температура экструдера (°C)",       "200"),
+    FieldDef("extru_end_temp",    "Конечная темп. экструдера (°C)",    "150"),
+    FieldDef("preheat_leveling",  "Предпрогрев выравнивания (°C)",    "60"),
 )
 
 private val ACE_PRESETS = listOf(100, 150, 200, 250, 300)
@@ -78,6 +86,16 @@ fun ConfigScreen(
                     section = bedSec,
                     edits = state.configEdits,
                     onFieldChange = { key, value -> onUpdateField(bedSec, key, value) },
+                )
+            }
+
+            val leviSec = cfg.resolveSection("leviQ3")
+            if (leviSec != null) {
+                LeviQ3SectionCard(
+                    cfg = cfg,
+                    section = leviSec,
+                    edits = state.configEdits,
+                    onFieldChange = { key, value -> onUpdateField(leviSec, key, value) },
                 )
             }
 
@@ -158,6 +176,40 @@ private fun BedMeshSectionCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeviQ3SectionCard(
+    cfg: KlipperConfig,
+    section: String,
+    edits: Map<String, String>,
+    onFieldChange: (String, String) -> Unit,
+) {
+    val secMap = cfg.sections[section] ?: return
+    val visibleFields = LEVI_Q3_WHITELIST.filter { it.key in secMap }
+    if (visibleFields.isEmpty()) return
+
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("🌡️ Температуры калибровки стола", style = MaterialTheme.typography.titleSmall)
+            for (def in visibleFields) {
+                val raw = secMap[def.key]?.value.orEmpty()
+                val mapKey = "$section.${def.key}"
+                val shown = edits[mapKey] ?: raw
+                OutlinedTextField(
+                    value = shown,
+                    onValueChange = { onFieldChange(def.key, it) },
+                    label = { Text(def.label) },
+                    placeholder = { Text(def.placeholder) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
             }
         }
     }

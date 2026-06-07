@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.core.content.FileProvider
 import com.rkfsociety.bedmesh.BuildConfig
 import com.rkfsociety.bedmesh.core.GithubUpdater
+import com.rkfsociety.bedmesh.core.InputShaperData
 import com.rkfsociety.bedmesh.core.KlipperConfig
 import com.rkfsociety.bedmesh.core.MeshParser
 import com.rkfsociety.bedmesh.core.MeshStatsCalculator
@@ -40,6 +41,7 @@ data class UiState(
     val rawText: String = "",
     val mesh: BedMeshData? = null,
     val stats: Map<String, String> = emptyMap(),
+    val shaper: InputShaperData? = null,
     val config: KlipperConfig? = null,
     val configEdits: Map<String, String> = emptyMap(), // key: "section.key"
     val backups: List<String> = emptyList(),
@@ -51,6 +53,7 @@ private data class SshDownloadOutcome(
     val rawText: String,
     val mesh: BedMeshData?,
     val stats: Map<String, String>,
+    val shaper: InputShaperData?,
     val config: KlipperConfig,
     val backups: List<String>,
     val parseWarning: String?,
@@ -103,6 +106,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     // mirror Windows behavior: if no mesh points found in printer.cfg, try printer_mutable.cfg
                     var parsed = MeshParser.parseText(text)
                     var rawText = text
+                    var shaper = MeshParser.parseInputShaper(text)
                     if (parsed == null && cfg.path.endsWith("printer.cfg")) {
                         val mutablePath = "/userdata/app/gk/printer_mutable.cfg"
                         val alt = SshClient.downloadFile(appCtx, cfg, mutablePath)
@@ -112,6 +116,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             parsed = altParsed
                             rawText = altText
                         }
+                        // Шейпер ищем в mutable, потом в основном файле
+                        if (shaper == null) shaper = MeshParser.parseInputShaper(altText)
                     }
 
                     val stats = if (parsed != null) {
@@ -141,6 +147,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         rawText = rawText,
                         mesh = parsed,
                         stats = stats,
+                        shaper = shaper,
                         config = parsedCfg,
                         backups = backups,
                         parseWarning = if (parsed == null) "Не найден bed_mesh в файле" else null,
@@ -153,6 +160,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         rawText = outcome.rawText,
                         mesh = outcome.mesh,
                         stats = outcome.stats,
+                        shaper = outcome.shaper,
                         config = outcome.config,
                         configEdits = emptyMap(),
                         backups = outcome.backups,
