@@ -584,7 +584,10 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
             if not _insert_run_hook(ssh, sftp):
                 return False
 
-            _p("Запуск веб-панели...")
+            # Перезапуск: гасим старый мост (если запущен), чтобы поднялся свежий бинарник.
+            # boot.sh не стартует gkbridge, пока старый процесс жив, поэтому убиваем явно.
+            _p("Перезапуск веб-панели...")
+            _exec(ssh, "killall gkbridge 2>/dev/null")
             _run_boot_now(ssh)
             _p("Готово.")
             return True
