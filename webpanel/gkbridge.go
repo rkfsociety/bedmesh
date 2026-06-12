@@ -40,7 +40,7 @@ var versionRaw []byte
 func version() string { return strings.TrimSpace(string(versionRaw)) }
 
 // repoRawBase — где лежат свежий бинарник и файл версии (raw GitHub).
-const repoRawBase = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/win/pyqt6/resources"
+const repoRawBase = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel"
 
 const etx = 0x03 // терминатор кадра Klipper API
 

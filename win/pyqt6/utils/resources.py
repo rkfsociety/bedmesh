@@ -14,3 +14,16 @@ def resource_path(rel: str) -> str:
         # utils/ -> корень проекта на уровень выше
         base_dir = os.path.join(os.path.dirname(__file__), "..")
     return os.path.normpath(os.path.join(base_dir, rel))
+
+
+def gkbridge_binary() -> str:
+    """
+    Путь к бинарнику веб-панели gkbridge.
+    Исходник живёт в корневой папке репозитория `webpanel/`, в сборку он попадает
+    в `_MEIPASS/resources/gkbridge` (см. .spec / CI), поэтому пути расходятся.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "resources", "gkbridge")
+    # dev: win/pyqt6/utils -> ../../.. = корень репозитория -> webpanel/gkbridge
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+    return os.path.normpath(os.path.join(root, "webpanel", "gkbridge"))
