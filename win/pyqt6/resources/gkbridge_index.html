@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kobra S1 — панель</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171c24; --card2:#1e242e; --line:#2a313c;
+    --txt:#e6edf3; --dim:#8b97a7; --accent:#3b82f6; --green:#22c55e;
+    --amber:#f59e0b; --red:#ef4444; --nozzle:#f97316; --bed:#ef4444; --chamber:#a78bfa;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;
+       min-height:100vh;padding:20px;display:flex;justify-content:center}
+  .wrap{width:100%;max-width:880px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  header h1{font-size:20px;font-weight:600}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--dim);transition:.3s}
+  .dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}
+  .badge{margin-left:auto;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;
+         background:var(--card2);color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+  .badge.printing{background:rgba(34,197,94,.15);color:var(--green)}
+  .badge.paused{background:rgba(245,158,11,.15);color:var(--amber)}
+  .badge.complete{background:rgba(59,130,246,.15);color:var(--accent)}
+  .badge.error,.badge.cancelled{background:rgba(239,68,68,.15);color:var(--red)}
+
+  .grid{display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+
+  /* прогресс */
+  .progress-card{display:flex;gap:26px;align-items:center}
+  .ring{position:relative;flex-shrink:0}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .pct{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .pct b{font-size:30px;font-weight:700}
+  .ring .pct span{font-size:12px;color:var(--dim)}
+  .pinfo{flex:1;min-width:0}
+  .pinfo .fname{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:14px}
+  .prow{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+  .prow:first-of-type{border-top:none}
+  .prow .k{color:var(--dim)}
+  .prow .v{font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* температуры */
+  .temps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .temp{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;position:relative;overflow:hidden}
+  .temp .lbl{font-size:13px;color:var(--dim);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .temp .lbl::before{content:'';width:8px;height:8px;border-radius:50%}
+  .temp.nozzle .lbl::before{background:var(--nozzle)}
+  .temp.bed .lbl::before{background:var(--bed)}
+  .temp.chamber .lbl::before{background:var(--chamber)}
+  .temp .val{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .temp .val small{font-size:14px;color:var(--dim);font-weight:500}
+  .temp .tgt{font-size:12px;color:var(--dim);margin-top:3px}
+  .heatbar{position:absolute;bottom:0;left:0;height:3px;background:var(--nozzle);width:0;transition:width .5s}
+  .temp.bed .heatbar{background:var(--bed)} .temp.chamber .heatbar{background:var(--chamber)}
+
+  /* нижние метрики */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .metric{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:center}
+  .metric .mv{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .metric .ml{font-size:12px;color:var(--dim);margin-top:4px}
+
+  .updated{text-align:center;color:var(--dim);font-size:12px;margin-top:16px}
+  @media(max-width:620px){
+    .progress-card{flex-direction:column;text-align:center}
+    .temps{grid-template-columns:1fr} .metrics{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="dot" id="dot"></span>
+    <h1>Kobra S1</h1>
+    <span class="badge" id="state">—</span>
+  </header>
+
+  <div class="grid">
+    <div class="card progress-card">
+      <div class="ring">
+        <svg width="140" height="140">
+          <circle cx="70" cy="70" r="62" fill="none" stroke="var(--line)" stroke-width="10"/>
+          <circle id="ringfill" cx="70" cy="70" r="62" fill="none" stroke="var(--accent)" stroke-width="10"
+                  stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6"/>
+        </svg>
+        <div class="pct"><b id="pct">0%</b><span>готово</span></div>
+      </div>
+      <div class="pinfo">
+        <div class="fname" id="fname">—</div>
+        <div class="prow"><span class="k">Слой</span><span class="v" id="layer">— / —</span></div>
+        <div class="prow"><span class="k">Прошло</span><span class="v" id="elapsed">—</span></div>
+        <div class="prow"><span class="k">Осталось</span><span class="v" id="remain">—</span></div>
+        <div class="prow"><span class="k">Материал</span><span class="v" id="material">—</span></div>
+      </div>
+    </div>
+
+    <div class="temps">
+      <div class="temp nozzle"><div class="lbl">Сопло</div>
+        <div class="val"><span id="noz">—</span><small>°C</small></div>
+        <div class="tgt" id="noztgt">цель —</div><div class="heatbar" id="nozbar"></div></div>
+      <div class="temp bed"><div class="lbl">Стол</div>
+        <div class="val"><span id="bed">—</span><small>°C</small></div>
+        <div class="tgt" id="bedtgt">цель —</div><div class="heatbar" id="bedbar"></div></div>
+      <div class="temp chamber"><div class="lbl">Камера</div>
+        <div class="val"><span id="cham">—</span><small>°C</small></div>
+        <div class="tgt" id="chamtgt">&nbsp;</div><div class="heatbar" id="chambar"></div></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="mv" id="speed">—</div><div class="ml">Скорость</div></div>
+      <div class="metric"><div class="mv" id="flow">—</div><div class="ml">Поток</div></div>
+      <div class="metric"><div class="mv" id="fan">—</div><div class="ml">Вентилятор</div></div>
+      <div class="metric"><div class="mv" id="zpos">—</div><div class="ml">Z, мм</div></div>
+    </div>
+  </div>
+
+  <div class="updated" id="updated">подключение…</div>
+</div>
+
+<script>
+// Страницу отдаёт сам мост gkbridge, поэтому статус берём с того же адреса
+// (относительный путь). Если открыть HTML как локальный файл — фолбэк на IP.
+const FALLBACK = "192.168.0.197:8088";
+const URL = (location.protocol === "file:") ? `http://${FALLBACK}/status` : "/status";
+const POLL = 1500; // мс
+
+const RING_LEN = 2 * Math.PI * 62;
+const $ = id => document.getElementById(id);
+
+function fmtTime(s){
+  if(s==null || s<0 || !isFinite(s)) return "—";
+  s = Math.round(s);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  if(h>0) return `${h}ч ${m}м`;
+  if(m>0) return `${m}м ${sec}с`;
+  return `${sec}с`;
+}
+function baseName(p){ if(!p) return "—"; return p.split('/').pop(); }
+
+const STATES = {printing:"печать",paused:"пауза",complete:"готово",
+                standby:"ожидание",cancelled:"отменено",error:"ошибка"};
+
+async function tick(){
+  try{
+    const res = await fetch(URL, {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const d = await res.json();
+    if(d.error) throw new Error(d.error);
+    render(d);
+    $("dot").className = "dot on";
+    $("updated").textContent = "обновлено " + new Date().toLocaleTimeString();
+  }catch(e){
+    $("dot").className = "dot err";
+    $("updated").textContent = "нет связи с принтером: " + e.message;
+  }
+}
+
+function render(d){
+  const ps = d.print_stats||{}, vs = d.virtual_sdcard||{}, ex = d.extruder||{},
+        hb = d.heater_bed||{}, ch = d.chamber_temp||{}, gm = d.gcode_move||{},
+        fan = d.fan||{}, th = d.toolhead||{};
+
+  // состояние
+  const st = ps.state || "standby";
+  const badge = $("state");
+  badge.textContent = STATES[st] || st;
+  badge.className = "badge " + st;
+
+  // прогресс
+  const prog = (vs.progress!=null ? vs.progress : 0);
+  const pct = Math.round(prog*100);
+  $("pct").textContent = pct + "%";
+  $("ringfill").style.strokeDashoffset = RING_LEN * (1 - prog);
+
+  $("fname").textContent = baseName(vs.file_path || ps.filename);
+  const cl = vs.current_layer ?? ps.info?.current_layer ?? "—";
+  const tl = vs.total_layer ?? ps.info?.total_layer ?? "—";
+  $("layer").textContent = `${cl} / ${tl}`;
+  $("elapsed").textContent = fmtTime(ps.print_duration);
+  $("remain").textContent = fmtTime(vs.remain_time);
+  $("material").textContent = vs.filament_type || "—";
+
+  // температуры
+  setTemp("noz", ex.temperature, ex.target, "nozbar");
+  setTemp("bed", hb.temperature, hb.target, "bedbar");
+  setTemp("cham", ch.temperature, null, "chambar");
+  $("noztgt").textContent = "цель " + (ex.target!=null? Math.round(ex.target)+"°" : "—");
+  $("bedtgt").textContent = "цель " + (hb.target!=null? Math.round(hb.target)+"°" : "—");
+
+  // метрики
+  $("speed").textContent = gm.speed_factor!=null ? Math.round(gm.speed_factor*100)+"%" : "—";
+  $("flow").textContent  = gm.extrude_factor!=null ? Math.round(gm.extrude_factor*100)+"%" : "—";
+  $("fan").textContent   = fan.speed!=null ? Math.round(fan.speed*100)+"%" : "—";
+  const z = (gm.gcode_position && gm.gcode_position[2]!=null) ? gm.gcode_position[2]
+            : (th.position && th.position[2]!=null ? th.position[2] : null);
+  $("zpos").textContent  = z!=null ? z.toFixed(2) : "—";
+}
+
+function setTemp(id, cur, tgt, barId){
+  $(id).textContent = cur!=null ? cur.toFixed(0) : "—";
+  if(tgt && tgt>0){
+    const r = Math.max(0, Math.min(1, (cur||0)/tgt));
+    $(barId).style.width = (r*100)+"%";
+  } else {
+    $(barId).style.width = "0%";
+  }
+}
+
+tick();
+setInterval(tick, POLL);
+</script>
+</body>
+</html>

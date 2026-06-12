@@ -36,6 +36,8 @@ jobs:
             --icon "win/pyqt6/icon.ico" \
             --add-data "win/pyqt6/ui/locale;ui/locale" \
             --add-data "win/pyqt6/icon.ico;." \
+            --add-data "win/pyqt6/resources/gkbridge;resources" \
+            --add-data "win/pyqt6/resources/boot.sh;resources" \
             --runtime-tmpdir . \
             win/pyqt6/main.py
 

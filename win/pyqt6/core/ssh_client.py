@@ -2,11 +2,20 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from typing import Optional
+from utils.resources import resource_path
+from typing import Optional, Callable
 import hashlib
 
 TEMP_FILE_NAME = "temp_download.cfg"
 BACKUP_TAG = "bedmesh_bak"
+
+# Постоянный автозапуск (SSH + веб-панель) на принтере Anycubic Kobra S1 / GoKlipper.
+RUN_SH = "/userdata/app/kenv/run.sh"
+BOOT_REMOTE = "/useremain/boot.sh"
+SSH_PKG_SRC = "/tmp/ssh"
+SSH_PKG_DST = "/useremain/ssh"
+GKBRIDGE_REMOTE = "/useremain/gkbridge"
+RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 
 logger = get_logger(__name__)
 
@@ -241,3 +250,198 @@ def ensure_remote_backup_exists(ip: str, port: int, username: str, password: str
     except Exception:
         pass
     return created
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Постоянный автозапуск: SSH (dropbear) и веб-панель (gkbridge)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _exec(ssh, cmd: str) -> tuple[int, str, str]:
+    """Выполняет команду по SSH, возвращает (exit_status, stdout, stderr)."""
+    logger.debug("SSH exec: %s", cmd)
+    _, stdout, stderr = ssh.exec_command(cmd)
+    status = stdout.channel.recv_exit_status()
+    out = stdout.read().decode(errors="ignore")
+    err = stderr.read().decode(errors="ignore")
+    if status != 0:
+        logger.debug("SSH exec status=%s stderr=%s", status, err.strip())
+    return status, out, err
+
+
+def _upload_boot_sh(sftp) -> None:
+    """
+    Заливает resources/boot.sh в /useremain/boot.sh с принудительными LF-окончаниями.
+    boot.sh универсален: SSH-часть и панель включаются по наличию своих артефактов.
+    """
+    boot_local = resource_path("resources/boot.sh")
+    with open(boot_local, "r", encoding="utf-8") as f:
+        content = f.read()
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+    with sftp.open(BOOT_REMOTE, "w") as rf:
+        rf.write(content)
+    logger.info("boot.sh uploaded: %s (LF, %d bytes)", BOOT_REMOTE, len(content))
+
+
+def _insert_run_hook(ssh, sftp) -> bool:
+    """
+    Идемпотентно вставляет строку-хук в /userdata/app/kenv/run.sh ПЕРЕД `./start.sh`.
+    Делает бэкап перед изменением. Возвращает True, если хук есть/добавлен.
+    """
+    try:
+        with sftp.open(RUN_SH, "r") as f:
+            text = f.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        logger.error("run.sh read failed: %s (%s)", RUN_SH, e)
+        return False
+
+    if "/useremain/boot.sh" in text:
+        logger.info("run.sh hook already present, skip")
+        return True
+
+    # Бэкап перед правкой.
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = f"{RUN_SH}.{BACKUP_TAG}_{ts}"
+    _exec(ssh, f"cp -a {_sh_quote(RUN_SH)} {_sh_quote(backup)}")
+    logger.info("run.sh backup created: %s", backup)
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out_lines: list[str] = []
+    inserted = False
+    # 1-й проход: точное совпадение `./start.sh`.
+    for ln in lines:
+        if not inserted and ln.strip() == "./start.sh":
+            out_lines.append(RUN_HOOK_LINE)
+            inserted = True
+        out_lines.append(ln)
+
+    # 2-й проход (фолбэк): любая строка, содержащая start.sh.
+    if not inserted:
+        out_lines = []
+        for ln in lines:
+            if not inserted and "start.sh" in ln and not ln.strip().startswith("#"):
+                out_lines.append(RUN_HOOK_LINE)
+                inserted = True
+            out_lines.append(ln)
+
+    if not inserted:
+        # В конец дописывать нельзя (после ./start.sh идёт exit 0) — отказываемся.
+        logger.error("run.sh: anchor './start.sh' not found, hook NOT inserted")
+        return False
+
+    new_text = "\n".join(out_lines)
+    with sftp.open(RUN_SH, "w") as f:
+        f.write(new_text)
+    logger.info("run.sh hook inserted before start.sh")
+    return True
+
+
+def _run_boot_now(ssh) -> None:
+    """Запускает boot.sh сразу, чтобы артефакты поднялись без ребута."""
+    _exec(ssh, f"sh {_sh_quote(BOOT_REMOTE)}")
+
+
+def install_persistent_ssh(ip: str, port: int, username: str, password: str,
+                           progress_cb: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Ставит постоянный SSH (dropbear), переживающий перезагрузку:
+      1. копирует живой /tmp/ssh -> /useremain/ssh (если ещё нет);
+      2. заливает boot.sh;
+      3. вставляет хук в run.sh;
+      4. запускает boot.sh сразу.
+    Идемпотентно. Требует, чтобы SSH сейчас уже работал (флешка/уже установлено).
+    """
+    def _p(msg: str):
+        logger.info("install_persistent_ssh: %s", msg)
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
+    ssh = get_ssh_connection(ip, port, username, password)
+    try:
+        sftp = ssh.open_sftp()
+        try:
+            _p("Копирование SSH-пакета в постоянное место...")
+            st, _, err = _exec(ssh, f"[ -d {_sh_quote(SSH_PKG_DST)} ] || cp -a {_sh_quote(SSH_PKG_SRC)} {_sh_quote(SSH_PKG_DST)}")
+            if st != 0:
+                logger.error("ssh pkg copy failed: %s", err)
+                return False
+            st, _, _ = _exec(ssh, f"test -f {_sh_quote(SSH_PKG_DST + '/dropbear')}")
+            if st != 0:
+                logger.error("dropbear missing after copy: %s/dropbear", SSH_PKG_DST)
+                return False
+
+            _p("Загрузка boot.sh...")
+            _upload_boot_sh(sftp)
+            _exec(ssh, f"chmod +x {_sh_quote(BOOT_REMOTE)}")
+
+            _p("Прописывание автозапуска в run.sh...")
+            if not _insert_run_hook(ssh, sftp):
+                return False
+
+            _p("Запуск автозапуска...")
+            _run_boot_now(ssh)
+            _p("Готово.")
+            return True
+        finally:
+            sftp.close()
+    except Exception as e:
+        logger.exception("install_persistent_ssh failed: host=%s port=%s error=%s", ip, port, e)
+        return False
+    finally:
+        ssh.close()
+
+
+def install_web_panel(ip: str, port: int, username: str, password: str,
+                      gkbridge_local_path: Optional[str] = None,
+                      progress_cb: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Ставит постоянную веб-панель (gkbridge), переживающую перезагрузку:
+      1. заливает бинарник gkbridge -> /useremain/gkbridge (+chmod);
+      2. заливает boot.sh;
+      3. вставляет хук в run.sh;
+      4. запускает boot.sh сразу (панель поднимется без ребута).
+    Идемпотентно.
+    """
+    def _p(msg: str):
+        logger.info("install_web_panel: %s", msg)
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
+    if gkbridge_local_path is None:
+        gkbridge_local_path = resource_path("resources/gkbridge")
+    if not os.path.exists(gkbridge_local_path):
+        logger.error("gkbridge binary not found: %s", gkbridge_local_path)
+        return False
+
+    ssh = get_ssh_connection(ip, port, username, password)
+    try:
+        sftp = ssh.open_sftp()
+        try:
+            _p("Загрузка бинарника веб-панели...")
+            sftp.put(gkbridge_local_path, GKBRIDGE_REMOTE)
+            _exec(ssh, f"chmod +x {_sh_quote(GKBRIDGE_REMOTE)}")
+
+            _p("Загрузка boot.sh...")
+            _upload_boot_sh(sftp)
+            _exec(ssh, f"chmod +x {_sh_quote(BOOT_REMOTE)}")
+
+            _p("Прописывание автозапуска в run.sh...")
+            if not _insert_run_hook(ssh, sftp):
+                return False
+
+            _p("Запуск веб-панели...")
+            _run_boot_now(ssh)
+            _p("Готово.")
+            return True
+        finally:
+            sftp.close()
+    except Exception as e:
+        logger.exception("install_web_panel failed: host=%s port=%s error=%s", ip, port, e)
+        return False
+    finally:
+        ssh.close()

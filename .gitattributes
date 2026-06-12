@@ -1,0 +1,4 @@
+# Скрипты, исполняемые на принтере (busybox/ash) — всегда LF, иначе ломается шебанг.
+win/pyqt6/resources/boot.sh text eol=lf
+# Бинарник веб-панели (armv7) — бинарный, без конвертаций.
+win/pyqt6/resources/gkbridge binary
