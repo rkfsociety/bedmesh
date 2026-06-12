@@ -143,6 +143,11 @@ class BedMeshApp(QMainWindow):
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)
         except Exception as e:
             self.logger.exception("SSH file post-process failed: %s", e)
+        # Раз SSH сейчас работает — определяем, что из автозапуска уже установлено на принтере.
+        try:
+            self.left_panel.refresh_persist_status()
+        except Exception as e:
+            self.logger.exception("persist status refresh failed: %s", e)
 
     def _process_file(self, filepath):
         try:

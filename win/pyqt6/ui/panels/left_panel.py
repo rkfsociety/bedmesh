@@ -1,18 +1,23 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
                              QLineEdit, QHBoxLayout, QGroupBox, QMessageBox)
-from PyQt6.QtCore import pyqtSignal, QObject, QThread
+from PyQt6.QtCore import pyqtSignal, QObject, QThread, QTimer
 from ui.components.toggle_switch import ToggleSwitch
-from core.ssh_client import install_persistent_ssh, install_web_panel
+from core.ssh_client import (
+    install_persistent_ssh, install_web_panel,
+    uninstall_persistent_ssh, uninstall_web_panel,
+    check_persistent_status,
+)
 
 
-class _PersistInstallWorker(QObject):
-    """Фоновая установка постоянного SSH или веб-панели (не вешает GUI)."""
-    finished = pyqtSignal(bool, str)  # ok, error_text
+class _PersistWorker(QObject):
+    """Фоновая операция автозапуска: статус / установка / откат (не вешает GUI)."""
+    # op, ok, payload (для status — dict, иначе None), error_text
+    finished = pyqtSignal(str, bool, object, str)
 
-    def __init__(self, action: str, ssh_data: dict):
+    def __init__(self, op: str, ssh_data: dict):
         super().__init__()
-        self.action = action  # "ssh" | "panel"
+        self.op = op  # status | install_ssh | install_panel | uninstall_ssh | uninstall_panel
         self.ssh_data = ssh_data
 
     def run(self):
@@ -24,13 +29,27 @@ class _PersistInstallWorker(QObject):
                 port = 2222
             user = self.ssh_data.get("user", "root")
             pwd = self.ssh_data.get("password", "")
-            if self.action == "ssh":
+
+            if self.op == "status":
+                status = check_persistent_status(ip, port, user, pwd)
+                self.finished.emit("status", status is not None, status,
+                                   "" if status is not None else "Нет связи с принтером")
+                return
+
+            if self.op == "install_ssh":
                 ok = install_persistent_ssh(ip, port, user, pwd)
-            else:
+            elif self.op == "install_panel":
                 ok = install_web_panel(ip, port, user, pwd)
-            self.finished.emit(ok, "" if ok else "Операция не выполнена. Подробности в debug.log")
+            elif self.op == "uninstall_ssh":
+                ok = uninstall_persistent_ssh(ip, port, user, pwd)
+            elif self.op == "uninstall_panel":
+                ok = uninstall_web_panel(ip, port, user, pwd)
+            else:
+                ok = False
+            self.finished.emit(self.op, ok, None,
+                               "" if ok else "Операция не выполнена. Подробности в debug.log")
         except Exception as e:
-            self.finished.emit(False, str(e))
+            self.finished.emit(self.op, False, None, str(e))
 
 
 class LeftPanel(QWidget):
@@ -107,7 +126,7 @@ class LeftPanel(QWidget):
             "Разворачивает dropbear в /useremain и прописывает автозапуск в run.sh.\n"
             "После этого SSH (порт 2222) поднимается сам, без загрузочной флешки."
         )
-        self.btn_persist_ssh.clicked.connect(lambda: self._start_persist_install("ssh"))
+        self.btn_persist_ssh.clicked.connect(lambda: self._on_persist_clicked("ssh"))
         adv_layout.addWidget(self.btn_persist_ssh)
 
         self.btn_web_panel = QPushButton("📊 Установить веб-панель")
@@ -115,14 +134,21 @@ class LeftPanel(QWidget):
             "Заливает gkbridge в /useremain и прописывает автозапуск.\n"
             "Веб-панель статуса печати становится доступна на http://<ip>:8088/"
         )
-        self.btn_web_panel.clicked.connect(lambda: self._start_persist_install("panel"))
+        self.btn_web_panel.clicked.connect(lambda: self._on_persist_clicked("panel"))
         adv_layout.addWidget(self.btn_web_panel)
+
+        self.persist_status_lbl = QLabel("Статус: неизвестно (загрузите конфиг по SSH)")
+        self.persist_status_lbl.setStyleSheet("font-size: 11px; color: #888;")
+        self.persist_status_lbl.setWordWrap(True)
+        adv_layout.addWidget(self.persist_status_lbl)
 
         layout.addWidget(self.adv_group)
 
-        # Состояние фонового потока установки.
+        # Состояние фонового потока и текущая установка на принтере.
         self._persist_thread = None
         self._persist_worker = None
+        self._ssh_installed = False
+        self._panel_installed = False
         
         layout.addSpacing(15)
         self.btn_log = QPushButton("📋 Открыть лог")
@@ -163,62 +189,129 @@ class LeftPanel(QWidget):
             "path": self.adv_fields["ssh_path"].text(),
         }
 
-    def _start_persist_install(self, action: str):
-        """Запускает установку постоянного SSH (action='ssh') или панели ('panel')."""
+    def refresh_persist_status(self):
+        """Проверяет, что установлено на принтере, и обновляет кнопки. Вызывать после SSH-загрузки."""
         if self._persist_thread and self._persist_thread.isRunning():
-            QMessageBox.information(self, "Установка", "Операция уже выполняется, подождите.")
+            return
+        ssh_data = self._collect_ssh_data()
+        if not ssh_data.get("ip"):
+            return
+        self.persist_status_lbl.setText("Статус: проверка...")
+        self._start_persist_op("status", ssh_data)
+
+    def _on_persist_clicked(self, target: str):
+        """target: 'ssh' | 'panel'. Установить или откатить — в зависимости от текущего статуса."""
+        if self._persist_thread and self._persist_thread.isRunning():
+            QMessageBox.information(self, "Автозапуск", "Операция уже выполняется, подождите.")
             return
 
         ssh_data = self._collect_ssh_data()
         if not ssh_data.get("ip"):
-            QMessageBox.warning(self, "Установка", "Укажите IP адрес принтера.")
+            QMessageBox.warning(self, "Автозапуск", "Укажите IP адрес принтера.")
             return
 
-        title = "постоянного SSH" if action == "ssh" else "веб-панели"
-        self._set_persist_buttons_enabled(False)
-        if action == "ssh":
-            self.btn_persist_ssh.setText("⏳ Установка SSH...")
+        installed = self._ssh_installed if target == "ssh" else self._panel_installed
+        name = "постоянный SSH" if target == "ssh" else "веб-панель"
+
+        if installed:
+            extra = ("\n\nЗапущенный dropbear не будет остановлен (это оборвало бы текущее "
+                     "подключение) — SSH исчезнет только после перезагрузки принтера."
+                     if target == "ssh" else "")
+            reply = QMessageBox.question(
+                self, "Откатить?",
+                f"Убрать {name} с принтера?{extra}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            op = "uninstall_ssh" if target == "ssh" else "uninstall_panel"
         else:
-            self.btn_web_panel.setText("⏳ Установка панели...")
+            op = "install_ssh" if target == "ssh" else "install_panel"
+
+        self._start_persist_op(op, ssh_data)
+
+    def _start_persist_op(self, op: str, ssh_data: dict):
+        busy_text = {
+            "status": None,
+            "install_ssh": ("ssh", "⏳ Установка SSH..."),
+            "uninstall_ssh": ("ssh", "⏳ Откат SSH..."),
+            "install_panel": ("panel", "⏳ Установка панели..."),
+            "uninstall_panel": ("panel", "⏳ Откат панели..."),
+        }.get(op)
+
+        self._set_persist_buttons_enabled(False)
+        if busy_text:
+            which, text = busy_text
+            (self.btn_persist_ssh if which == "ssh" else self.btn_web_panel).setText(text)
 
         self._persist_thread = QThread(self)
-        self._persist_worker = _PersistInstallWorker(action, ssh_data)
+        self._persist_worker = _PersistWorker(op, ssh_data)
         self._persist_worker.moveToThread(self._persist_thread)
         self._persist_thread.started.connect(self._persist_worker.run)
-        self._persist_worker.finished.connect(
-            lambda ok, err, a=action: self._on_persist_finished(a, ok, err)
-        )
+        self._persist_worker.finished.connect(self._on_persist_finished)
         self._persist_worker.finished.connect(self._persist_thread.quit)
         self._persist_thread.finished.connect(self._persist_thread.deleteLater)
         self._persist_thread.start()
 
-    def _on_persist_finished(self, action: str, ok: bool, error_text: str):
+    def _on_persist_finished(self, op: str, ok: bool, payload: object, error_text: str):
         self._persist_worker = None
         self._persist_thread = None
-        self._reset_persist_buttons()
-        self._set_persist_buttons_enabled(True)
 
+        if op == "status":
+            if ok and isinstance(payload, dict):
+                self._ssh_installed = bool(payload.get("ssh_installed"))
+                self._panel_installed = bool(payload.get("panel_installed"))
+                self._apply_persist_status_label(payload)
+            else:
+                self.persist_status_lbl.setText("Статус: не удалось проверить (нет связи)")
+            self._update_persist_buttons()
+            self._set_persist_buttons_enabled(True)
+            return
+
+        # install_* / uninstall_*
         ip = self.input_ip.text().strip()
         if ok:
-            if action == "ssh":
+            if op == "install_ssh":
                 msg = ("Постоянный SSH установлен.\n\n"
                        "Можно вынуть загрузочную флешку и перезагрузить принтер — "
                        f"SSH (порт 2222) поднимется сам.\n\nАдрес: {ip}:2222")
-            else:
+            elif op == "install_panel":
                 msg = ("Веб-панель установлена и запущена.\n\n"
                        f"Откройте в браузере: http://{ip}:8088/\n\n"
                        "После перезагрузки принтера панель поднимется автоматически.")
+            elif op == "uninstall_ssh":
+                msg = ("Постоянный SSH убран. После перезагрузки принтера без флешки "
+                       "SSH больше не поднимется.")
+            else:
+                msg = "Веб-панель убрана и остановлена."
             QMessageBox.information(self, "Готово", msg)
         else:
-            QMessageBox.critical(self, "Ошибка установки", error_text or "Не удалось выполнить установку.")
+            QMessageBox.critical(self, "Ошибка", error_text or "Не удалось выполнить операцию.")
+
+        # Перепроверяем реальное состояние и обновляем кнопки.
+        self._update_persist_buttons()
+        QTimer.singleShot(0, self.refresh_persist_status)
+
+    def _apply_persist_status_label(self, st: dict):
+        ssh_txt = "✅ SSH" if st.get("ssh_installed") else "⛔ SSH"
+        panel_txt = "✅ панель" if st.get("panel_installed") else "⛔ панель"
+        note = ""
+        # Артефакт есть, а хука нет — типично после OTA-обновления прошивки.
+        if (st.get("ssh_artifact") or st.get("panel_artifact")) and not st.get("hook"):
+            note = "  ⚠️ автозапуск слетел (OTA?) — переустановите"
+        self.persist_status_lbl.setText(f"Статус: {ssh_txt}, {panel_txt}{note}")
+
+    def _update_persist_buttons(self):
+        self.btn_persist_ssh.setText(
+            "🔓 Убрать постоянный SSH" if self._ssh_installed else "🔒 Установить постоянный SSH"
+        )
+        self.btn_web_panel.setText(
+            "🗑 Убрать веб-панель" if self._panel_installed else "📊 Установить веб-панель"
+        )
 
     def _set_persist_buttons_enabled(self, enabled: bool):
         self.btn_persist_ssh.setEnabled(enabled)
         self.btn_web_panel.setEnabled(enabled)
-
-    def _reset_persist_buttons(self):
-        self.btn_persist_ssh.setText("🔒 Установить постоянный SSH")
-        self.btn_web_panel.setText("📊 Установить веб-панель")
 
     def _open_log(self):
         from utils.logger import open_log_file
