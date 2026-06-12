@@ -229,6 +229,30 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// ─── Камера: локальный MJPEG-стрим (mjpg_streamer) вместо облачного gkcam ───
+
+const cameraDir = "/useremain/camera"
+
+// cameraOn — True, если запущен mjpg_streamer (наш локальный стрим).
+func cameraOn() bool {
+	out, _ := exec.Command("sh", "-c", "ps | grep -v grep | grep -q mjpg_streamer && echo 1").Output()
+	return strings.TrimSpace(string(out)) == "1"
+}
+
+// cameraAvailable — True, если на принтере установлены файлы камеры.
+func cameraAvailable() bool {
+	if _, err := os.Stat(cameraDir + "/mjpg_streamer"); err == nil {
+		return true
+	}
+	return false
+}
+
+// runCamScript запускает cam-on.sh / cam-off.sh и возвращает их вывод.
+func runCamScript(name string) (string, error) {
+	out, err := exec.Command("sh", cameraDir+"/"+name).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
 func main() {
 	flag.Parse()
 
@@ -346,6 +370,56 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "updating", "version": version()})
+	})
+
+	// /camera/status — что с камерой (установлена ли, включён ли локальный стрим).
+	http.HandleFunc("/camera/status", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"available": cameraAvailable(),
+			"on":        cameraOn(),
+			"port":      8080,
+		})
+	})
+
+	// /camera/on — заглушить gkcam и поднять локальный MJPEG-стрим.
+	http.HandleFunc("/camera/on", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+			return
+		}
+		if !cameraAvailable() {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "камера не установлена (обновите панель из программы)"})
+			return
+		}
+		out, err := runCamScript("cam-on.sh")
+		if err != nil || !strings.Contains(out, "CAM_ON_OK") {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "не удалось запустить стрим: " + out})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"on": true, "port": 8080})
+	})
+
+	// /camera/off — остановить локальный стрим и вернуть штатную камеру (gkcam).
+	http.HandleFunc("/camera/off", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+			return
+		}
+		out, err := runCamScript("cam-off.sh")
+		if err != nil || !strings.Contains(out, "CAM_OFF_OK") {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "не удалось вернуть gkcam: " + out})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"on": false})
 	})
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

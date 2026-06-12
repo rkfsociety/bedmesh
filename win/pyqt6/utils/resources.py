@@ -27,3 +27,14 @@ def gkbridge_binary() -> str:
     # dev: win/pyqt6/utils -> ../../.. = корень репозитория -> webpanel/gkbridge
     root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
     return os.path.normpath(os.path.join(root, "webpanel", "gkbridge"))
+
+
+def camera_dir() -> str:
+    """
+    Папка с файлами камеры (mjpg_streamer + плагины + libjpeg + cam-*.sh).
+    Исходник — webpanel/camera/, в сборке — _MEIPASS/resources/camera/.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "resources", "camera")
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+    return os.path.normpath(os.path.join(root, "webpanel", "camera"))

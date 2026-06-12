@@ -5,3 +5,10 @@ win/pyqt6/resources/boot.sh text eol=lf
 webpanel/gkbridge binary
 webpanel/index.html text eol=lf
 webpanel/gkbridge.version text eol=lf
+# Файлы камеры: бинарники/.so — бинарные, shell-скрипты — LF.
+webpanel/camera/mjpg_streamer binary
+webpanel/camera/input_uvc.so binary
+webpanel/camera/output_http.so binary
+webpanel/camera/libjpeg.so.8.2.2 binary
+webpanel/camera/cam-on.sh text eol=lf
+webpanel/camera/cam-off.sh text eol=lf
