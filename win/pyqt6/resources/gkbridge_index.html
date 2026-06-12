@@ -8,7 +8,7 @@
   :root{
     --bg:#0e1116; --card:#171c24; --card2:#1e242e; --line:#2a313c;
     --txt:#e6edf3; --dim:#8b97a7; --accent:#3b82f6; --green:#22c55e;
-    --amber:#f59e0b; --red:#ef4444; --nozzle:#f97316; --bed:#ef4444; --chamber:#a78bfa;
+    --amber:#f59e0b; --red:#ef4444; --nozzle:#f97316; --bed:#ef4444;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;
@@ -55,19 +55,18 @@
   .prow .v{font-weight:600;font-variant-numeric:tabular-nums}
 
   /* температуры */
-  .temps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .temps{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
   .temp{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;position:relative;overflow:hidden}
   .temp .lbl{font-size:13px;color:var(--dim);margin-bottom:8px;display:flex;align-items:center;gap:6px}
   .temp .lbl::before{content:'';width:8px;height:8px;border-radius:50%}
   .temp.nozzle .lbl::before{background:var(--nozzle)}
   .temp.bed .lbl::before{background:var(--bed)}
-  .temp.chamber .lbl::before{background:var(--chamber)}
   .temp .val{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
   .temp .val small{font-size:14px;color:var(--dim);font-weight:500}
   .temp .tgt{font-size:12px;color:var(--dim);margin-top:3px}
   .temp.settable .tgt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
   .heatbar{position:absolute;bottom:0;left:0;height:3px;background:var(--nozzle);width:0;transition:width .5s}
-  .temp.bed .heatbar{background:var(--bed)} .temp.chamber .heatbar{background:var(--chamber)}
+  .temp.bed .heatbar{background:var(--bed)}
   /* мини-редактор температуры */
   .tedit{display:none;margin-top:10px;gap:6px}
   .tedit.open{display:flex}
@@ -149,9 +148,6 @@
           <button class="ok"  data-heater="heater_bed" data-act="set">OK</button>
           <button class="off" data-heater="heater_bed" data-act="off">выкл</button>
         </div></div>
-      <div class="temp chamber"><div class="lbl">Камера</div>
-        <div class="val"><span id="cham">—</span><small>°C</small></div>
-        <div class="tgt" id="chamtgt">&nbsp;</div><div class="heatbar" id="chambar"></div></div>
     </div>
 
     <div class="metrics">
@@ -238,7 +234,7 @@ async function tick(){
 
 function render(d){
   const ps = d.print_stats||{}, vs = d.virtual_sdcard||{}, ex = d.extruder||{},
-        hb = d.heater_bed||{}, ch = d.chamber_temp||{}, gm = d.gcode_move||{},
+        hb = d.heater_bed||{}, gm = d.gcode_move||{},
         fan = d.fan||{}, th = d.toolhead||{};
 
   // состояние
@@ -267,7 +263,6 @@ function render(d){
   // температуры
   setTemp("noz", ex.temperature, ex.target, "nozbar");
   setTemp("bed", hb.temperature, hb.target, "bedbar");
-  setTemp("cham", ch.temperature, null, "chambar");
   $("noztgt").textContent = "цель " + (ex.target!=null? Math.round(ex.target)+"°" : "—");
   $("bedtgt").textContent = "цель " + (hb.target!=null? Math.round(hb.target)+"°" : "—");
 
