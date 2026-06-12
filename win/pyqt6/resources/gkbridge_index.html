@@ -29,6 +29,17 @@
   .grid{display:grid;gap:16px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
 
+  /* панель управления */
+  .controls{display:flex;gap:12px;flex-wrap:wrap}
+  .btn{flex:1;min-width:120px;border:1px solid var(--line);background:var(--card2);color:var(--txt);
+       font-size:15px;font-weight:600;padding:14px 18px;border-radius:14px;cursor:pointer;
+       transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn:hover:not(:disabled){border-color:var(--accent);transform:translateY(-1px)}
+  .btn:active:not(:disabled){transform:translateY(0)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.pause{color:var(--amber)} .btn.resume{color:var(--green)}
+  .btn.stop{color:var(--red)}
+
   /* прогресс */
   .progress-card{display:flex;gap:26px;align-items:center}
   .ring{position:relative;flex-shrink:0}
@@ -54,8 +65,17 @@
   .temp .val{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
   .temp .val small{font-size:14px;color:var(--dim);font-weight:500}
   .temp .tgt{font-size:12px;color:var(--dim);margin-top:3px}
+  .temp.settable .tgt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
   .heatbar{position:absolute;bottom:0;left:0;height:3px;background:var(--nozzle);width:0;transition:width .5s}
   .temp.bed .heatbar{background:var(--bed)} .temp.chamber .heatbar{background:var(--chamber)}
+  /* мини-редактор температуры */
+  .tedit{display:none;margin-top:10px;gap:6px}
+  .tedit.open{display:flex}
+  .tedit input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+       color:var(--txt);padding:7px 9px;font-size:14px;font-variant-numeric:tabular-nums}
+  .tedit button{border:1px solid var(--line);background:var(--card2);color:var(--txt);
+       border-radius:8px;padding:0 11px;cursor:pointer;font-size:13px;font-weight:600}
+  .tedit button.ok{color:var(--green)} .tedit button.off{color:var(--dim)}
 
   /* нижние метрики */
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
@@ -64,6 +84,15 @@
   .metric .ml{font-size:12px;color:var(--dim);margin-top:4px}
 
   .updated{text-align:center;color:var(--dim);font-size:12px;margin-top:16px}
+
+  /* всплывающее уведомление */
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
+       background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 20px;
+       font-size:14px;font-weight:600;opacity:0;transition:.3s;pointer-events:none;max-width:90vw;
+       box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:10}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.ok{color:var(--green)} #toast.err{color:var(--red)}
+
   @media(max-width:620px){
     .progress-card{flex-direction:column;text-align:center}
     .temps{grid-template-columns:1fr} .metrics{grid-template-columns:repeat(2,1fr)}
@@ -79,6 +108,11 @@
   </header>
 
   <div class="grid">
+    <div class="controls">
+      <button class="btn pause" id="btnPause" disabled>⏸ Пауза</button>
+      <button class="btn stop"  id="btnStop"  disabled>⏹ Стоп</button>
+    </div>
+
     <div class="card progress-card">
       <div class="ring">
         <svg width="140" height="140">
@@ -93,17 +127,28 @@
         <div class="prow"><span class="k">Слой</span><span class="v" id="layer">— / —</span></div>
         <div class="prow"><span class="k">Прошло</span><span class="v" id="elapsed">—</span></div>
         <div class="prow"><span class="k">Осталось</span><span class="v" id="remain">—</span></div>
+        <div class="prow"><span class="k">Завершение</span><span class="v" id="eta">—</span></div>
         <div class="prow"><span class="k">Материал</span><span class="v" id="material">—</span></div>
       </div>
     </div>
 
     <div class="temps">
-      <div class="temp nozzle"><div class="lbl">Сопло</div>
+      <div class="temp nozzle settable" data-heater="extruder"><div class="lbl">Сопло</div>
         <div class="val"><span id="noz">—</span><small>°C</small></div>
-        <div class="tgt" id="noztgt">цель —</div><div class="heatbar" id="nozbar"></div></div>
-      <div class="temp bed"><div class="lbl">Стол</div>
+        <div class="tgt" id="noztgt">цель —</div><div class="heatbar" id="nozbar"></div>
+        <div class="tedit" id="noz_edit">
+          <input type="number" min="0" max="320" placeholder="°C" id="noz_in">
+          <button class="ok"  data-heater="extruder" data-act="set">OK</button>
+          <button class="off" data-heater="extruder" data-act="off">выкл</button>
+        </div></div>
+      <div class="temp bed settable" data-heater="heater_bed"><div class="lbl">Стол</div>
         <div class="val"><span id="bed">—</span><small>°C</small></div>
-        <div class="tgt" id="bedtgt">цель —</div><div class="heatbar" id="bedbar"></div></div>
+        <div class="tgt" id="bedtgt">цель —</div><div class="heatbar" id="bedbar"></div>
+        <div class="tedit" id="bed_edit">
+          <input type="number" min="0" max="120" placeholder="°C" id="bed_in">
+          <button class="ok"  data-heater="heater_bed" data-act="set">OK</button>
+          <button class="off" data-heater="heater_bed" data-act="off">выкл</button>
+        </div></div>
       <div class="temp chamber"><div class="lbl">Камера</div>
         <div class="val"><span id="cham">—</span><small>°C</small></div>
         <div class="tgt" id="chamtgt">&nbsp;</div><div class="heatbar" id="chambar"></div></div>
@@ -119,16 +164,19 @@
 
   <div class="updated" id="updated">подключение…</div>
 </div>
+<div id="toast"></div>
 
 <script>
-// Страницу отдаёт сам мост gkbridge, поэтому статус берём с того же адреса
+// Страницу отдаёт сам мост gkbridge, поэтому API берём с того же адреса
 // (относительный путь). Если открыть HTML как локальный файл — фолбэк на IP.
 const FALLBACK = "192.168.0.197:8088";
-const URL = (location.protocol === "file:") ? `http://${FALLBACK}/status` : "/status";
+const ORIGIN = (location.protocol === "file:") ? `http://${FALLBACK}` : "";
+const URL_STATUS = ORIGIN + "/status";
 const POLL = 1500; // мс
 
 const RING_LEN = 2 * Math.PI * 62;
 const $ = id => document.getElementById(id);
+let lastState = "standby";
 
 function fmtTime(s){
   if(s==null || s<0 || !isFinite(s)) return "—";
@@ -138,14 +186,44 @@ function fmtTime(s){
   if(m>0) return `${m}м ${sec}с`;
   return `${sec}с`;
 }
+function fmtClock(remainSec){
+  if(remainSec==null || remainSec<0 || !isFinite(remainSec)) return "—";
+  const d = new Date(Date.now() + remainSec*1000);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
 function baseName(p){ if(!p) return "—"; return p.split('/').pop(); }
 
 const STATES = {printing:"печать",paused:"пауза",complete:"готово",
                 standby:"ожидание",cancelled:"отменено",error:"ошибка"};
 
+function toast(msg, ok=true){
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "show " + (ok ? "ok" : "err");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ t.className=""; }, 2600);
+}
+
+async function post(path){
+  const res = await fetch(ORIGIN + path, {method:"POST", cache:"no-store"});
+  const d = await res.json().catch(()=>({}));
+  if(!res.ok || d.error) throw new Error(d.error || ("HTTP "+res.status));
+  return d;
+}
+async function postGcode(script){
+  const res = await fetch(ORIGIN + "/gcode", {
+    method:"POST", cache:"no-store",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({script})
+  });
+  const d = await res.json().catch(()=>({}));
+  if(!res.ok || d.error) throw new Error(d.error || ("HTTP "+res.status));
+  return d;
+}
+
 async function tick(){
   try{
-    const res = await fetch(URL, {cache:"no-store"});
+    const res = await fetch(URL_STATUS, {cache:"no-store"});
     if(!res.ok) throw new Error("HTTP "+res.status);
     const d = await res.json();
     if(d.error) throw new Error(d.error);
@@ -165,9 +243,11 @@ function render(d){
 
   // состояние
   const st = ps.state || "standby";
+  lastState = st;
   const badge = $("state");
   badge.textContent = STATES[st] || st;
   badge.className = "badge " + st;
+  updateControls(st);
 
   // прогресс
   const prog = (vs.progress!=null ? vs.progress : 0);
@@ -181,6 +261,7 @@ function render(d){
   $("layer").textContent = `${cl} / ${tl}`;
   $("elapsed").textContent = fmtTime(ps.print_duration);
   $("remain").textContent = fmtTime(vs.remain_time);
+  $("eta").textContent = (st==="printing") ? fmtClock(vs.remain_time) : "—";
   $("material").textContent = vs.filament_type || "—";
 
   // температуры
@@ -208,6 +289,74 @@ function setTemp(id, cur, tgt, barId){
     $(barId).style.width = "0%";
   }
 }
+
+// ── Управление ───────────────────────────────────────────────────────────
+function updateControls(st){
+  const printing = st === "printing";
+  const paused   = st === "paused";
+  const active   = printing || paused;
+  const bp = $("btnPause"), bs = $("btnStop");
+  bs.disabled = !active;
+  bp.disabled = !active;
+  if(paused){
+    bp.textContent = "▶ Продолжить";
+    bp.className = "btn resume";
+  } else {
+    bp.textContent = "⏸ Пауза";
+    bp.className = "btn pause";
+  }
+}
+
+$("btnPause").addEventListener("click", async ()=>{
+  const resume = lastState === "paused";
+  try{
+    await post("/control?cmd=" + (resume ? "resume" : "pause"));
+    toast(resume ? "Печать продолжена" : "Печать на паузе");
+    tick();
+  }catch(e){ toast("Ошибка: " + e.message, false); }
+});
+
+$("btnStop").addEventListener("click", async ()=>{
+  if(!confirm("Остановить печать? Это действие необратимо.")) return;
+  try{
+    await post("/control?cmd=cancel");
+    toast("Печать остановлена");
+    tick();
+  }catch(e){ toast("Ошибка: " + e.message, false); }
+});
+
+// клик по «цель …» раскрывает мини-редактор температуры
+document.querySelectorAll(".temp.settable .tgt").forEach(tgt=>{
+  tgt.addEventListener("click", ()=>{
+    const card = tgt.closest(".temp");
+    const editor = card.querySelector(".tedit");
+    document.querySelectorAll(".tedit.open").forEach(e=>{ if(e!==editor) e.classList.remove("open"); });
+    editor.classList.toggle("open");
+    if(editor.classList.contains("open")) editor.querySelector("input").focus();
+  });
+});
+
+async function applyTemp(heater, value){
+  const script = `SET_HEATER_TEMPERATURE HEATER=${heater} TARGET=${value}`;
+  try{
+    await postGcode(script);
+    const name = heater==="extruder" ? "Сопло" : (heater==="heater_bed" ? "Стол" : heater);
+    toast(value>0 ? `${name}: нагрев до ${value}°` : `${name}: нагрев выключен`);
+    document.querySelectorAll(".tedit.open").forEach(e=>e.classList.remove("open"));
+    tick();
+  }catch(e){ toast("Ошибка: " + e.message, false); }
+}
+
+document.querySelectorAll(".tedit button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    const heater = btn.dataset.heater;
+    if(btn.dataset.act === "off"){ applyTemp(heater, 0); return; }
+    const input = btn.closest(".tedit").querySelector("input");
+    const v = parseInt(input.value, 10);
+    if(isNaN(v) || v < 0){ toast("Введите температуру", false); return; }
+    applyTemp(heater, v);
+  });
+});
 
 tick();
 setInterval(tick, POLL);
