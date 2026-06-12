@@ -2,7 +2,7 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from utils.resources import resource_path
+from utils.resources import resource_path, gkbridge_binary
 from typing import Optional, Callable
 import hashlib
 
@@ -563,7 +563,7 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
                 pass
 
     if gkbridge_local_path is None:
-        gkbridge_local_path = resource_path("resources/gkbridge")
+        gkbridge_local_path = gkbridge_binary()
     if not os.path.exists(gkbridge_local_path):
         logger.error("gkbridge binary not found: %s", gkbridge_local_path)
         return False
