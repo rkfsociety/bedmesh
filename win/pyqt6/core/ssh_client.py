@@ -2,7 +2,7 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from utils.resources import resource_path, gkbridge_binary
+from utils.resources import resource_path, gkbridge_binary, camera_dir
 from typing import Optional, Callable
 import hashlib
 
@@ -15,6 +15,7 @@ BOOT_REMOTE = "/useremain/boot.sh"
 SSH_PKG_SRC = "/tmp/ssh"
 SSH_PKG_DST = "/useremain/ssh"
 GKBRIDGE_REMOTE = "/useremain/gkbridge"
+CAMERA_DST = "/useremain/camera"
 RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 
 logger = get_logger(__name__)
@@ -340,6 +341,36 @@ def _run_boot_now(ssh) -> None:
     _exec(ssh, f"sh {_sh_quote(BOOT_REMOTE)}")
 
 
+def _upload_camera_files(ssh, sftp) -> bool:
+    """
+    Заливает файлы камеры (mjpg_streamer + плагины + libjpeg + cam-*.sh) в
+    /useremain/camera. Скрипты — с LF, бинарники — как есть. Создаёт симлинк libjpeg.
+    """
+    src = camera_dir()
+    if not os.path.isdir(src):
+        logger.warning("camera dir not found, skip: %s", src)
+        return False
+    _exec(ssh, f"mkdir -p {_sh_quote(CAMERA_DST)}")
+    scripts = {"cam-on.sh", "cam-off.sh"}
+    for name in sorted(os.listdir(src)):
+        local = os.path.join(src, name)
+        if not os.path.isfile(local):
+            continue
+        remote = f"{CAMERA_DST}/{name}"
+        if name in scripts:
+            with open(local, "r", encoding="utf-8") as f:
+                content = f.read().replace("\r\n", "\n").replace("\r", "\n")
+            with sftp.open(remote, "w") as rf:
+                rf.write(content)
+        else:
+            sftp.put(local, remote)
+    # права и симлинк SONAME для libjpeg
+    _exec(ssh, f"cd {_sh_quote(CAMERA_DST)} && chmod +x mjpg_streamer cam-on.sh cam-off.sh 2>/dev/null; "
+               f"ln -sf libjpeg.so.8.2.2 libjpeg.so.8")
+    logger.info("camera files uploaded to %s", CAMERA_DST)
+    return True
+
+
 def _remove_run_hook(ssh, sftp) -> bool:
     """Идемпотентно убирает строку-хук из run.sh (с бэкапом). True, если хука нет/убран."""
     try:
@@ -582,6 +613,9 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
             _p("Загрузка boot.sh...")
             _upload_boot_sh(sftp)
             _exec(ssh, f"chmod +x {_sh_quote(BOOT_REMOTE)}")
+
+            _p("Загрузка файлов камеры...")
+            _upload_camera_files(ssh, sftp)
 
             _p("Прописывание автозапуска в run.sh...")
             if not _insert_run_hook(ssh, sftp):
