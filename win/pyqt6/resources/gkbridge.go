@@ -35,7 +35,6 @@ var queryObjects = map[string]interface{}{
 	"virtual_sdcard": nil,
 	"extruder":       nil,
 	"heater_bed":     nil,
-	"chamber_temp":   nil,
 	"toolhead":       nil,
 	"gcode_move":     nil,
 	"fan":            nil,
