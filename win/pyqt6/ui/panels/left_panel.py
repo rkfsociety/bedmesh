@@ -38,7 +38,7 @@ class _PersistWorker(QObject):
 
             if self.op == "install_ssh":
                 ok = install_persistent_ssh(ip, port, user, pwd)
-            elif self.op == "install_panel":
+            elif self.op in ("install_panel", "update_panel"):
                 ok = install_web_panel(ip, port, user, pwd)
             elif self.op == "uninstall_ssh":
                 ok = uninstall_persistent_ssh(ip, port, user, pwd)
@@ -137,6 +137,17 @@ class LeftPanel(QWidget):
         self.btn_web_panel.clicked.connect(lambda: self._on_persist_clicked("panel"))
         adv_layout.addWidget(self.btn_web_panel)
 
+        # Принудительное обновление панели свежим бинарником из программы
+        # (нужно, когда установлена старая панель без самообновления).
+        self.btn_web_update = QPushButton("🔄 Обновить веб-панель")
+        self.btn_web_update.setToolTip(
+            "Перезаливает встроенный в программу бинарник веб-панели и перезапускает её.\n"
+            "Используйте, если установлена старая версия без кнопки самообновления."
+        )
+        self.btn_web_update.setVisible(False)
+        self.btn_web_update.clicked.connect(self._on_web_update_clicked)
+        adv_layout.addWidget(self.btn_web_update)
+
         self.persist_status_lbl = QLabel("Статус: неизвестно (загрузите конфиг по SSH)")
         self.persist_status_lbl.setStyleSheet("font-size: 11px; color: #888;")
         self.persist_status_lbl.setWordWrap(True)
@@ -230,6 +241,17 @@ class LeftPanel(QWidget):
 
         self._start_persist_op(op, ssh_data)
 
+    def _on_web_update_clicked(self):
+        """Принудительное обновление панели свежим бинарником из программы."""
+        if self._persist_thread and self._persist_thread.isRunning():
+            QMessageBox.information(self, "Автозапуск", "Операция уже выполняется, подождите.")
+            return
+        ssh_data = self._collect_ssh_data()
+        if not ssh_data.get("ip"):
+            QMessageBox.warning(self, "Автозапуск", "Укажите IP адрес принтера.")
+            return
+        self._start_persist_op("update_panel", ssh_data)
+
     def _start_persist_op(self, op: str, ssh_data: dict):
         busy_text = {
             "status": None,
@@ -237,12 +259,15 @@ class LeftPanel(QWidget):
             "uninstall_ssh": ("ssh", "⏳ Откат SSH..."),
             "install_panel": ("panel", "⏳ Установка панели..."),
             "uninstall_panel": ("panel", "⏳ Откат панели..."),
+            "update_panel": ("update", "⏳ Обновление панели..."),
         }.get(op)
 
         self._set_persist_buttons_enabled(False)
         if busy_text:
             which, text = busy_text
-            (self.btn_persist_ssh if which == "ssh" else self.btn_web_panel).setText(text)
+            btn = {"ssh": self.btn_persist_ssh, "panel": self.btn_web_panel,
+                   "update": self.btn_web_update}[which]
+            btn.setText(text)
 
         self._persist_thread = QThread(self)
         self._persist_worker = _PersistWorker(op, ssh_data)
@@ -282,6 +307,9 @@ class LeftPanel(QWidget):
             elif op == "uninstall_ssh":
                 msg = ("Постоянный SSH убран. После перезагрузки принтера без флешки "
                        "SSH больше не поднимется.")
+            elif op == "update_panel":
+                msg = ("Веб-панель обновлена до версии из программы и перезапущена.\n\n"
+                       f"Откройте/обновите в браузере: http://{ip}:8088/")
             else:
                 msg = "Веб-панель убрана и остановлена."
             QMessageBox.information(self, "Готово", msg)
@@ -308,10 +336,15 @@ class LeftPanel(QWidget):
         self.btn_web_panel.setText(
             "🗑 Убрать веб-панель" if self._panel_installed else "📊 Установить веб-панель"
         )
+        # Кнопку принудительного обновления показываем только когда панель установлена
+        # (при «не установлено» эту роль выполняет сама кнопка установки).
+        self.btn_web_update.setText("🔄 Обновить веб-панель")
+        self.btn_web_update.setVisible(self._panel_installed)
 
     def _set_persist_buttons_enabled(self, enabled: bool):
         self.btn_persist_ssh.setEnabled(enabled)
         self.btn_web_panel.setEnabled(enabled)
+        self.btn_web_update.setEnabled(enabled)
 
     def _open_log(self):
         from utils.logger import open_log_file
