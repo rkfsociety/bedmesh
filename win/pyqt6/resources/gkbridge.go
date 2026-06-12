@@ -14,20 +14,107 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed gkbridge.version
+var versionRaw []byte
+
+// version — собственная версия веб-панели (из файла gkbridge.version).
+func version() string { return strings.TrimSpace(string(versionRaw)) }
+
+// repoRawBase — где лежат свежий бинарник и файл версии (raw GitHub).
+const repoRawBase = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/win/pyqt6/resources"
+
 const etx = 0x03 // терминатор кадра Klipper API
+
+// httpClient для запросов к GitHub. На принтере может не быть CA-бандла, поэтому
+// проверку сертификата отключаем (качаем свой же бинарник по фиксированному URL).
+var httpClient = &http.Client{
+	Timeout:   90 * time.Second,
+	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+}
+
+// fetchLatestVersion возвращает версию из репозитория (raw).
+func fetchLatestVersion() (string, error) {
+	resp, err := httpClient.Get(repoRawBase + "/gkbridge.version")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// applyUpdate скачивает свежий бинарник, заменяет текущий и перезапускает процесс.
+func applyUpdate() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("executable: %w", err)
+	}
+	exe, _ = filepath.EvalSymlinks(exe)
+
+	resp, err := httpClient.Get(repoRawBase + "/gkbridge")
+	if err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download HTTP %d", resp.StatusCode)
+	}
+
+	tmp := exe + ".new"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return fmt.Errorf("create tmp: %w", err)
+	}
+	n, err := io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if n < 1024*1024 { // бинарник ~5.5 МБ; защита от усечённой/битой загрузки
+		os.Remove(tmp)
+		return fmt.Errorf("downloaded too small: %d bytes", n)
+	}
+
+	// Заменяем файл (running-процесс держит старый inode — это нормально для Linux).
+	if err := os.Rename(tmp, exe); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("replace: %w", err)
+	}
+
+	// Перезапуск: даём текущему процессу выйти (освободить порт), затем стартуем новый.
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 1; nohup '%s' >/tmp/gkbridge.out 2>&1 &", exe))
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("restart: %w", err)
+	}
+	go func() { time.Sleep(400 * time.Millisecond); os.Exit(0) }()
+	return nil
+}
 
 // объекты, которые запрашиваем у gklib
 var queryObjects = map[string]interface{}{
@@ -218,11 +305,54 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": body.Script})
 	})
 
+	// /version — собственная версия панели.
+	http.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"version": version()})
+	})
+
+	// /update/check — сравнение с версией в репозитории.
+	http.HandleFunc("/update/check", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		latest, err := fetchLatestVersion()
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"current": version(), "latest": "", "available": false, "error": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"current":   version(),
+			"latest":    latest,
+			"available": latest != "" && latest != version(),
+		})
+	})
+
+	// /update/apply — скачать свежий бинарник и перезапуститься.
+	http.HandleFunc("/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+			return
+		}
+		if err := applyUpdate(); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"ok": "updating", "version": version()})
+	})
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		fmt.Fprint(w, "ok")
 	})
 
-	log.Printf("gkbridge: слушаю %s, сокет %s", *listenAddr, *socketPath)
+	log.Printf("gkbridge %s: слушаю %s, сокет %s", version(), *listenAddr, *socketPath)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
