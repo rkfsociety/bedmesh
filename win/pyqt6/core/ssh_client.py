@@ -572,9 +572,12 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
     try:
         sftp = ssh.open_sftp()
         try:
+            # Заливаем во временный файл: перезаписать запущенный бинарник по SFTP нельзя
+            # (truncate даёт ETXTBSY). Подменяем через mv после остановки процесса.
             _p("Загрузка бинарника веб-панели...")
-            sftp.put(gkbridge_local_path, GKBRIDGE_REMOTE)
-            _exec(ssh, f"chmod +x {_sh_quote(GKBRIDGE_REMOTE)}")
+            tmp_remote = GKBRIDGE_REMOTE + ".new"
+            sftp.put(gkbridge_local_path, tmp_remote)
+            _exec(ssh, f"chmod +x {_sh_quote(tmp_remote)}")
 
             _p("Загрузка boot.sh...")
             _upload_boot_sh(sftp)
@@ -584,10 +587,15 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
             if not _insert_run_hook(ssh, sftp):
                 return False
 
-            # Перезапуск: гасим старый мост (если запущен), чтобы поднялся свежий бинарник.
-            # boot.sh не стартует gkbridge, пока старый процесс жив, поэтому убиваем явно.
+            # Останавливаем старый мост и заменяем бинарник (mv не даёт ETXTBSY на
+            # запущенном файле; boot.sh не стартует gkbridge, пока старый процесс жив).
             _p("Перезапуск веб-панели...")
             _exec(ssh, "killall gkbridge 2>/dev/null")
+            st, _, err = _exec(ssh, f"mv -f {_sh_quote(tmp_remote)} {_sh_quote(GKBRIDGE_REMOTE)}")
+            if st != 0:
+                logger.error("gkbridge replace failed: %s", err)
+                return False
+            _exec(ssh, f"chmod +x {_sh_quote(GKBRIDGE_REMOTE)}")
             _run_boot_now(ssh)
             _p("Готово.")
             return True
