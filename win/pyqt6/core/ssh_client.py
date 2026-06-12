@@ -340,6 +340,156 @@ def _run_boot_now(ssh) -> None:
     _exec(ssh, f"sh {_sh_quote(BOOT_REMOTE)}")
 
 
+def _remove_run_hook(ssh, sftp) -> bool:
+    """Идемпотентно убирает строку-хук из run.sh (с бэкапом). True, если хука нет/убран."""
+    try:
+        with sftp.open(RUN_SH, "r") as f:
+            text = f.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        logger.error("run.sh read failed for hook removal: %s (%s)", RUN_SH, e)
+        return False
+
+    if "/useremain/boot.sh" not in text:
+        return True
+
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    _exec(ssh, f"cp -a {_sh_quote(RUN_SH)} {_sh_quote(RUN_SH + '.' + BACKUP_TAG + '_' + ts)}")
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    kept = [ln for ln in lines if "/useremain/boot.sh" not in ln]
+    with sftp.open(RUN_SH, "w") as f:
+        f.write("\n".join(kept))
+    logger.info("run.sh hook removed")
+    return True
+
+
+def check_persistent_status(ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    """
+    Определяет, что установлено на принтере. Возвращает dict или None при ошибке связи:
+      ssh_artifact   — есть /useremain/ssh/dropbear
+      panel_artifact — есть /useremain/gkbridge
+      boot           — есть /useremain/boot.sh
+      hook           — run.sh содержит вызов boot.sh
+      ssh_installed  — артефакт SSH + хук (полностью рабочая установка)
+      panel_installed— артефакт панели + хук
+    """
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+    except Exception as e:
+        logger.warning("status check connect failed: host=%s port=%s error=%s", ip, port, e)
+        return None
+    try:
+        cmd = (
+            "printf '%s%s%s%s' "
+            f"$([ -f {SSH_PKG_DST}/dropbear ] && echo 1 || echo 0) "
+            f"$([ -x {GKBRIDGE_REMOTE} ] && echo 1 || echo 0) "
+            f"$([ -f {BOOT_REMOTE} ] && echo 1 || echo 0) "
+            f"$(grep -q /useremain/boot.sh {RUN_SH} 2>/dev/null && echo 1 || echo 0)"
+        )
+        _, out, err = _exec(ssh, cmd)
+        flags = (out or "").strip()
+        if len(flags) < 4:
+            logger.error("status check bad output: out=%r err=%s", out, err)
+            return None
+        ssh_art = flags[0] == "1"
+        panel_art = flags[1] == "1"
+        boot = flags[2] == "1"
+        hook = flags[3] == "1"
+        status = {
+            "ssh_artifact": ssh_art,
+            "panel_artifact": panel_art,
+            "boot": boot,
+            "hook": hook,
+            "ssh_installed": ssh_art and hook,
+            "panel_installed": panel_art and hook,
+        }
+        logger.info("persistent status: %s", status)
+        return status
+    except Exception as e:
+        logger.exception("status check failed: host=%s port=%s error=%s", ip, port, e)
+        return None
+    finally:
+        ssh.close()
+
+
+def uninstall_persistent_ssh(ip: str, port: int, username: str, password: str,
+                             progress_cb: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Откатывает постоянный SSH: удаляет /useremain/ssh. Если веб-панель не установлена —
+    дополнительно снимает общий хук из run.sh и удаляет boot.sh.
+    Запущенный dropbear НЕ убивается (это оборвало бы текущую сессию) — он исчезнет
+    после перезагрузки принтера.
+    """
+    def _p(msg: str):
+        logger.info("uninstall_persistent_ssh: %s", msg)
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
+    ssh = get_ssh_connection(ip, port, username, password)
+    try:
+        sftp = ssh.open_sftp()
+        try:
+            _p("Удаление SSH-пакета из /useremain...")
+            _exec(ssh, f"rm -rf {_sh_quote(SSH_PKG_DST)}")
+
+            st, _, _ = _exec(ssh, f"test -x {_sh_quote(GKBRIDGE_REMOTE)}")
+            if st != 0:
+                _p("Снятие автозапуска (веб-панель не установлена)...")
+                _remove_run_hook(ssh, sftp)
+                _exec(ssh, f"rm -f {_sh_quote(BOOT_REMOTE)}")
+            _p("Готово.")
+            return True
+        finally:
+            sftp.close()
+    except Exception as e:
+        logger.exception("uninstall_persistent_ssh failed: host=%s port=%s error=%s", ip, port, e)
+        return False
+    finally:
+        ssh.close()
+
+
+def uninstall_web_panel(ip: str, port: int, username: str, password: str,
+                        progress_cb: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Откатывает веб-панель: останавливает gkbridge и удаляет бинарник. Если постоянный
+    SSH не установлен — дополнительно снимает общий хук из run.sh и удаляет boot.sh.
+    """
+    def _p(msg: str):
+        logger.info("uninstall_web_panel: %s", msg)
+        if progress_cb:
+            try:
+                progress_cb(msg)
+            except Exception:
+                pass
+
+    ssh = get_ssh_connection(ip, port, username, password)
+    try:
+        sftp = ssh.open_sftp()
+        try:
+            _p("Остановка веб-панели...")
+            _exec(ssh, "killall gkbridge 2>/dev/null")
+            _p("Удаление бинарника панели...")
+            _exec(ssh, f"rm -f {_sh_quote(GKBRIDGE_REMOTE)}")
+
+            st, _, _ = _exec(ssh, f"test -f {_sh_quote(SSH_PKG_DST + '/dropbear')}")
+            if st != 0:
+                _p("Снятие автозапуска (постоянный SSH не установлен)...")
+                _remove_run_hook(ssh, sftp)
+                _exec(ssh, f"rm -f {_sh_quote(BOOT_REMOTE)}")
+            _p("Готово.")
+            return True
+        finally:
+            sftp.close()
+    except Exception as e:
+        logger.exception("uninstall_web_panel failed: host=%s port=%s error=%s", ip, port, e)
+        return False
+    finally:
+        ssh.close()
+
+
 def install_persistent_ssh(ip: str, port: int, username: str, password: str,
                            progress_cb: Optional[Callable[[str], None]] = None) -> bool:
     """
