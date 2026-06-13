@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rkfsociety.bedmesh.ui.screens.MeshScreen
 import com.rkfsociety.bedmesh.ui.screens.ConfigScreen
+import com.rkfsociety.bedmesh.ui.screens.PrinterScreen
 import com.rkfsociety.bedmesh.ui.screens.RawScreen
 import com.rkfsociety.bedmesh.ui.screens.SshScreen
 import com.rkfsociety.bedmesh.ui.vm.AppViewModel
@@ -22,7 +23,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val ctx = LocalContext.current
 
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("SSH", "Карта", "Config", "RAW")
+    val tabs = listOf("SSH", "Карта", "Config", "Принтер", "RAW")
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -140,7 +141,12 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                         onDeleteBackup = { p -> vm.deleteBackup(p) },
                         onAceProPreset = { vm.applyAceProPreset(it) },
                     )
-                    3 -> RawScreen(rawText = state.rawText)
+                    3 -> PrinterScreen(
+                        state = state,
+                        onInstallSsh = { vm.installPersistentSsh(ctx) },
+                        onInstallPanel = { vm.installWebPanel(ctx) },
+                    )
+                    4 -> RawScreen(rawText = state.rawText)
                 }
             }
         }
