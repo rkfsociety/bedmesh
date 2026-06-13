@@ -127,12 +127,14 @@
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.ok{color:var(--green)} #toast.err{color:var(--red)}
 
-  .bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-  .bottom-row .logs-card{min-width:0}
-  .bottom-row .camera-card{min-width:0}
+  /* двухколоночный layout: основной контент + камера справа */
+  .layout{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  .col-main{min-width:0}
+  .col-cam{min-width:0;position:sticky;top:20px}
 
-  @media(max-width:700px){
-    .bottom-row{grid-template-columns:1fr}
+  @media(max-width:860px){
+    .layout{grid-template-columns:1fr}
+    .col-cam{position:static}
     .progress-card{flex-direction:column;text-align:center}
     .temps{grid-template-columns:1fr} .metrics{grid-template-columns:repeat(2,1fr)}
   }
@@ -146,67 +148,73 @@
     <span class="badge" id="state">—</span>
   </header>
 
-  <div class="grid">
-    <div class="controls">
-      <button class="btn pause" id="btnPause" disabled>⏸ Пауза</button>
-      <button class="btn stop"  id="btnStop"  disabled>⏹ Стоп</button>
-    </div>
-
-    <div class="card progress-card">
-      <div class="ring">
-        <svg width="140" height="140">
-          <circle cx="70" cy="70" r="62" fill="none" stroke="var(--line)" stroke-width="10"/>
-          <circle id="ringfill" cx="70" cy="70" r="62" fill="none" stroke="var(--accent)" stroke-width="10"
-                  stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6"/>
-        </svg>
-        <div class="pct"><b id="pct">0%</b><span>готово</span></div>
-      </div>
-      <div class="pinfo">
-        <div class="fname" id="fname">—</div>
-        <div class="prow"><span class="k">Слой</span><span class="v" id="layer">— / —</span></div>
-        <div class="prow"><span class="k">Прошло</span><span class="v" id="elapsed">—</span></div>
-        <div class="prow"><span class="k">Осталось</span><span class="v" id="remain">—</span></div>
-        <div class="prow"><span class="k">Завершение</span><span class="v" id="eta">—</span></div>
-        <div class="prow"><span class="k">Материал</span><span class="v" id="material">—</span></div>
-      </div>
-    </div>
-
-    <div class="temps">
-      <div class="temp nozzle settable" data-heater="extruder"><div class="lbl">Сопло</div>
-        <div class="val"><span id="noz">—</span><small>°C</small></div>
-        <div class="tgt" id="noztgt">цель —</div><div class="heatbar" id="nozbar"></div>
-        <div class="tedit" id="noz_edit">
-          <input type="number" min="0" max="320" placeholder="°C" id="noz_in">
-          <button class="ok"  data-heater="extruder" data-act="set">OK</button>
-          <button class="off" data-heater="extruder" data-act="off">выкл</button>
-        </div></div>
-      <div class="temp bed settable" data-heater="heater_bed"><div class="lbl">Стол</div>
-        <div class="val"><span id="bed">—</span><small>°C</small></div>
-        <div class="tgt" id="bedtgt">цель —</div><div class="heatbar" id="bedbar"></div>
-        <div class="tedit" id="bed_edit">
-          <input type="number" min="0" max="120" placeholder="°C" id="bed_in">
-          <button class="ok"  data-heater="heater_bed" data-act="set">OK</button>
-          <button class="off" data-heater="heater_bed" data-act="off">выкл</button>
-        </div></div>
-    </div>
-
-    <div class="metrics">
-      <div class="metric"><div class="mv" id="speed">—</div><div class="ml">Скорость</div></div>
-      <div class="metric"><div class="mv" id="flow">—</div><div class="ml">Поток</div></div>
-      <div class="metric"><div class="mv" id="fan">—</div><div class="ml">Вентилятор</div></div>
-      <div class="metric"><div class="mv" id="zpos">—</div><div class="ml">Z, мм</div></div>
-    </div>
-
-    <div class="bottom-row">
-      <div class="card logs-card">
-        <div class="logs-head">
-          <span class="t">📋 События</span>
-          <button class="btn-toggle" id="btnToggleLogs">↓</button>
+  <div class="layout">
+    <!-- левая колонка: основной контент -->
+    <div class="col-main">
+      <div class="grid">
+        <div class="controls">
+          <button class="btn pause" id="btnPause" disabled>⏸ Пауза</button>
+          <button class="btn stop"  id="btnStop"  disabled>⏹ Стоп</button>
         </div>
-        <div class="logs-list" id="logsList"></div>
-      </div>
 
-      <div class="card camera-card" id="cameraCard" style="display:none">
+        <div class="card progress-card">
+          <div class="ring">
+            <svg width="140" height="140">
+              <circle cx="70" cy="70" r="62" fill="none" stroke="var(--line)" stroke-width="10"/>
+              <circle id="ringfill" cx="70" cy="70" r="62" fill="none" stroke="var(--accent)" stroke-width="10"
+                      stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6"/>
+            </svg>
+            <div class="pct"><b id="pct">0%</b><span>готово</span></div>
+          </div>
+          <div class="pinfo">
+            <div class="fname" id="fname">—</div>
+            <div class="prow"><span class="k">Слой</span><span class="v" id="layer">— / —</span></div>
+            <div class="prow"><span class="k">Прошло</span><span class="v" id="elapsed">—</span></div>
+            <div class="prow"><span class="k">Осталось</span><span class="v" id="remain">—</span></div>
+            <div class="prow"><span class="k">Завершение</span><span class="v" id="eta">—</span></div>
+            <div class="prow"><span class="k">Материал</span><span class="v" id="material">—</span></div>
+          </div>
+        </div>
+
+        <div class="temps">
+          <div class="temp nozzle settable" data-heater="extruder"><div class="lbl">Сопло</div>
+            <div class="val"><span id="noz">—</span><small>°C</small></div>
+            <div class="tgt" id="noztgt">цель —</div><div class="heatbar" id="nozbar"></div>
+            <div class="tedit" id="noz_edit">
+              <input type="number" min="0" max="320" placeholder="°C" id="noz_in">
+              <button class="ok"  data-heater="extruder" data-act="set">OK</button>
+              <button class="off" data-heater="extruder" data-act="off">выкл</button>
+            </div></div>
+          <div class="temp bed settable" data-heater="heater_bed"><div class="lbl">Стол</div>
+            <div class="val"><span id="bed">—</span><small>°C</small></div>
+            <div class="tgt" id="bedtgt">цель —</div><div class="heatbar" id="bedbar"></div>
+            <div class="tedit" id="bed_edit">
+              <input type="number" min="0" max="120" placeholder="°C" id="bed_in">
+              <button class="ok"  data-heater="heater_bed" data-act="set">OK</button>
+              <button class="off" data-heater="heater_bed" data-act="off">выкл</button>
+            </div></div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric"><div class="mv" id="speed">—</div><div class="ml">Скорость</div></div>
+          <div class="metric"><div class="mv" id="flow">—</div><div class="ml">Поток</div></div>
+          <div class="metric"><div class="mv" id="fan">—</div><div class="ml">Вентилятор</div></div>
+          <div class="metric"><div class="mv" id="zpos">—</div><div class="ml">Z, мм</div></div>
+        </div>
+
+        <div class="card logs-card">
+          <div class="logs-head">
+            <span class="t">📋 События</span>
+            <button class="btn-toggle" id="btnToggleLogs">↓</button>
+          </div>
+          <div class="logs-list" id="logsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- правая колонка: камера -->
+    <div class="col-cam" id="cameraCard" style="display:none">
+      <div class="card camera-card">
         <div class="cam-head">
           <span class="t">📷 Камера</span>
           <button class="btn" id="btnCam">Включить</button>
