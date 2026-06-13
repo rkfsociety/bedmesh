@@ -108,10 +108,15 @@ func applyUpdate() error {
 		return fmt.Errorf("replace: %w", err)
 	}
 
-	// Перезапуск: даём текущему процессу выйти (освободить порт), затем стартуем новый.
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 1; nohup '%s' >/tmp/gkbridge.out 2>&1 &", exe))
+	// Перезапуск через setsid — отвязываем дочерний процесс от текущего,
+	// иначе при os.Exit(0) дочерний sh тоже может завершиться.
+	cmd := exec.Command("setsid", "sh", "-c", fmt.Sprintf("sleep 1; nohup '%s' >/tmp/gkbridge.out 2>&1 &", exe))
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("restart: %w", err)
+		// fallback без setsid
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("sleep 1; nohup '%s' >/tmp/gkbridge.out 2>&1 &", exe))
+		if err2 := cmd.Start(); err2 != nil {
+			return fmt.Errorf("restart: %w", err2)
+		}
 	}
 	go func() { time.Sleep(400 * time.Millisecond); os.Exit(0) }()
 	return nil
