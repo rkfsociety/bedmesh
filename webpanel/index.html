@@ -127,7 +127,12 @@
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.ok{color:var(--green)} #toast.err{color:var(--red)}
 
-  @media(max-width:620px){
+  .bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .bottom-row .logs-card{min-width:0}
+  .bottom-row .camera-card{min-width:0}
+
+  @media(max-width:700px){
+    .bottom-row{grid-template-columns:1fr}
     .progress-card{flex-direction:column;text-align:center}
     .temps{grid-template-columns:1fr} .metrics{grid-template-columns:repeat(2,1fr)}
   }
@@ -192,25 +197,27 @@
       <div class="metric"><div class="mv" id="zpos">—</div><div class="ml">Z, мм</div></div>
     </div>
 
-    <div class="card logs-card">
-      <div class="logs-head">
-        <span class="t">📋 События</span>
-        <button class="btn-toggle" id="btnToggleLogs">↓</button>
+    <div class="bottom-row">
+      <div class="card logs-card">
+        <div class="logs-head">
+          <span class="t">📋 События</span>
+          <button class="btn-toggle" id="btnToggleLogs">↓</button>
+        </div>
+        <div class="logs-list" id="logsList"></div>
       </div>
-      <div class="logs-list" id="logsList"></div>
-    </div>
 
-    <div class="card camera-card" id="cameraCard" style="display:none">
-      <div class="cam-head">
-        <span class="t">📷 Камера</span>
-        <button class="btn" id="btnCam">Включить</button>
-      </div>
-      <div class="cam-view" id="camView" style="display:none">
-        <img id="camImg" alt="поток камеры">
-      </div>
-      <div class="cam-note" id="camNote">
-        Пока локальный стрим включён, камера в приложении Anycubic недоступна (камеру
-        можно использовать только в одном месте).
+      <div class="card camera-card" id="cameraCard" style="display:none">
+        <div class="cam-head">
+          <span class="t">📷 Камера</span>
+          <button class="btn" id="btnCam">Включить</button>
+        </div>
+        <div class="cam-view" id="camView" style="display:none">
+          <img id="camImg" alt="поток камеры">
+        </div>
+        <div class="cam-note" id="camNote">
+          Пока локальный стрим включён, камера в приложении Anycubic недоступна (камеру
+          можно использовать только в одном месте).
+        </div>
       </div>
     </div>
   </div>
