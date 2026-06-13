@@ -82,6 +82,24 @@
   .metric .mv{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .metric .ml{font-size:12px;color:var(--dim);margin-top:4px}
 
+  /* логи событий */
+  .logs-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .logs-head .t{font-size:15px;font-weight:600}
+  .btn-toggle{flex:0 0 auto;background:none;border:none;color:var(--dim);font-size:16px;
+       cursor:pointer;transition:.2s;margin-left:auto}
+  .btn-toggle:hover{color:var(--txt)}
+  .logs-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;
+       font-size:13px}
+  .logs-list.hidden{display:none}
+  .log-item{display:flex;gap:8px;padding:8px 10px;background:var(--card2);border-radius:8px;
+       border-left:3px solid var(--dim)}
+  .log-item.status{border-left-color:var(--accent)}
+  .log-item.control{border-left-color:var(--amber)}
+  .log-item .time{color:var(--dim);flex-shrink:0;font-variant-numeric:tabular-nums;min-width:50px}
+  .log-item .msg{flex:1;color:var(--txt)}
+  .log-item .tag{display:inline-block;background:rgba(255,255,255,.08);color:var(--dim);
+       padding:1px 6px;border-radius:4px;font-size:11px;margin-right:4px}
+
   /* камера */
   .cam-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   .cam-head .t{font-size:15px;font-weight:600}
@@ -172,6 +190,14 @@
       <div class="metric"><div class="mv" id="flow">—</div><div class="ml">Поток</div></div>
       <div class="metric"><div class="mv" id="fan">—</div><div class="ml">Вентилятор</div></div>
       <div class="metric"><div class="mv" id="zpos">—</div><div class="ml">Z, мм</div></div>
+    </div>
+
+    <div class="card logs-card">
+      <div class="logs-head">
+        <span class="t">📋 События</span>
+        <button class="btn-toggle" id="btnToggleLogs">↓</button>
+      </div>
+      <div class="logs-list" id="logsList"></div>
     </div>
 
     <div class="card camera-card" id="cameraCard" style="display:none">
@@ -478,12 +504,43 @@ $("btnCam").addEventListener("click", async ()=>{
   }
 });
 
+// ── Логи событий ─────────────────────────────────────────────────────────
+async function checkLogs(){
+  try{
+    const r = await (await fetch(ORIGIN + "/logs", {cache:"no-store"})).json();
+    const list = $("logsList");
+    if(!r.logs || r.logs.length === 0){
+      list.innerHTML = '<div style="padding:10px;color:var(--dim);text-align:center">нет событий</div>';
+      return;
+    }
+    // показываем в обратном порядке (новые сверху)
+    const html = r.logs.slice().reverse().map(log => `
+      <div class="log-item ${log.event}">
+        <span class="time">${log.time}</span>
+        <span class="tag">${log.event}</span>
+        <span class="msg">${log.message}</span>
+      </div>
+    `).join("");
+    list.innerHTML = html;
+  }catch(e){ /* молча */ }
+}
+
+let logsOpen = true;
+$("btnToggleLogs").addEventListener("click", ()=>{
+  const list = $("logsList");
+  logsOpen = !logsOpen;
+  list.classList.toggle("hidden");
+  $("btnToggleLogs").textContent = logsOpen ? "↓" : "→";
+});
+
 tick();
 setInterval(tick, POLL);
 checkVersion();
 setInterval(checkVersion, 5 * 60 * 1000); // перепроверять версию раз в 5 минут
 checkCamera();
 setInterval(checkCamera, 15000);
+checkLogs();
+setInterval(checkLogs, 3000); // обновлять логи раз в 3 сек
 </script>
 </body>
 </html>

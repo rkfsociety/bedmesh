@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -229,6 +230,58 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// ─── Логирование событий ───
+
+type LogEntry struct {
+	Time    string `json:"time"`
+	Event   string `json:"event"`
+	Message string `json:"message"`
+}
+
+var (
+	logsMu         sync.Mutex
+	logs           []LogEntry
+	lastPrintState = "standby"
+)
+
+const maxLogs = 100
+
+func addLog(event, message string) {
+	logsMu.Lock()
+	defer logsMu.Unlock()
+	logs = append(logs, LogEntry{
+		Time:    time.Now().Format("15:04:05"),
+		Event:   event,
+		Message: message,
+	})
+	if len(logs) > maxLogs {
+		logs = logs[len(logs)-maxLogs:]
+	}
+}
+
+func trackPrintState(newState string) {
+	logsMu.Lock()
+	defer logsMu.Unlock()
+	if newState == lastPrintState {
+		return
+	}
+	lastPrintState = newState
+	msg := newState
+	switch newState {
+	case "printing":
+		msg = "Печать начата"
+	case "paused":
+		msg = "Печать на паузе"
+	case "complete":
+		msg = "Печать завершена"
+	case "cancelled":
+		msg = "Печать отменена"
+	case "error":
+		msg = "Ошибка при печати"
+	}
+	addLog("status", msg)
+}
+
 // ─── Камера: локальный MJPEG-стрим (mjpg_streamer) вместо облачного gkcam ───
 
 const cameraDir = "/useremain/camera"
@@ -274,6 +327,15 @@ func main() {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
+		// отслеживаем изменение состояния печати для логов
+		var d map[string]interface{}
+		if json.Unmarshal(status, &d) == nil {
+			if ps, ok := d["print_stats"].(map[string]interface{}); ok {
+				if state, ok := ps["state"].(string); ok {
+					trackPrintState(state)
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(status)
 	})
@@ -300,9 +362,20 @@ func main() {
 			return
 		}
 		if err := sendGcode(script); err != nil {
+			addLog("control", "Ошибка: "+script)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
+		msg := ""
+		switch script {
+		case "PAUSE":
+			msg = "Пауза"
+		case "RESUME":
+			msg = "Продолжение"
+		case "CANCEL_PRINT":
+			msg = "Отмена печати"
+		}
+		addLog("control", msg)
 		writeJSON(w, http.StatusOK, map[string]string{"ok": script})
 	})
 
@@ -370,6 +443,16 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "updating", "version": version()})
+	})
+
+	// /logs — последние события (начало, завершение, ошибки).
+	http.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		logsMu.Lock()
+		defer logsMu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]interface{}{"logs": logs})
 	})
 
 	// /camera/status — что с камерой (установлена ли, включён ли локальный стрим).
