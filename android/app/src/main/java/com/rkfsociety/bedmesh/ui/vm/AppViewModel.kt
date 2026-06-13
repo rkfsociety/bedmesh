@@ -20,6 +20,7 @@ import com.rkfsociety.bedmesh.core.MeshStatsCalculator
 import com.rkfsociety.bedmesh.core.SshClient
 import com.rkfsociety.bedmesh.core.SshBackups
 import com.rkfsociety.bedmesh.core.SshConfig
+import com.rkfsociety.bedmesh.core.SshInstaller
 import com.rkfsociety.bedmesh.core.SshPrefs
 import com.rkfsociety.bedmesh.core.UpdateState
 import com.rkfsociety.bedmesh.core.aceProValuesForPercent
@@ -35,6 +36,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+data class InstallState(
+    val busy: Boolean = false,
+    val log: List<String> = emptyList(),
+    val error: String? = null,
+    val done: Boolean = false,
+)
+
 data class UiState(
     val ssh: SshConfig = SshPrefs.defaultConfig(),
     val busy: Boolean = false,
@@ -43,10 +51,12 @@ data class UiState(
     val stats: Map<String, String> = emptyMap(),
     val shaper: InputShaperData? = null,
     val config: KlipperConfig? = null,
-    val configEdits: Map<String, String> = emptyMap(), // key: "section.key"
+    val configEdits: Map<String, String> = emptyMap(),
     val backups: List<String> = emptyList(),
     val update: UpdateState = UpdateState(currentVersion = BuildConfig.VERSION_NAME),
     val lastError: String? = null,
+    val installSsh: InstallState = InstallState(),
+    val installPanel: InstallState = InstallState(),
 )
 
 private data class SshDownloadOutcome(
@@ -332,6 +342,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val clip = ClipData.newPlainText("bed_mesh", sb.toString())
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(clip)
+    }
+
+    fun installPersistentSsh(context: Context) {
+        if (_uiState.value.installSsh.busy) return
+        val cfg = _uiState.value.ssh
+        val appCtx = context.applicationContext
+        viewModelScope.launch {
+            _uiState.update { it.copy(installSsh = InstallState(busy = true)) }
+            try {
+                withContext(Dispatchers.IO) {
+                    SshInstaller.installPersistentSsh(appCtx, cfg) { msg ->
+                        _uiState.update { s ->
+                            s.copy(installSsh = s.installSsh.copy(log = s.installSsh.log + msg))
+                        }
+                    }
+                }
+                _uiState.update { it.copy(installSsh = it.installSsh.copy(busy = false, done = true)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(installSsh = it.installSsh.copy(busy = false, error = e.formatDiagnostic())) }
+            }
+        }
+    }
+
+    fun installWebPanel(context: Context) {
+        if (_uiState.value.installPanel.busy) return
+        val cfg = _uiState.value.ssh
+        val appCtx = context.applicationContext
+        viewModelScope.launch {
+            _uiState.update { it.copy(installPanel = InstallState(busy = true)) }
+            try {
+                withContext(Dispatchers.IO) {
+                    SshInstaller.installWebPanel(appCtx, cfg) { msg ->
+                        _uiState.update { s ->
+                            s.copy(installPanel = s.installPanel.copy(log = s.installPanel.log + msg))
+                        }
+                    }
+                }
+                _uiState.update { it.copy(installPanel = it.installPanel.copy(busy = false, done = true)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(installPanel = it.installPanel.copy(busy = false, error = e.formatDiagnostic())) }
+            }
+        }
     }
 
     fun checkUpdates() {
