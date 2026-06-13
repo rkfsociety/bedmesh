@@ -22,8 +22,8 @@ android {
         applicationId = "com.rkfsociety.bedmesh"
         minSdk = 24
         targetSdk = 35
-        versionCode = 165
-        versionName = "0.165-android"
+        versionCode = 167
+        versionName = "0.167-android"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -46,9 +46,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            if (releaseSigningEnabled) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            // Если нет keystore.properties — подписываем debug-ключом (стабильный, не меняется между сборками)
+            signingConfig = if (releaseSigningEnabled)
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 

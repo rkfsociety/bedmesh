@@ -430,10 +430,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun downloadAndInstallUpdate(context: Context) {
         val st = _uiState.value.update
-        val url = st.apkUrl
-        if (st.downloading || url.isNullOrBlank()) return
+        if (st.downloading) return
 
         val appCtx = context.applicationContext
+
+        // Если APK уже скачан (возврат из настроек разрешений) — сразу устанавливаем
+        val cachedPath = st.downloadedApkPath
+        if (cachedPath != null) {
+            val cachedFile = File(cachedPath)
+            if (cachedFile.exists()) {
+                launchInstallIntent(appCtx, cachedFile)
+                return
+            }
+        }
+
+        val url = st.apkUrl
+        if (url.isNullOrBlank()) return
+
         viewModelScope.launch {
             _uiState.update { it.copy(update = it.update.copy(downloading = true, downloadProgress = 0f, error = null)) }
             try {
@@ -478,35 +491,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(update = it.update.copy(downloading = false, downloadProgress = 1f, downloadedApkPath = outFile.absolutePath))
                 }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val pm = appCtx.packageManager
-                    if (!pm.canRequestPackageInstalls()) {
-                        val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                            data = Uri.parse("package:${appCtx.packageName}")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        appCtx.startActivity(intent)
-                        return@launch
-                    }
-                }
-
-                val apkUri = FileProvider.getUriForFile(
-                    appCtx,
-                    "${appCtx.packageName}.fileprovider",
-                    outFile,
-                )
-                val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(apkUri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                appCtx.startActivity(installIntent)
+                launchInstallIntent(appCtx, outFile)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(update = it.update.copy(downloading = false, downloadProgress = null, error = e.formatDiagnostic()))
                 }
             }
         }
+    }
+
+    private fun launchInstallIntent(context: Context, apkFile: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return // пользователь вернётся и нажмёт кнопку снова — файл уже есть, идём сразу на установку
+            }
+        }
+        val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(installIntent)
     }
 }
 

@@ -47,7 +47,8 @@ class BedMeshApp(QMainWindow):
 
     def _init_ui(self):
         self.setWindowTitle(f"{S.get('app.title')} v{VERSION}")
-        self.resize(1280, 800)
+        self.setMinimumWidth(1100)
+        self.resize(1500, 860)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -69,8 +70,8 @@ class BedMeshApp(QMainWindow):
         self.splitter.addWidget(self.right_panel)
 
         self.splitter.setStretchFactor(0, 1)
-        self.splitter.setStretchFactor(1, 3)
-        self.splitter.setStretchFactor(2, 1)
+        self.splitter.setStretchFactor(1, 4)
+        self.splitter.setStretchFactor(2, 2)
 
         # --- Коннекты ---
         # SSH загрузка через ConfigEditor
@@ -142,6 +143,11 @@ class BedMeshApp(QMainWindow):
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)
         except Exception as e:
             self.logger.exception("SSH file post-process failed: %s", e)
+        # Раз SSH сейчас работает — определяем, что из автозапуска уже установлено на принтере.
+        try:
+            self.left_panel.refresh_persist_status()
+        except Exception as e:
+            self.logger.exception("persist status refresh failed: %s", e)
 
     def _process_file(self, filepath):
         try:
@@ -156,6 +162,7 @@ class BedMeshApp(QMainWindow):
                 self.center_tabs.mesh_view.update_mesh(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
+                self.right_panel.update_shaper(self.parser.parse_input_shaper(filepath))
                 self.logger.info(f"✅ Mesh загружен: {data.x_count}x{data.y_count}")
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                 return True
@@ -183,6 +190,9 @@ class BedMeshApp(QMainWindow):
                             self.center_tabs.mesh_view.update_mesh(alt_data)
                             stats = self._calculate_advanced_stats(alt_data)
                             self.right_panel.update_all(stats)
+                            # Шейпер ищем сначала в mutable, потом в основном файле
+                            shaper = self.parser.parse_input_shaper(alt_local) or self.parser.parse_input_shaper(filepath)
+                            self.right_panel.update_shaper(shaper)
                             self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                             self.logger.info("✅ Mesh загружен из printer_mutable.cfg: %sx%s", alt_data.x_count, alt_data.y_count)
                             return True

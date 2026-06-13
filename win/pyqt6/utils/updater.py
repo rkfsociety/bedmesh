@@ -14,7 +14,8 @@ try:
     import requests  # type: ignore
 except Exception:  # pragma: no cover
     requests = None
-from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+from PyQt6.QtWidgets import (QMessageBox, QProgressDialog, QDialog, QVBoxLayout,
+                             QHBoxLayout, QLabel, QTextBrowser, QPushButton)
 from PyQt6.QtCore import QTimer, Qt
 
 
@@ -187,14 +188,65 @@ def check_for_updates_detailed(
     threading.Thread(target=task, daemon=True).start()
 
 
+def _show_changelog_dialog(release_data: dict, parent=None) -> bool:
+    """
+    Показывает окно с описанием обновления и кнопкой «Скачать».
+    Возвращает True, если пользователь решил скачивать.
+    """
+    tag = (release_data.get("tag_name") or "").strip()
+    name = (release_data.get("name") or tag or "Обновление").strip()
+    body = (release_data.get("body") or "").strip() or "Описание не указано."
+
+    dlg = QDialog(parent)
+    dlg.setWindowTitle("Доступно обновление")
+    dlg.setModal(True)
+    dlg.resize(640, 520)
+
+    layout = QVBoxLayout(dlg)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(12)
+
+    title = QLabel(f"Доступна новая версия: <b>{name}</b>")
+    title.setStyleSheet("font-size: 15px;")
+    title.setTextFormat(Qt.TextFormat.RichText)
+    layout.addWidget(title)
+
+    notes = QTextBrowser()
+    notes.setOpenExternalLinks(True)
+    try:
+        notes.setMarkdown(body)
+    except Exception:
+        notes.setPlainText(body)
+    layout.addWidget(notes, 1)
+
+    btn_row = QHBoxLayout()
+    btn_row.addStretch()
+    btn_later = QPushButton("Позже")
+    btn_download = QPushButton("⬇  Скачать и установить")
+    btn_download.setDefault(True)
+    btn_download.setStyleSheet("background-color: #2d5a2d; color: white; padding: 6px 16px;")
+    btn_row.addWidget(btn_later)
+    btn_row.addWidget(btn_download)
+    layout.addLayout(btn_row)
+
+    btn_later.clicked.connect(dlg.reject)
+    btn_download.clicked.connect(dlg.accept)
+
+    return dlg.exec() == QDialog.DialogCode.Accepted
+
+
 def install_update(release_data: dict, parent=None) -> None:
     """
     For onefile exe builds:
-    - downloads latest .exe to app folder as temp file
+    - shows a changelog dialog; if confirmed, downloads latest .exe to app folder
     - writes a .bat that waits, replaces current exe, restarts app, then deletes itself
     For non-frozen runs (dev), opens the Releases page.
     """
     try:
+        # Сначала показываем описание обновления и ждём подтверждения.
+        if not _show_changelog_dialog(release_data, parent):
+            return
+
         if not _is_frozen_exe():
             webbrowser.open(f"https://github.com/{REPO}/releases/latest")
             return
@@ -309,14 +361,9 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
         f.write(":loop\n")
         f.write(f'del /f /q \"{current_exe}\" >nul 2>&1\n')
         f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
-        f.write(f'move /y \"{new_exe_name}\" \"{current_exe}\" >nul\n')
-        # Важно для PyInstaller onefile:
-        # переносим TEMP/TMP в стабильную папку, чтобы распаковка _MEI и python310.dll
-        # не ломалась из-за очистки/блокировок системного %TEMP%.
-        f.write("set \"APP_TMP=%LOCALAPPDATA%\\rkfsociety\\BedMesh Visualizer\\tmp\"\n")
-        f.write("if not exist \"%APP_TMP%\" mkdir \"%APP_TMP%\" >nul 2>&1\n")
-        f.write("set \"TEMP=%APP_TMP%\"\n")
-        f.write("set \"TMP=%APP_TMP%\"\n")
+        f.write(f'move /y \”{new_exe_name}\” \”{current_exe}\” >nul\n')
+        # PyInstaller --runtime-tmpdir . извлекает _MEI рядом с exe, а не в %TEMP%.
+        # Поэтому смена TEMP/TMP не нужна — антивирус успевает “принять” папку раз и навсегда.
         # Небольшая пауза, чтобы ОС/антивирус успели “подхватить” новый exe до старта.
         f.write("timeout /t 3 /nobreak > nul\n")
         f.write(":startloop\n")
