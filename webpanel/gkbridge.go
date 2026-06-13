@@ -279,7 +279,15 @@ func trackPrintState(newState string) {
 	case "error":
 		msg = "Ошибка при печати"
 	}
-	addLog("status", msg)
+	// добавляем запись напрямую (не через addLog — тот захватывает тот же мьютекс)
+	logs = append(logs, LogEntry{
+		Time:    time.Now().Format("15:04:05"),
+		Event:   "status",
+		Message: msg,
+	})
+	if len(logs) > maxLogs {
+		logs = logs[len(logs)-maxLogs:]
+	}
 }
 
 // ─── Камера: локальный MJPEG-стрим (mjpg_streamer) вместо облачного gkcam ───
