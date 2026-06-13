@@ -29,6 +29,5 @@ android/.gradle/
 android/**/build/
 android/local.properties
 
-# Подпись Android — только локально, переносите на другой ПК вручную (флешка и т.п.)
-android/keystore/*.jks
-android/keystore.properties
+# Подпись Android — ключ хранится в репозитории для стабильности подписи
+# android/keystore/*.jks  # НЕ игнорировать
