@@ -149,12 +149,17 @@
   .mesh-head .btn{flex:0 0 auto;min-width:0;margin-left:auto;padding:9px 16px;font-size:14px}
   .mesh-summary{font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.5}
   .mesh-summary b{color:var(--txt);font-weight:600}
-  .mesh-grid{display:grid;gap:2px;width:clamp(220px,85%,440px);aspect-ratio:1;margin:0 auto;
-       container-type:inline-size}
-  .mesh-cell{display:flex;align-items:center;justify-content:center;font-size:clamp(8px,4.5cqi,12px);font-weight:700;
+  /* квадрат под ширину колонки и высоту окна (vmin + запас под шапку) */
+  .mesh-grid{display:grid;gap:2px;aspect-ratio:1;margin:0 auto;container-type:inline-size;
+       width:min(100%,75vmin,calc(100dvh - 240px));
+       max-width:100%}
+  .mesh-cell{display:flex;align-items:center;justify-content:center;font-size:clamp(8px,4.5cqi,13px);font-weight:700;
        font-variant-numeric:tabular-nums;border-radius:3px;min-height:0;padding:1px}
   .mesh-empty{padding:28px 16px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
   .mesh-empty .hint{margin-top:10px;font-size:13px;color:var(--amber)}
+
+  /* камера тоже ограничена высотой окна */
+  .camera-card .cam-view{max-height:calc(100dvh - 220px)}
 
   @media(max-width:860px){
     .body-row{grid-template-columns:72px 1fr}
