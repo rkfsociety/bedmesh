@@ -36,6 +36,7 @@ class AppConfig:
             "ssh_pass": "rockchip",
             "ssh_path": "/userdata/app/gk/printer.cfg",
             "debug_mode": "true",
+            "mesh_view_mode": "2d",
             "window_geometry": "",
         }
         self.settings = self.defaults.copy()

@@ -25,7 +25,7 @@ jobs:
       - name: Установить зависимости
         run: |
           python -m pip install --upgrade pip
-          pip install -r bedmesh/win/pyqt6/requirements.txt
+          pip install -r win/pyqt6/requirements.txt
           pip install requests pyinstaller
 
       - name: Сборка и упаковка
@@ -36,6 +36,10 @@ jobs:
             --add-data "icon.png:." \
             --hidden-import=paramiko \
             --hidden-import=requests \
+            --hidden-import OpenGL \
+            --hidden-import OpenGL.platform.darwin \
+            --hidden-import pyqtgraph.opengl \
+            --collect-submodules OpenGL \
             mac/main.py
 
           brew install create-dmg
@@ -64,9 +68,11 @@ jobs:
           files: dist/dmg/BedMeshVisualizer_Mac.dmg
           name: "${{ github.ref_name }}"
           body: |
-            ## Что нового
-            - Автосборка macOS (PyQt6)
-            - См. историю коммитов для деталей
+            ## Bed Mesh Visualizer ${{ github.ref_name }}
+
+            ### Новое
+            - 3D карта mesh (OpenGL / pyqtgraph): переключатель 2D|3D,
+              орбита и зум мышью (как на Windows 0.170).
 
             ## Скачать
             - `BedMeshVisualizer_Mac.dmg`
