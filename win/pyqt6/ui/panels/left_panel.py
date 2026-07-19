@@ -131,18 +131,17 @@ class LeftPanel(QWidget):
 
         self.btn_web_panel = QPushButton("📊 Установить веб-панель")
         self.btn_web_panel.setToolTip(
-            "Заливает gkbridge в /useremain и прописывает автозапуск.\n"
+            "Скачивает свежий gkbridge с GitHub, заливает в /useremain и прописывает автозапуск.\n"
             "Веб-панель статуса печати становится доступна на http://<ip>:8088/"
         )
         self.btn_web_panel.clicked.connect(lambda: self._on_persist_clicked("panel"))
         adv_layout.addWidget(self.btn_web_panel)
 
-        # Принудительное обновление панели свежим бинарником из программы
-        # (нужно, когда установлена старая панель без самообновления).
+        # Принудительное обновление: свежий бинарник с GitHub (не из бандла exe).
         self.btn_web_update = QPushButton("🔄 Обновить веб-панель")
         self.btn_web_update.setToolTip(
-            "Перезаливает встроенный в программу бинарник веб-панели и перезапускает её.\n"
-            "Используйте, если установлена старая версия без кнопки самообновления."
+            "Скачивает актуальный gkbridge с GitHub, заливает на принтер и перезапускает панель.\n"
+            "Если GitHub недоступен — использует бинарник, встроенный в программу."
         )
         self.btn_web_update.setVisible(False)
         self.btn_web_update.clicked.connect(self._on_web_update_clicked)

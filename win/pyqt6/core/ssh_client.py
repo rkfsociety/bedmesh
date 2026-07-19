@@ -2,7 +2,7 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from utils.resources import resource_path, gkbridge_binary, camera_dir
+from utils.resources import resource_path, resolve_gkbridge_for_install, camera_dir
 from typing import Optional, Callable
 import hashlib
 
@@ -579,10 +579,11 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
                       progress_cb: Optional[Callable[[str], None]] = None) -> bool:
     """
     Ставит постоянную веб-панель (gkbridge), переживающую перезагрузку:
-      1. заливает бинарник gkbridge -> /useremain/gkbridge (+chmod);
-      2. заливает boot.sh;
-      3. вставляет хук в run.sh;
-      4. запускает boot.sh сразу (панель поднимется без ребута).
+      1. скачивает свежий gkbridge с GitHub (fallback — встроенный бинарник);
+      2. заливает бинарник -> /useremain/gkbridge (+chmod);
+      3. заливает boot.sh;
+      4. вставляет хук в run.sh;
+      5. запускает boot.sh сразу (панель поднимется без ребута).
     Идемпотентно.
     """
     def _p(msg: str):
@@ -593,50 +594,69 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
             except Exception:
                 pass
 
-    if gkbridge_local_path is None:
-        gkbridge_local_path = gkbridge_binary()
-    if not os.path.exists(gkbridge_local_path):
-        logger.error("gkbridge binary not found: %s", gkbridge_local_path)
-        return False
-
-    ssh = get_ssh_connection(ip, port, username, password)
+    downloaded_tmp = None
     try:
-        sftp = ssh.open_sftp()
         try:
-            # Заливаем во временный файл: перезаписать запущенный бинарник по SFTP нельзя
-            # (truncate даёт ETXTBSY). Подменяем через mv после остановки процесса.
-            _p("Загрузка бинарника веб-панели...")
-            tmp_remote = GKBRIDGE_REMOTE + ".new"
-            sftp.put(gkbridge_local_path, tmp_remote)
-            _exec(ssh, f"chmod +x {_sh_quote(tmp_remote)}")
+            gkbridge_local_path, is_temp = resolve_gkbridge_for_install(
+                preferred_path=gkbridge_local_path,
+                progress_cb=_p,
+            )
+            if is_temp:
+                downloaded_tmp = gkbridge_local_path
+        except Exception as e:
+            logger.error("gkbridge resolve failed: %s", e)
+            return False
 
-            _p("Загрузка boot.sh...")
-            _upload_boot_sh(sftp)
-            _exec(ssh, f"chmod +x {_sh_quote(BOOT_REMOTE)}")
+        if not os.path.exists(gkbridge_local_path):
+            logger.error("gkbridge binary not found: %s", gkbridge_local_path)
+            return False
 
-            _p("Загрузка файлов камеры...")
-            _upload_camera_files(ssh, sftp)
+        ssh = get_ssh_connection(ip, port, username, password)
+        try:
+            sftp = ssh.open_sftp()
+            try:
+                # Заливаем во временный файл: перезаписать запущенный бинарник по SFTP нельзя
+                # (truncate даёт ETXTBSY). Подменяем через mv после остановки процесса.
+                _p("Загрузка бинарника веб-панели...")
+                tmp_remote = GKBRIDGE_REMOTE + ".new"
+                sftp.put(gkbridge_local_path, tmp_remote)
+                _exec(ssh, f"chmod +x {_sh_quote(tmp_remote)}")
 
-            _p("Прописывание автозапуска в run.sh...")
-            if not _insert_run_hook(ssh, sftp):
-                return False
+                _p("Загрузка boot.sh...")
+                _upload_boot_sh(sftp)
+                _exec(ssh, f"chmod +x {_sh_quote(BOOT_REMOTE)}")
 
-            # Останавливаем старый мост и заменяем бинарник (mv не даёт ETXTBSY на
-            # запущенном файле; boot.sh не стартует gkbridge, пока старый процесс жив).
-            _p("Перезапуск веб-панели...")
-            _exec(ssh, "killall gkbridge 2>/dev/null")
-            st, _, err = _exec(ssh, f"mv -f {_sh_quote(tmp_remote)} {_sh_quote(GKBRIDGE_REMOTE)}")
-            if st != 0:
-                logger.error("gkbridge replace failed: %s", err)
-                return False
-            _exec(ssh, f"chmod +x {_sh_quote(GKBRIDGE_REMOTE)}")
-            _run_boot_now(ssh)
-            _p("Готово.")
-            return True
+                _p("Загрузка файлов камеры...")
+                _upload_camera_files(ssh, sftp)
+
+                _p("Прописывание автозапуска в run.sh...")
+                if not _insert_run_hook(ssh, sftp):
+                    return False
+
+                # Останавливаем старый мост и заменяем бинарник (mv не даёт ETXTBSY на
+                # запущенном файле; boot.sh не стартует gkbridge, пока старый процесс жив).
+                _p("Перезапуск веб-панели...")
+                _exec(ssh, "killall gkbridge 2>/dev/null")
+                st, _, err = _exec(ssh, f"mv -f {_sh_quote(tmp_remote)} {_sh_quote(GKBRIDGE_REMOTE)}")
+                if st != 0:
+                    logger.error("gkbridge replace failed: %s", err)
+                    return False
+                _exec(ssh, f"chmod +x {_sh_quote(GKBRIDGE_REMOTE)}")
+                _run_boot_now(ssh)
+                _p("Готово.")
+                return True
+            finally:
+                sftp.close()
+        except Exception as e:
+            logger.exception("install_web_panel failed: host=%s port=%s error=%s", ip, port, e)
+            return False
         finally:
-            sftp.close()
-    except Exception as e:
-        logger.exception("install_web_panel failed: host=%s port=%s error=%s", ip, port, e)
-        return False
+            ssh.close()
     finally:
-        ssh.close()
+        if downloaded_tmp:
+            try:
+                os.remove(downloaded_tmp)
+            except OSError:
+                pass
+
+
