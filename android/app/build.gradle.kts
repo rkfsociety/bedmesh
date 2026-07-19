@@ -22,8 +22,8 @@ android {
         applicationId = "com.rkfsociety.bedmesh"
         minSdk = 24
         targetSdk = 35
-        versionCode = 166
-        versionName = "0.166-android"
+        versionCode = 170
+        versionName = "0.170-android"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

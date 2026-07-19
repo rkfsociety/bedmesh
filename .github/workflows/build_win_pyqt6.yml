@@ -96,11 +96,9 @@ jobs:
             Обновление с версии 0.169.
 
             ### ✨ Новое
-            - **3D карта mesh** (OpenGL / pyqtgraph): переключатель 2D|3D на вкладке Карта,
+            - **3D карта mesh** (OpenGL / pyqtgraph): переключатель 2D|3D,
               орбита и зум мышью.
-
-            ### 🛠️ Ранее
-            - Runtime `_MEI*` в `%LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime\`.
+            - Runtime `_MEI*` в LocalAppData (не на Desktop).
 
             ## Скачать
             - `Bed.Mesh.Visualizer.exe` — Windows (64-bit)

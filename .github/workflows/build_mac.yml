@@ -72,7 +72,7 @@ jobs:
 
             ### Новое
             - 3D карта mesh (OpenGL / pyqtgraph): переключатель 2D|3D,
-              орбита и зум мышью (как на Windows 0.170).
+              орбита и зум мышью. Версии выровнены: 0.170 (win/mac/android).
 
             ## Скачать
             - `BedMeshVisualizer_Mac.dmg`
