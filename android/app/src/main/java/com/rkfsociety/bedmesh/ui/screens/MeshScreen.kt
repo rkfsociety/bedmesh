@@ -10,12 +10,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.core.InputShaperData
 import com.rkfsociety.bedmesh.core.ShaperAccelCalc
+import com.rkfsociety.bedmesh.core.UiPrefs
 import com.rkfsociety.bedmesh.ui.vm.UiState
 import com.rkfsociety.bedmesh.ui.widgets.Mesh2DView
+import com.rkfsociety.bedmesh.ui.widgets.Mesh3DView
 
 @Composable
 fun MeshScreen(
@@ -23,32 +26,68 @@ fun MeshScreen(
     onCopy: () -> Unit,
 ) {
     val mesh = state.mesh
+    val ctx = LocalContext.current
+    var viewMode by remember { mutableStateOf(UiPrefs.loadMeshViewMode(ctx)) }
     val scroll = rememberScrollState()
+
+    fun setMode(mode: String) {
+        val m = if (mode == "3d") "3d" else "2d"
+        viewMode = m
+        UiPrefs.saveMeshViewMode(ctx, m)
+    }
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(scroll),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onCopy, enabled = mesh != null) {
-                Text("Копировать mesh")
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(onClick = onCopy, enabled = mesh != null && viewMode == "2d") {
+                Text(if (viewMode == "2d") "Копировать mesh" else "Копировать (только 2D)")
             }
+            FilterChip(
+                selected = viewMode == "2d",
+                onClick = { setMode("2d") },
+                label = { Text("2D") },
+            )
+            FilterChip(
+                selected = viewMode == "3d",
+                onClick = { setMode("3d") },
+                label = { Text("3D") },
+            )
             if (mesh == null) {
                 Text("Загрузите конфиг по SSH", style = MaterialTheme.typography.bodyMedium)
             }
         }
 
         if (mesh != null) {
-            Mesh2DView(
-                mesh = mesh,
+            if (viewMode == "3d") {
+                Mesh3DView(
+                    mesh = mesh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
+                )
+            } else {
+                Mesh2DView(
+                    mesh = mesh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
+                )
+            }
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f),
-            )
-            ScrewRecommendationsPanel(state = state)
-            ShaperPanel(shaper = state.shaper)
-            StatsPanel(state = state)
+                    .verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ScrewRecommendationsPanel(state = state)
+                ShaperPanel(shaper = state.shaper)
+                StatsPanel(state = state)
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ Android-клиент на **Kotlin + Jetpack Compose**.
 - **SSH**: загрузка `printer.cfg` по IP / порт / логин / пароль / путь
 - **Fallback**: если в `printer.cfg` нет points — `/userdata/app/gk/printer_mutable.cfg`
 - Парсинг bed_mesh из JSON (`printer_mutable.cfg`) и текстового cfg (`[bed_mesh ...]`, `probe_count`, `mesh_min` / `mesh_max`, многострочный `points`)
-- **Карта**: 2D heatmap и лёгкая псевдо-3D изометрия (без OpenGL); статистика (min / max / range / mean / var / rms) и коррекции по 3 точкам
+- **Карта**: 2D heatmap и псевдо-3D (Canvas, жест: drag — орбита, pinch — зум); статистика (min / max / range / mean / var / rms) и коррекции по 3 точкам
 - **Config**: правка `[bed_mesh]`, `[filament_hub]`, температур leviQ3; сохранение по SSH с бекапом; список / создание / восстановление / удаление бекапов `<printer.cfg>.bedmesh_bak_*`
 - **Принтер**:
   - установка **постоянного SSH** (dropbear в `/useremain/ssh`, автозапуск в `run.sh` — без флешки)
