@@ -70,9 +70,11 @@ jobs:
           body: |
             ## Bed Mesh Visualizer ${{ github.ref_name }}
 
-            ### Новое
-            - 3D карта mesh (OpenGL / pyqtgraph): переключатель 2D|3D,
-              орбита и зум мышью. Версии выровнены: 0.170 (win/mac/android).
+            ### Исправления
+            - Проверка обновлений: последний релиз ***-mac**, не глобальный `/latest`.
+
+            ### Из 0.170
+            - 3D карта mesh (OpenGL / pyqtgraph).
 
             ## Скачать
             - `BedMeshVisualizer_Mac.dmg`

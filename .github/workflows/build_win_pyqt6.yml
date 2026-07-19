@@ -93,12 +93,14 @@ jobs:
           body: |
             ## Bed Mesh Visualizer ${{ github.ref_name }}
 
-            Обновление с версии 0.169.
+            Обновление с версии 0.170.
 
-            ### ✨ Новое
-            - **3D карта mesh** (OpenGL / pyqtgraph): переключатель 2D|3D,
-              орбита и зум мышью.
-            - Runtime `_MEI*` в LocalAppData (не на Desktop).
+            ### 🛠️ Исправления
+            - Проверка обновлений смотрит на последний релиз ***-win**, а не на
+              GitHub `/releases/latest` (который мог быть android/mac без .exe).
+
+            ### ✨ Из 0.170
+            - 3D карта mesh, runtime `_MEI*` в LocalAppData.
 
             ## Скачать
             - `Bed.Mesh.Visualizer.exe` — Windows (64-bit)

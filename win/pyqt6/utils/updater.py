@@ -22,10 +22,11 @@ from PyQt6.QtCore import QTimer, Qt
 REPO = "rkfsociety/bedmesh"
 
 
-def _http_get_json(url: str, timeout: int = 5) -> Optional[dict]:
+def _http_get_json(url: str, timeout: int = 5):
     """
     Lightweight HTTP JSON GET with stdlib fallback.
     Keep the app runnable even if 'requests' isn't installed.
+    Returns parsed JSON (dict or list) or None.
     """
     try:
         if requests is not None:
@@ -49,6 +50,36 @@ def _http_get_json(url: str, timeout: int = 5) -> Optional[dict]:
         return json.loads(raw.decode("utf-8", errors="replace"))
     except Exception:
         return None
+
+
+def _latest_release_for_platform(*, tag_suffix: str, asset_ext: str) -> Optional[dict]:
+    """
+    GitHub /releases/latest is global (last published of any platform).
+    Pick the newest non-draft release whose tag contains -<suffix> and has the asset.
+    """
+    payload = _http_get_json(f"https://api.github.com/repos/{REPO}/releases?per_page=40", timeout=8)
+    if not isinstance(payload, list) or not payload:
+        return None
+
+    needle = f"-{tag_suffix.lower()}"
+    ext = asset_ext.lower()
+    candidates: list[dict] = []
+    for rel in payload:
+        if not isinstance(rel, dict):
+            continue
+        if rel.get("draft") or rel.get("prerelease"):
+            continue
+        tag = (rel.get("tag_name") or "").strip().lower()
+        if needle not in tag:
+            continue
+        assets = rel.get("assets") or []
+        if not any((a.get("name") or "").lower().endswith(ext) for a in assets if isinstance(a, dict)):
+            continue
+        candidates.append(rel)
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda r: _parse_version_numbers(r.get("tag_name") or ""))
 
 
 def _http_download_stream(
@@ -119,30 +150,20 @@ def _is_frozen_exe() -> bool:
 
 def check_for_updates(current_version: str, update_callback: Callable[[str, dict], None]) -> None:
     """
-    Background check against GitHub Releases latest.
-    Calls update_callback(latest_tag, release_json) if a newer Windows release exists and has .exe asset.
+    Background check for the newest Windows release (tag *-win with .exe).
+    Calls update_callback(latest_tag, release_json) if newer than current_version.
     """
 
     def task():
         try:
-            data = _http_get_json(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            data = _latest_release_for_platform(tag_suffix="win", asset_ext=".exe")
             if not data:
                 return
-            latest_tag = (data.get("tag_name") or "").strip()  # e.g. "v0.151-win"
+            latest_tag = (data.get("tag_name") or "").strip()
             if not latest_tag:
                 return
-
-            tag_l = latest_tag.lower()
-            if "-mac" in tag_l and "-win" not in tag_l:
-                return
-
             if not is_new_version(current_version, latest_tag):
                 return
-
-            assets = data.get("assets") or []
-            if not any((a.get("name") or "").lower().endswith(".exe") for a in assets):
-                return
-
             update_callback(latest_tag, data)
         except Exception:
             return
@@ -155,14 +176,14 @@ def check_for_updates_detailed(
     result_callback: Callable[[str, Optional[str], Optional[dict]], None],
 ) -> None:
     """
-    Background check against GitHub Releases latest.
+    Background check for the newest Windows release (not GitHub global /latest).
     Calls result_callback(status, latest_tag, release_json)
     status: "update" | "none" | "error"
     """
 
     def task():
         try:
-            data = _http_get_json(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=5)
+            data = _latest_release_for_platform(tag_suffix="win", asset_ext=".exe")
             if not data:
                 result_callback("error", None, None)
                 return
@@ -171,14 +192,7 @@ def check_for_updates_detailed(
                 result_callback("error", None, None)
                 return
 
-            tag_l = latest_tag.lower()
-            if "-mac" in tag_l and "-win" not in tag_l:
-                result_callback("none", latest_tag, data)
-                return
-
-            assets = data.get("assets") or []
-            has_exe = any((a.get("name") or "").lower().endswith(".exe") for a in assets)
-            if has_exe and is_new_version(current_version, latest_tag):
+            if is_new_version(current_version, latest_tag):
                 result_callback("update", latest_tag, data)
             else:
                 result_callback("none", latest_tag, data)

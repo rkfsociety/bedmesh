@@ -95,6 +95,8 @@ jobs:
             - Drag — орбита, pinch — зум
             - Режим карты сохраняется
 
+            Версия выровнена с desktop: **0.171**.
+
             ## Скачать
             - `BedMeshVisualizer.apk` — Android (release, подписан)
 
