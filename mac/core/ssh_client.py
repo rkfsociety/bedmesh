@@ -6,6 +6,7 @@ from typing import Optional
 import paramiko
 
 from utils.logger import get_logger
+from utils.app_config import default_download_local_path
 
 
 TEMP_FILE_NAME = "temp_download.cfg"
@@ -164,7 +165,7 @@ def download_cfg_via_ssh(
         logger.info("SSH download start: host=%s port=%s user=%s remote_path=%s", ip, port, username, remote_path)
         ssh = get_ssh_connection(ip, port, username, password)
         sftp = ssh.open_sftp()
-        target = local_path or f"download_{os.path.basename(remote_path) or TEMP_FILE_NAME}"
+        target = local_path or default_download_local_path(remote_path)
         logger.debug("SFTP GET: %s -> %s", remote_path, target)
         sftp.get(remote_path, target)
         sftp.close()

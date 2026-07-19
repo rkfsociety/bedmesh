@@ -4,13 +4,29 @@ import os
 from PyQt6.QtCore import QByteArray, QStandardPaths
 
 
+def get_app_data_dir() -> str:
+    base_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+    if not base_dir:
+        home = os.path.expanduser("~")
+        base_dir = os.path.join(home, "Library", "Application Support", "rkfsociety", "BedMesh Visualizer")
+    os.makedirs(base_dir, exist_ok=True)
+    return base_dir
+
+
+def get_cache_dir() -> str:
+    cache_dir = os.path.join(get_app_data_dir(), "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def default_download_local_path(remote_path: str) -> str:
+    base_name = os.path.basename(remote_path) or "temp_download.cfg"
+    return os.path.join(get_cache_dir(), f"download_{base_name}")
+
+
 class AppConfig:
     def __init__(self):
-        base_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
-        if not base_dir:
-            home = os.path.expanduser("~")
-            base_dir = os.path.join(home, "Library", "Application Support", "rkfsociety", "BedMesh Visualizer")
-        os.makedirs(base_dir, exist_ok=True)
+        base_dir = get_app_data_dir()
         self.base_dir = base_dir
         self.file_path = os.path.join(base_dir, "settings.json")
         self.defaults = {
