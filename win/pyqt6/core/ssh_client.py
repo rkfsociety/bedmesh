@@ -3,6 +3,7 @@ import os
 import datetime
 from utils.logger import get_logger
 from utils.resources import resource_path, resolve_gkbridge_for_install, camera_dir
+from utils.app_config import default_download_local_path
 from typing import Optional, Callable
 import hashlib
 
@@ -144,8 +145,8 @@ def download_cfg_via_ssh(
         logger.info("SSH download start: host=%s port=%s user=%s remote_path=%s", ip, port, username, remote_path)
         ssh = get_ssh_connection(ip, port, username, password)
         sftp = ssh.open_sftp()
-        # По умолчанию сохраняем под уникальным именем (чтобы printer.cfg и printer_mutable.cfg не перетирали друг друга).
-        target = local_path or f"download_{os.path.basename(remote_path) or TEMP_FILE_NAME}"
+        # По умолчанию — AppData/cache (не CWD/Desktop); имена не пересекаются для printer.cfg vs mutable.
+        target = local_path or default_download_local_path(remote_path)
         logger.debug("SFTP GET: %s -> %s", remote_path, target)
         sftp.get(remote_path, target)
         sftp.close()
