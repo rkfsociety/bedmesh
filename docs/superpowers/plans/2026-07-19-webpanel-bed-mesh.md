@@ -266,7 +266,7 @@ git commit -m "webpanel: левый бар Печать/Стол"
 - клик `navBed` → показать `panelBed`, скрыть `panelPrint`; если `!meshLoadedOnce` → `loadMesh()` затем `meshLoadedOnce=true`
 - клик `navPrint` → наоборот; `/mesh` не дергать
 - `btnMeshRefresh` → всегда `loadMesh()`
-- `loadMesh`: fetch `/mesh`; если `!ok && error==="no_mesh"` → empty «Карта стола не загружена» + «Сделайте калибровку стола в приложении BedMesh или через Klipper.»; иначе если `!ok` → «нет связи с принтером»; если ok → сетка
+- `loadMesh`: fetch `/mesh`; если `!ok && error==="no_mesh"` → empty «Карта стола не загружена» + «Сделайте калибровку стола.»; иначе если `!ok` → «нет связи с принтером»; если ok → сетка
 - Отрисовка: Y invert (последняя строка matrix сверху в DOM), soft palette stops `[[45,85,160],[140,180,220],[245,245,245],[235,170,155],[185,70,60]]`, текст `±0.xxx`, цвет текста чёрный при ratio 0.25–0.75
 - Сводка: `профиль X · min · max · range`
 
