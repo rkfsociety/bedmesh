@@ -62,8 +62,9 @@ class BedMeshApp(QMainWindow):
         self.center_tabs = CenterTabs()
         self.right_panel = RightPanel()
 
-        # Применяем палитру карты из настроек
-        self.center_tabs.mesh_view.set_palette(self.settings.get("mesh_palette", "soft"))
+        # Применяем палитру и режим карты из настроек
+        self.center_tabs.set_mesh_palette(self.settings.get("mesh_palette", "soft"))
+        self.center_tabs.view_mode_changed.connect(self._on_view_mode_changed)
 
         self.splitter.addWidget(self.left_panel)
         self.splitter.addWidget(self.center_tabs)
@@ -84,6 +85,10 @@ class BedMeshApp(QMainWindow):
         
         self.left_panel.setting_updated.connect(self._on_setting_changed)
         self.left_panel.advanced_toggled.connect(self.center_tabs.set_advanced_visible)
+
+        saved_mode = self.settings.get("mesh_view_mode", "2d")
+        if saved_mode == "3d":
+            self.center_tabs.set_view_mode("3d")
 
     def _check_updates_quiet(self):
         self.right_panel.set_checking_updates(True)
@@ -120,6 +125,10 @@ class BedMeshApp(QMainWindow):
 
     def _on_setting_changed(self, key: str, value: str):
         self.settings[key] = value
+        self.config.save()
+
+    def _on_view_mode_changed(self, mode: str):
+        self.settings["mesh_view_mode"] = mode
         self.config.save()
 
     def _handle_ssh_load_via_editor(self, ssh_data):
@@ -159,7 +168,7 @@ class BedMeshApp(QMainWindow):
 
             if data:
                 self._last_mesh_data = data
-                self.center_tabs.mesh_view.update_mesh(data)
+                self.center_tabs.update_mesh_views(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
                 self.right_panel.update_shaper(self.parser.parse_input_shaper(filepath))
@@ -187,7 +196,7 @@ class BedMeshApp(QMainWindow):
                         alt_data = self.parser.parse_file(alt_local)
                         if alt_data:
                             self._last_mesh_data = alt_data
-                            self.center_tabs.mesh_view.update_mesh(alt_data)
+                            self.center_tabs.update_mesh_views(alt_data)
                             stats = self._calculate_advanced_stats(alt_data)
                             self.right_panel.update_all(stats)
                             # Шейпер ищем сначала в mutable, потом в основном файле
