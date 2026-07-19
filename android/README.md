@@ -1,61 +1,67 @@
-# BedMesh Visualizer (Android)
+# Bed Mesh Visualizer (Android)
 
-Android-версия Bed Mesh Visualizer на **Kotlin + Jetpack Compose**.
+Android-клиент на **Kotlin + Jetpack Compose**.
 
-## Что уже реализовано
-- **SSH загрузка** `printer.cfg` по IP/порт/логин/пароль/путь
-- **Fallback**: если в `printer.cfg` нет points, пытаемся скачать `/userdata/app/gk/printer_mutable.cfg`
-- Парсинг bed_mesh из:
-  - JSON (`printer_mutable.cfg` часто в таком виде)
-  - обычного cfg (`[bed_mesh ...]`, `probe_count`, `mesh_min/mesh_max`, многострочный `points`)
-- **Config-редактор** (упрощённый):
-  - редактирование параметров в секциях `[bed_mesh]` и `[filament_hub]`
-  - сохранение на принтер по SSH с созданием бекапа перед отправкой
-  - список/создание/восстановление/удаление бекапов `<printer.cfg>.bedmesh_bak_*`
-- Визуализация:
-  - **2D heatmap** (таблица значений)
-  - лёгкая **псевдо-3D** изометрия (без OpenGL)
-- Статистика (min/max/range/mean/var/rms) + коррекции 3 точек
-- Проверка обновлений через GitHub Releases (кнопка открывает страницу релиза)
-- Иконка лаунчера: исходник `android/icon.png` (копии в `app/src/main/res/mipmap-*`)
+Вкладки: **SSH** | **Карта** | **Config** | **Принтер** | **RAW**.
 
-## Подпись release (один ключ на всех ПК)
+## Возможности
 
-За подпись отвечают **два файла** (их **нет в git**, храните у себя и копируйте на другой компьютер):
+- **SSH**: загрузка `printer.cfg` по IP / порт / логин / пароль / путь
+- **Fallback**: если в `printer.cfg` нет points — `/userdata/app/gk/printer_mutable.cfg`
+- Парсинг bed_mesh из JSON (`printer_mutable.cfg`) и текстового cfg (`[bed_mesh ...]`, `probe_count`, `mesh_min` / `mesh_max`, многострочный `points`)
+- **Карта**: 2D heatmap и лёгкая псевдо-3D изометрия (без OpenGL); статистика (min / max / range / mean / var / rms) и коррекции по 3 точкам
+- **Config**: правка `[bed_mesh]`, `[filament_hub]`, температур leviQ3; сохранение по SSH с бекапом; список / создание / восстановление / удаление бекапов `<printer.cfg>.bedmesh_bak_*`
+- **Принтер**:
+  - установка **постоянного SSH** (dropbear в `/useremain/ssh`, автозапуск в `run.sh` — без флешки)
+  - установка **веб-панели gkbridge** (скачивание с GitHub → `/useremain/gkbridge`, порт `8088`)
+  - встроенный просмотр панели в WebView
+- Проверка обновлений через GitHub Releases (скачивание APK)
+- Иконка: исходник `android/icon.png` (копии в `app/src/main/res/mipmap-*`)
+
+## Как запустить
+
+1. Откройте папку `android` в Android Studio.
+2. Дождитесь Gradle Sync.
+3. Запустите модуль `app` на устройстве или эмуляторе.
+
+Из консоли:
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleDebug
+```
+
+Нужен `local.properties` с `sdk.dir=...` (Android Studio создаёт сама).
+
+## Release-сборка и подпись
+
+Ключ подписи **лежит в репозитории**, чтобы release-APK с любой машины подписывался одинаково:
 
 | Файл | Назначение |
 |------|------------|
-| `keystore/bedmesh-release.jks` | Сам **ключ** (хранилище PKCS12/JKS) |
-| `keystore.properties` | Путь к JKS, **alias**, **пароли** store и key |
-
-Структура на любом ПК должна быть такой:
+| `keystore/bedmesh-release.jks` | хранилище ключа (PKCS12/JKS) |
+| `keystore.properties` | путь к JKS, alias, пароли store и key |
+| `keystore.properties.example` | шаблон без секретов |
 
 ```text
 android/
-  keystore.properties          ← рядом с settings.gradle.kts
+  keystore.properties
   keystore/
-    bedmesh-release.jks        ← имя как в storeFile внутри properties
+    bedmesh-release.jks
 ```
-
-Шаблон без секретов: `keystore.properties.example` → скопируйте в `keystore.properties` и подставьте значения.
-
-Сборка release автоматически подписывается, если `keystore.properties` существует (см. `app/build.gradle.kts`).
 
 ```powershell
 cd android
 .\gradlew.bat :app:assembleRelease
 ```
 
-APK: `app/build/outputs/apk/release/app-release.apk` (подписанный).
+APK: `app/build/outputs/apk/release/app-release.apk`.
 
-**Перенос на другой ПК:** склонируйте репозиторий, положите в `android/` те же `keystore.properties` и `keystore/*.jks`, создайте `local.properties` с `sdk.dir=...` (Android Studio сделает сама). Дальше `assembleRelease` — подпись будет той же.
+Сборка release подписывается автоматически, если `keystore.properties` на месте (см. `app/build.gradle.kts`).
 
-**Безопасность:** не отдавайте никому `.jks` и `keystore.properties`; при утечке ключа любой сможет подписывать обновления вашим именем.
+**Безопасность:** файлы ключа публичны в этом репозитории намеренно (стабильная подпись обновлений). Не копируйте этот keystore в другие проекты и не считайте его «приватным секретом команды» — любой клон может им подписать APK.
 
-## Как запустить
-1. Откройте папку `android` в Android Studio.
-2. Дождитесь Gradle Sync (Android Studio скачает нужные компоненты).
-3. Запустите модуль `app` на устройстве/эмуляторе.
+## Связанные части репозитория
 
-> Сборка из консоли: в каталоге `android` есть `gradlew.bat` и Gradle Wrapper.
-
+- Корневой обзор: [readme.md](../readme.md)
+- Веб-панель на принтере: [webpanel/README.md](../webpanel/README.md)
