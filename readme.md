@@ -35,7 +35,7 @@
 |-----------|----------|
 | Windows | `Bed.Mesh.Visualizer.exe` |
 | macOS | `BedMeshVisualizer_Mac.dmg` |
-| Android | `.apk` |
+| Android | `BedMeshVisualizer.apk` |
 
 Приложение само проверяет обновления при запуске и предлагает установить их в один клик.
 

@@ -50,6 +50,14 @@ android/
     bedmesh-release.jks
 ```
 
+## CI / релизы
+
+Тег `v*-android` (например `v0.170-android`) запускает GitHub Actions:
+сборка `assembleRelease` (подпись из `keystore.properties` в репо) и публикация
+`BedMeshVisualizer.apk` в GitHub Release.
+
+Ручная сборка:
+
 ```powershell
 cd android
 .\gradlew.bat :app:assembleRelease
