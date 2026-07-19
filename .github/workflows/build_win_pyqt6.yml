@@ -40,6 +40,10 @@ jobs:
             --add-data "webpanel/camera;resources/camera" \
             --add-data "win/pyqt6/resources/boot.sh;resources" \
             --runtime-tmpdir "%LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime" \
+            --hidden-import OpenGL \
+            --hidden-import OpenGL.platform.win32 \
+            --hidden-import pyqtgraph.opengl \
+            --collect-submodules OpenGL \
             win/pyqt6/main.py
 
       - name: Загрузить артефакт
@@ -89,12 +93,14 @@ jobs:
           body: |
             ## Bed Mesh Visualizer ${{ github.ref_name }}
 
-            Обновление с версии 0.168.
+            Обновление с версии 0.169.
 
-            ### 🛠️ Исправления
-            - **Runtime**: распаковка `_MEI*` больше не на Desktop рядом с exe —
-              `%LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime\`.
-            - Автообновление подчищает старые `_MEI*` рядом с exe.
+            ### ✨ Новое
+            - **3D карта mesh** (OpenGL / pyqtgraph): переключатель 2D|3D на вкладке Карта,
+              орбита и зум мышью.
+
+            ### 🛠️ Ранее
+            - Runtime `_MEI*` в `%LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime\`.
 
             ## Скачать
             - `Bed.Mesh.Visualizer.exe` — Windows (64-bit)
