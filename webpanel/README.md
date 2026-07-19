@@ -20,7 +20,7 @@
 
 - `GET /` — панель (вшитый HTML)
 - `GET /status` — JSON статуса (CORS)
-- `GET /mesh` — текущий bed_mesh (`probed_matrix`, профиль, границы)
+- `GET /mesh` — текущий bed_mesh (`probed_matrix`); если пусто — `printer_mutable.cfg` / `printer.cfg`
 - `POST /control?cmd=pause|resume|cancel` — управление печатью
 - `POST /gcode {"script":"..."}` — произвольный gcode (установка температур)
 - `GET /version` — версия панели

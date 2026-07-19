@@ -370,17 +370,12 @@ func main() {
 		w.Write(status)
 	})
 
-	// /mesh — текущий bed_mesh (probed_matrix), без автополла на клиенте.
+	// /mesh — текущий bed_mesh; если в памяти пусто — printer_mutable.cfg (как приложение).
 	http.HandleFunc("/mesh", func(w http.ResponseWriter, r *http.Request) {
 		if cors(w, r) {
 			return
 		}
-		status, err := queryBedMesh()
-		if err != nil {
-			writeJSON(w, http.StatusOK, MeshResponse{OK: false, Error: err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, parseBedMeshStatus(status))
+		writeJSON(w, http.StatusOK, resolveMesh(queryBedMesh))
 	})
 
 	// /control?cmd=pause|resume|cancel — управление текущей печатью.
