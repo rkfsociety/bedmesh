@@ -14,7 +14,7 @@ try {
     & $go vet .
     if ($LASTEXITCODE -ne 0) { throw "go vet failed" }
 
-    & $go build -ldflags="-s -w" -o gkbridge gkbridge.go
+    & $go build -ldflags="-s -w" -o gkbridge .
     if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 
     $ver = (Get-Content (Join-Path $here "gkbridge.version") -Raw).Trim()

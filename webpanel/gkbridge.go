@@ -210,6 +210,23 @@ func queryKlipper() (json.RawMessage, error) {
 	return res, nil
 }
 
+// queryBedMesh возвращает status только с объектом bed_mesh.
+func queryBedMesh() (json.RawMessage, error) {
+	res, err := klipperRequest("objects/query", map[string]interface{}{
+		"objects": map[string]interface{}{"bed_mesh": nil},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Status json.RawMessage `json:"status"`
+	}
+	if json.Unmarshal(res, &r) == nil && r.Status != nil {
+		return r.Status, nil
+	}
+	return res, nil
+}
+
 // sendGcode отправляет gcode-скрипт в Klipper (метод gcode/script).
 func sendGcode(script string) error {
 	_, err := klipperRequest("gcode/script", map[string]interface{}{"script": script})
@@ -351,6 +368,19 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(status)
+	})
+
+	// /mesh — текущий bed_mesh (probed_matrix), без автополла на клиенте.
+	http.HandleFunc("/mesh", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		status, err := queryBedMesh()
+		if err != nil {
+			writeJSON(w, http.StatusOK, MeshResponse{OK: false, Error: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, parseBedMeshStatus(status))
 	})
 
 	// /control?cmd=pause|resume|cancel — управление текущей печатью.

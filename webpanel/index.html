@@ -127,14 +127,37 @@
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.ok{color:var(--green)} #toast.err{color:var(--red)}
 
-  /* двухколоночный layout: основной контент + камера справа */
-  .layout{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  /* шапка+кнопки всегда; ниже: левый бар | контент | камера */
+  .controls{margin-bottom:16px}
+  .body-row{display:grid;grid-template-columns:88px 1fr 1fr;gap:16px;align-items:start}
+  .sidebar{background:var(--card);border:1px solid var(--line);border-radius:16px;
+       padding:8px;display:flex;flex-direction:column;gap:6px;position:sticky;top:20px}
+  .nav{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+       padding:14px 8px;border-radius:12px;border:1px solid transparent;background:transparent;
+       color:var(--dim);cursor:pointer;font-size:12px;font-weight:600;width:100%;line-height:1.2}
+  .nav:hover{color:var(--txt);background:var(--card2)}
+  .nav.active{color:var(--txt);background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4)}
+  .nav .ico{font-size:20px;line-height:1}
   .col-main{min-width:0}
   .col-cam{min-width:0;position:sticky;top:20px}
+  .panel-bed{display:none}
+  .panel-bed.active{display:block}
+  .panel-print{display:none}
+  .panel-print.active{display:grid}
+  .mesh-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .mesh-head .t{font-size:15px;font-weight:600}
+  .mesh-head .btn{flex:0 0 auto;min-width:0;margin-left:auto;padding:9px 16px;font-size:14px}
+  .mesh-summary{font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.5}
+  .mesh-summary b{color:var(--txt);font-weight:600}
+  .mesh-grid{display:grid;gap:3px;width:100%;aspect-ratio:1}
+  .mesh-cell{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+       font-variant-numeric:tabular-nums;border-radius:4px;min-height:36px;padding:2px}
+  .mesh-empty{padding:28px 16px;text-align:center;color:var(--dim);font-size:14px;line-height:1.5}
+  .mesh-empty .hint{margin-top:10px;font-size:13px;color:var(--amber)}
 
   @media(max-width:860px){
-    .layout{grid-template-columns:1fr}
-    .col-cam{position:static}
+    .body-row{grid-template-columns:72px 1fr}
+    .col-cam{grid-column:1 / -1;position:static}
     .progress-card{flex-direction:column;text-align:center}
     .temps{grid-template-columns:1fr} .metrics{grid-template-columns:repeat(2,1fr)}
   }
@@ -148,15 +171,25 @@
     <span class="badge" id="state">—</span>
   </header>
 
-  <div class="layout">
-    <!-- левая колонка: основной контент -->
-    <div class="col-main">
-      <div class="grid">
-        <div class="controls">
-          <button class="btn pause" id="btnPause" disabled>⏸ Пауза</button>
-          <button class="btn stop"  id="btnStop"  disabled>⏹ Стоп</button>
-        </div>
+  <div class="controls">
+    <button class="btn pause" id="btnPause" disabled>⏸ Пауза</button>
+    <button class="btn stop"  id="btnStop"  disabled>⏹ Стоп</button>
+  </div>
 
+  <div class="body-row">
+    <nav class="sidebar" aria-label="Разделы">
+      <button class="nav active" id="navPrint" type="button">
+        <span class="ico">🖨</span>
+        <span>Печать</span>
+      </button>
+      <button class="nav" id="navBed" type="button">
+        <span class="ico">▦</span>
+        <span>Стол</span>
+      </button>
+    </nav>
+
+    <div class="col-main">
+      <div class="grid panel-print active" id="panelPrint">
         <div class="card progress-card">
           <div class="ring">
             <svg width="140" height="140">
@@ -210,6 +243,16 @@
           <div class="logs-list" id="logsList"></div>
         </div>
       </div>
+
+      <div class="card panel-bed" id="panelBed">
+        <div class="mesh-head">
+          <span class="t">Карта стола</span>
+          <button class="btn" id="btnMeshRefresh" type="button">Обновить</button>
+        </div>
+        <div id="meshSummary" class="mesh-summary"></div>
+        <div id="meshGrid" class="mesh-grid"></div>
+        <div id="meshEmpty" class="mesh-empty" hidden></div>
+      </div>
     </div>
 
     <!-- правая колонка: камера -->
@@ -244,11 +287,16 @@
 const FALLBACK = "192.168.0.197:8088";
 const ORIGIN = (location.protocol === "file:") ? `http://${FALLBACK}` : "";
 const URL_STATUS = ORIGIN + "/status";
+const URL_MESH = ORIGIN + "/mesh";
 const POLL = 1500; // мс
 
 const RING_LEN = 2 * Math.PI * 62;
 const $ = id => document.getElementById(id);
 let lastState = "standby";
+let meshLoadedOnce = false;
+let activeTab = "print";
+
+const MESH_PALETTE = [[45,85,160],[140,180,220],[245,245,245],[235,170,155],[185,70,60]];
 
 function fmtTime(s){
   if(s==null || s<0 || !isFinite(s)) return "—";
@@ -547,6 +595,110 @@ $("btnToggleLogs").addEventListener("click", ()=>{
   list.classList.toggle("hidden");
   $("btnToggleLogs").textContent = logsOpen ? "↓" : "→";
 });
+
+// ── Карта стола (bed mesh) ───────────────────────────────────────────────
+function setTab(tab){
+  activeTab = tab;
+  const print = tab === "print";
+  $("navPrint").classList.toggle("active", print);
+  $("navBed").classList.toggle("active", !print);
+  $("panelPrint").classList.toggle("active", print);
+  $("panelBed").classList.toggle("active", !print);
+  if(!print && !meshLoadedOnce){
+    meshLoadedOnce = true;
+    loadMesh();
+  }
+}
+
+$("navPrint").addEventListener("click", ()=> setTab("print"));
+$("navBed").addEventListener("click", ()=> setTab("bed"));
+$("btnMeshRefresh").addEventListener("click", ()=> loadMesh());
+
+function fmtZ(v){
+  const s = Math.abs(v).toFixed(3);
+  return (v >= 0 ? "+" : "-") + s;
+}
+
+function colorForZ(v, zMin, zMax){
+  const t = (v - zMin) / (zMax - zMin + 1e-9);
+  const stops = MESH_PALETTE;
+  const x = t * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(x));
+  const local = x - i;
+  const a = stops[i], b = stops[i + 1];
+  const r = Math.round(a[0] + (b[0] - a[0]) * local);
+  const g = Math.round(a[1] + (b[1] - a[1]) * local);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * local);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function showMeshEmpty(title, hint){
+  $("meshSummary").textContent = "";
+  $("meshGrid").innerHTML = "";
+  $("meshGrid").style.display = "none";
+  const el = $("meshEmpty");
+  el.hidden = false;
+  el.innerHTML = `<div>${title}</div>` + (hint ? `<div class="hint">${hint}</div>` : "");
+}
+
+function renderMesh(d){
+  const matrix = d.matrix || [];
+  let zMin = Infinity, zMax = -Infinity;
+  for(const row of matrix){
+    for(const v of row){
+      if(v < zMin) zMin = v;
+      if(v > zMax) zMax = v;
+    }
+  }
+  const range = zMax - zMin;
+  $("meshSummary").innerHTML =
+    `профиль <b>${d.profile || "—"}</b> · min <b>${fmtZ(zMin)}</b> · max <b>${fmtZ(zMax)}</b> · range <b>${range.toFixed(3)}</b>`;
+  $("meshEmpty").hidden = true;
+  $("meshEmpty").innerHTML = "";
+  const grid = $("meshGrid");
+  grid.style.display = "grid";
+  const cols = matrix[0] ? matrix[0].length : 1;
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  grid.innerHTML = "";
+  // (0,0) принтера слева снизу → рисуем строки снизу вверх
+  for(let i = matrix.length - 1; i >= 0; i--){
+    for(let j = 0; j < matrix[i].length; j++){
+      const v = matrix[i][j];
+      const cell = document.createElement("div");
+      cell.className = "mesh-cell";
+      cell.style.background = colorForZ(v, zMin, zMax);
+      const ratio = (v - zMin) / (zMax - zMin + 1e-9);
+      cell.style.color = (ratio > 0.25 && ratio < 0.75) ? "#111" : "#fff";
+      cell.textContent = fmtZ(v);
+      grid.appendChild(cell);
+    }
+  }
+}
+
+async function loadMesh(){
+  const btn = $("btnMeshRefresh");
+  btn.disabled = true;
+  try{
+    const res = await fetch(URL_MESH, {cache:"no-store"});
+    const d = await res.json().catch(()=>({}));
+    if(!d.ok){
+      if(d.error === "no_mesh"){
+        showMeshEmpty(
+          "Карта стола не загружена",
+          "Сделайте калибровку стола в приложении BedMesh или через Klipper."
+        );
+      } else {
+        showMeshEmpty("нет связи с принтером");
+      }
+      return;
+    }
+    renderMesh(d);
+  }catch(e){
+    showMeshEmpty("нет связи с принтером");
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 tick();
 setInterval(tick, POLL);
