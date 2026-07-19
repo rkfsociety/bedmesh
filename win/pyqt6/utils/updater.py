@@ -350,28 +350,33 @@ def install_update(release_data: dict, parent=None) -> None:
 
 def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, parent=None) -> None:
     current_exe_name = os.path.basename(current_exe)
+    new_exe_path = os.path.join(base_dir, new_exe_name)
     bat_path = os.path.join(base_dir, "updater_pyqt6.bat")
 
-    with open(bat_path, "w", encoding="cp866") as f:
+    # cp866: только ASCII-кавычки. Кривые ” ломают запись bat и оставляют мусор на диске.
+    with open(bat_path, "w", encoding="cp866", newline="\r\n") as f:
         f.write("@echo off\n")
         f.write("setlocal\n")
         f.write("set tries=0\n")
         f.write(f'taskkill /f /im "{current_exe_name}" >nul 2>&1\n')
         f.write("timeout /t 4 /nobreak > nul\n")
         f.write(":loop\n")
-        f.write(f'del /f /q \"{current_exe}\" >nul 2>&1\n')
-        f.write(f'if exist \"{current_exe}\" (timeout /t 1 /nobreak > nul & goto loop)\n')
-        f.write(f'move /y \”{new_exe_name}\” \”{current_exe}\” >nul\n')
+        f.write(f'del /f /q "{current_exe}" >nul 2>&1\n')
+        f.write(f'if exist "{current_exe}" (timeout /t 1 /nobreak > nul & goto loop)\n')
+        # Полный путь: cwd у cmd часто не папка с exe (Desktop / System32).
+        f.write(f'move /y "{new_exe_path}" "{current_exe}" >nul\n')
+        f.write(f'if exist "{new_exe_path}" del /f /q "{new_exe_path}" >nul 2>&1\n')
         # PyInstaller --runtime-tmpdir . извлекает _MEI рядом с exe, а не в %TEMP%.
-        # Поэтому смена TEMP/TMP не нужна — антивирус успевает “принять” папку раз и навсегда.
         # Небольшая пауза, чтобы ОС/антивирус успели “подхватить” новый exe до старта.
         f.write("timeout /t 3 /nobreak > nul\n")
         f.write(":startloop\n")
-        # Пытаемся стартовать несколько раз — иногда сразу после замены exe может быть временная блокировка.
-        f.write("set \"RUNNING=\"\n")
-        f.write(f'start \"\" \"{current_exe}\" >nul 2>&1\n')
+        f.write('set "RUNNING="\n')
+        f.write(f'start "" "{current_exe}" >nul 2>&1\n')
         f.write("timeout /t 2 /nobreak > nul\n")
-        f.write(f'for /f \"tokens=*\" %%p in (\'tasklist /fi \"imagename eq {current_exe_name}\" ^| find /i \"{current_exe_name}\" \') do set RUNNING=1\n')
+        f.write(
+            f'for /f "tokens=*" %%p in (\'tasklist /fi "imagename eq {current_exe_name}" '
+            f'^| find /i "{current_exe_name}" \') do set RUNNING=1\n'
+        )
         f.write("if defined RUNNING goto started\n")
         f.write("set /a tries+=1\n")
         f.write("if %tries% GEQ 6 goto started\n")
