@@ -89,11 +89,11 @@ jobs:
           body: |
             ## Bed Mesh Visualizer ${{ github.ref_name }}
 
-            Обновление с версии 0.166.
+            Обновление с версии 0.167.
 
             ### 🛠️ Исправления
-            - **Автообновление**: починена замена exe — больше не остаются
-              `BedMesh_Update_Temp.exe` и `updater_pyqt6.bat` на рабочем столе.
+            - **SSH download**: cfg больше не пишутся на рабочий стол — кэш в
+              `%APPDATA%\rkfsociety\BedMesh Visualizer\cache\`.
 
             ## Скачать
             - `Bed.Mesh.Visualizer.exe` — Windows (64-bit)
