@@ -15,7 +15,7 @@ class MeshGraphicsView(QGraphicsView):
         self._zoom_factor = 1.0
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(
-            QGraphicsView.ViewportAnchor.AnchorUnderMouse
+            QGraphicsView.ViewportAnchor.AnchorViewCenter
         )
         self.setResizeAnchor(
             QGraphicsView.ViewportAnchor.AnchorViewCenter
@@ -55,10 +55,15 @@ class MeshGraphicsView(QGraphicsView):
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
+        position = event.position().toPoint()
+        anchor_before = self.mapToScene(position)
         if delta > 0:
             self.set_zoom_factor(self._zoom_factor * self.ZOOM_STEP)
         elif delta < 0:
             self.set_zoom_factor(self._zoom_factor / self.ZOOM_STEP)
+        anchor_after = self.mapToScene(position)
+        center = self.mapToScene(self.viewport().rect().center())
+        self.centerOn(center + anchor_before - anchor_after)
         event.accept()
 
     def mouseDoubleClickEvent(self, event):

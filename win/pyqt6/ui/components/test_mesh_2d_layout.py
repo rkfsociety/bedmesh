@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtGui import QWheelEvent
+from PyQt6.QtWidgets import QApplication, QGraphicsScene
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 PYQT_ROOT = Path(__file__).resolve().parents[2]
@@ -76,6 +78,36 @@ class Mesh2DLayoutTests(unittest.TestCase):
         view.set_zoom_factor(3.0)
 
         self.assertEqual(seen[-1], 3.0)
+
+    def test_wheel_zoom_keeps_scene_point_under_event_position(self):
+        view = MeshGraphicsView()
+        scene = QGraphicsScene(view)
+        scene.setSceneRect(0, 0, 700, 700)
+        view.setScene(scene)
+        view.setSceneRect(0, 0, 700, 700)
+        view.resize(700, 700)
+        view.show()
+        self.app.processEvents()
+        view.reset_view()
+        position = QPoint(180, 220)
+        before = view.mapToScene(position)
+        event = QWheelEvent(
+            QPointF(position),
+            QPointF(view.viewport().mapToGlobal(position)),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.ScrollUpdate,
+            False,
+        )
+
+        QApplication.sendEvent(view.viewport(), event)
+        self.app.processEvents()
+        after = view.mapToScene(position)
+
+        self.assertLessEqual(abs(after.x() - before.x()), 1.5)
+        self.assertLessEqual(abs(after.y() - before.y()), 1.5)
 
     def test_dense_cells_hide_labels(self):
         self.assertIsNone(
