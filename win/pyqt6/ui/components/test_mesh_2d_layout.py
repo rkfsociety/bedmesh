@@ -12,6 +12,7 @@ if str(PYQT_ROOT) not in sys.path:
     sys.path.insert(0, str(PYQT_ROOT))
 
 from core.mesh_parser import BedMeshData  # noqa: E402
+from mesh_graphics_view import MeshGraphicsView  # noqa: E402
 from mesh_view import MeshView  # noqa: E402
 from mesh_2d_layout import (  # noqa: E402
     choose_label_font_px,
@@ -48,6 +49,32 @@ class Mesh2DLayoutTests(unittest.TestCase):
             choose_label_font_px(100, 100, 90, 18),
             15,
         )
+
+    def test_zoom_is_clamped_and_reset(self):
+        view = MeshGraphicsView()
+        view.setSceneRect(0, 0, 700, 700)
+        view.resize(700, 700)
+        view.reset_view()
+        self.assertEqual(view.zoom_factor(), 1.0)
+
+        view.set_zoom_factor(50)
+        self.assertEqual(view.zoom_factor(), 12.0)
+
+        view.set_zoom_factor(0.01)
+        self.assertEqual(view.zoom_factor(), 1.0)
+
+        view.set_zoom_factor(4.0)
+        view.reset_view()
+        self.assertEqual(view.zoom_factor(), 1.0)
+
+    def test_zoom_signal_reports_effective_factor(self):
+        view = MeshGraphicsView()
+        seen = []
+        view.zoom_changed.connect(seen.append)
+
+        view.set_zoom_factor(3.0)
+
+        self.assertEqual(seen[-1], 3.0)
 
     def test_dense_cells_hide_labels(self):
         self.assertIsNone(
