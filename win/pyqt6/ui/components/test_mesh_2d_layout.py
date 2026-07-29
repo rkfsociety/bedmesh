@@ -16,6 +16,7 @@ from mesh_graphics_view import MeshGraphicsView  # noqa: E402
 from mesh_view import MeshView  # noqa: E402
 from mesh_2d_layout import (  # noqa: E402
     choose_label_font_px,
+    detail_zoom_threshold,
     detail_canvas_size,
     mesh_index_at_position,
 )
@@ -85,6 +86,15 @@ class Mesh2DLayoutTests(unittest.TestCase):
         self.assertEqual(detail_canvas_size(31, 31), (2976, 2976))
         self.assertEqual(detail_canvas_size(100, 100), (4096, 4096))
 
+    def test_dense_mesh_needs_zoom_before_detail(self):
+        self.assertAlmostEqual(
+            detail_zoom_threshold(31, 31),
+            48 / (700 / 31),
+        )
+
+    def test_sparse_mesh_shows_detail_at_fit(self):
+        self.assertEqual(detail_zoom_threshold(7, 7), 1.0)
+
     def test_mouse_position_accounts_for_centering_and_y_inversion(self):
         self.assertIsNone(
             mesh_index_at_position(0, 0, 900, 700, 700, 700, 31, 31)
@@ -133,6 +143,30 @@ class Mesh2DLayoutTests(unittest.TestCase):
 
         self.assertEqual((detail.width(), detail.height()), (2976, 2976))
         self.assertTrue(view._detail_labels_visible)
+
+    def test_dense_layer_switches_after_zoom(self):
+        view = MeshView()
+        view.resize(700, 700)
+        view.show()
+        self.app.processEvents()
+        view.update_mesh(make_mesh(31))
+
+        self.assertTrue(view._screen_item.isVisible())
+        self.assertFalse(view._detail_item.isVisible())
+
+        view.graphics_view.set_zoom_factor(3.0)
+
+        self.assertFalse(view._screen_item.isVisible())
+        self.assertTrue(view._detail_item.isVisible())
+
+    def test_tooltip_uses_scene_position_after_zoom(self):
+        view = MeshView()
+        mesh = make_mesh(31)
+        view.update_mesh(mesh)
+
+        text = view.tooltip_for_scene_position(350, 350)
+
+        self.assertIn(f"{mesh.z[15, 15]:+.3f}", text)
 
 
 if __name__ == "__main__":

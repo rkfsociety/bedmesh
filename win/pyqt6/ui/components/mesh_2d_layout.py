@@ -33,6 +33,18 @@ def detail_canvas_size(
     return width, height
 
 
+def detail_zoom_threshold(
+    x_count: int,
+    y_count: int,
+    scene_size: int = 700,
+    minimum_cell_screen_px: int = 48,
+    maximum_zoom: float = 12.0,
+) -> float:
+    cell_at_fit = min(scene_size / x_count, scene_size / y_count)
+    required = minimum_cell_screen_px / max(cell_at_fit, 1e-9)
+    return min(maximum_zoom, max(1.0, required))
+
+
 def mesh_index_at_position(
     mouse_x: float,
     mouse_y: float,
