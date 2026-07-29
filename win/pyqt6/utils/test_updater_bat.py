@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from updater import _build_replace_bat_content
+from updater import _build_powershell_start_command, _build_replace_bat_content
 
 
 class TestReplaceBatContent(unittest.TestCase):
@@ -23,6 +23,15 @@ class TestReplaceBatContent(unittest.TestCase):
             current_exe_name="Bed.Mesh.Visualizer.exe",
         )
         self.assertIn(r'move /y "C:\app\BedMesh_Update_Temp.exe" "C:\app\Bed.Mesh.Visualizer.exe"', content)
+
+    def test_powershell_quotes_bat_path_for_cmd(self):
+        command = _build_powershell_start_command(
+            r"C:\Users\USSR\Desktop\updater_pyqt6.bat"
+        )
+        self.assertIn(
+            "-ArgumentList '/d', '/c', '\"\"C:\\Users\\USSR\\Desktop\\updater_pyqt6.bat\"\"'",
+            command,
+        )
 
 
 if __name__ == "__main__":

@@ -400,6 +400,15 @@ def _build_replace_bat_content(*, current_exe: str, new_exe_path: str, current_e
     return "\n".join(lines)
 
 
+def _build_powershell_start_command(bat_path: str) -> str:
+    """Build a quoted PowerShell command that starts a .bat path via cmd.exe."""
+    escaped_path = str(bat_path).replace("'", "''")
+    return (
+        "Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' "
+        f"-ArgumentList '/d', '/c', '\"\"{escaped_path}\"\"'"
+    )
+
+
 def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, parent=None) -> None:
     current_exe_name = os.path.basename(current_exe)
     new_exe_path = os.path.join(base_dir, new_exe_name)
@@ -430,7 +439,7 @@ def _run_replace_script(current_exe: str, new_exe_name: str, base_dir: str, pare
                 "-WindowStyle",
                 "Hidden",
                 "-Command",
-                f"Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', '{bat_path}'",
+                _build_powershell_start_command(bat_path),
             ],
             creationflags=CREATE_NO_WINDOW,
         )
