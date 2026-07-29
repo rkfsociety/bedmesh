@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt, QRectF, pyqtSignal
 from core.mesh_parser import BedMeshData
 from ui.components.mesh_2d_layout import (
     choose_label_font_px,
+    detail_canvas_size,
     mesh_index_at_position,
 )
 from ui.components.palettes import build_lut
@@ -43,6 +44,7 @@ class MeshView(QWidget):
         self._data = None
         self._palette_key = "soft"
         self._screen_labels_visible = False
+        self._detail_labels_visible = False
         self._last_render_labels_visible = False
 
     def set_palette(self, palette_key: str):
@@ -166,6 +168,23 @@ class MeshView(QWidget):
     def _on_mouse_position_changed(self, x: float, y: float) -> None:
         self.label.setToolTip(self.tooltip_for_position(x, y) or "")
 
+    def detail_pixmap(self) -> QPixmap | None:
+        if self._data is None:
+            return None
+        width, height = detail_canvas_size(
+            self._data.x_count,
+            self._data.y_count,
+        )
+        pixmap = self.render_mesh(
+            self._data,
+            width,
+            height,
+            force_labels=True,
+        )
+        self._detail_labels_visible = self._last_render_labels_visible
+        return pixmap
+
     def copy_to_clipboard(self):
-        if self._pixmap:
-            QApplication.clipboard().setPixmap(self._pixmap)
+        pixmap = self.detail_pixmap()
+        if pixmap is not None:
+            QApplication.clipboard().setPixmap(pixmap)

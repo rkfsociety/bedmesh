@@ -11,9 +11,9 @@ PYQT_ROOT = Path(__file__).resolve().parents[2]
 if str(PYQT_ROOT) not in sys.path:
     sys.path.insert(0, str(PYQT_ROOT))
 
-from core.mesh_parser import BedMeshData
-from mesh_view import MeshView
-from mesh_2d_layout import (
+from core.mesh_parser import BedMeshData  # noqa: E402
+from mesh_view import MeshView  # noqa: E402
+from mesh_2d_layout import (  # noqa: E402
     choose_label_font_px,
     detail_canvas_size,
     mesh_index_at_position,
@@ -97,6 +97,15 @@ class Mesh2DLayoutTests(unittest.TestCase):
 
         self.assertIn("Z:", text)
         self.assertIn(f"{mesh.z[15, 15]:+.3f}", text)
+
+    def test_detail_pixmap_grows_and_keeps_labels(self):
+        view = MeshView()
+        view.update_mesh(make_mesh(31))
+
+        detail = view.detail_pixmap()
+
+        self.assertEqual((detail.width(), detail.height()), (2976, 2976))
+        self.assertTrue(view._detail_labels_visible)
 
 
 if __name__ == "__main__":
