@@ -1,1 +1,1 @@
-VERSION = "0.176-win"
+VERSION = "0.177-win"

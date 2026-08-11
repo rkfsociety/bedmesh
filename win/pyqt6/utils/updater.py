@@ -465,7 +465,7 @@ def _build_replace_bat_content(*, current_exe: str, new_exe_path: str, current_e
         # Полный путь: cwd у cmd часто не папка с exe (Desktop / System32).
         f'move /y "{new_exe_path}" "{current_exe}" >nul',
         f'if exist "{new_exe_path}" del /f /q "{new_exe_path}" >nul 2>&1',
-        r"rem Legacy _MEI next to exe from old builds. New runtime: %LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime",
+        r"rem Legacy _MEI next to exe from old builds. New builds use Windows TEMP.",
         f'for /d %%D in ("{base_dir}\\_MEI*") do rd /s /q "%%~fD" >nul 2>&1',
         "timeout /t 3 /nobreak > nul",
         ":startloop",

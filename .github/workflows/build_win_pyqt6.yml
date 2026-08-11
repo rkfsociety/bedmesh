@@ -127,6 +127,8 @@ jobs:
       - name: Собрать exe (PyInstaller)
         shell: bash
         run: |
+          # Не задаём общий runtime-каталог: PyInstaller создаёт отдельную
+          # временную папку для каждого запуска и не смешивает DLL разных версий.
           python -m PyInstaller --onefile --noconsole \
             --name "Bed.Mesh.Visualizer" \
             --icon "win/pyqt6/icon.ico" \
@@ -135,7 +137,6 @@ jobs:
             --add-data "webpanel/gkbridge;resources" \
             --add-data "webpanel/camera;resources/camera" \
             --add-data "win/pyqt6/resources/boot.sh;resources" \
-            --runtime-tmpdir "%LOCALAPPDATA%\rkfsociety\BedMesh Visualizer\runtime" \
             --hidden-import OpenGL \
             --hidden-import OpenGL.platform.win32 \
             --hidden-import pyqtgraph.opengl \

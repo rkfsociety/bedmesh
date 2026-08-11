@@ -13,7 +13,7 @@ class TestReplaceBatContent(unittest.TestCase):
             current_exe_name="Bed.Mesh.Visualizer.exe",
         )
         self.assertIn(r'for /d %%D in ("' + base + r'\_MEI*") do rd /s /q "%%~fD"', content)
-        self.assertIn("LOCALAPPDATA", content)
+        self.assertIn("Windows TEMP", content)
         self.assertNotIn("--runtime-tmpdir .", content)
 
     def test_still_moves_update_exe(self):
