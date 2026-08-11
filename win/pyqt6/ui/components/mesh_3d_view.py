@@ -148,8 +148,11 @@ class Mesh3DView(QWidget):
         bed_min_x, bed_max_x, bed_min_y, bed_max_y = self._bed_bounds(data)
         x_center = (bed_min_x + bed_max_x) / 2.0
         y_center = (bed_min_y + bed_max_y) / 2.0
-        x_ticks = np.linspace(bed_min_x, bed_max_x, 5)
-        y_ticks = np.linspace(bed_min_y, bed_max_y, 5)
+        # Для стандартной области 250 мм получаем подписи через 25 мм:
+        # 0, 25, 50, ..., 250. Для другого размера сохраняем тот же
+        # ориентир по шагу и обязательно включаем обе границы.
+        x_ticks = self._coordinate_ticks(bed_min_x, bed_max_x)
+        y_ticks = self._coordinate_ticks(bed_min_y, bed_max_y)
         for value in x_ticks:
             x = float(value - x_center)
             add_label(
@@ -184,3 +187,16 @@ class Mesh3DView(QWidget):
         else:
             min_y, max_y = data.bed_min_y, data.bed_max_y
         return min_x, max_x, min_y, max_y
+
+    @staticmethod
+    def _coordinate_ticks(start: float, end: float) -> np.ndarray:
+        step = 25.0
+        first = np.ceil(start / step) * step
+        ticks = np.arange(first, end + step * 0.01, step)
+        if len(ticks) == 0 or ticks[0] > start + 1e-6:
+            ticks = np.insert(ticks, 0, start)
+        elif abs(ticks[0] - start) > 1e-6:
+            ticks = np.insert(ticks, 0, start)
+        if abs(ticks[-1] - end) > 1e-6:
+            ticks = np.append(ticks, end)
+        return ticks
