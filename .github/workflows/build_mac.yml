@@ -3,6 +3,8 @@ name: Сборка macOS
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*-mac"
 
@@ -10,7 +12,72 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Определить версию и состояние macOS-релиза
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      should_release: ${{ steps.release.outputs.should_release }}
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Создать tag и проверить состояние релиза
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("mac/utils/version.py").read_text(encoding="utf-8")
+          match = re.search(r'^VERSION\s*=\s*["\x27]([^"\x27]+)["\x27]\s*$', text, re.MULTILINE)
+          if not match:
+              raise SystemExit("VERSION не найден в mac/utils/version.py")
+          print(match.group(1))
+          PY
+          )"
+          release_tag="v${version}"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "${release_tag}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} не совпадает с версией ${release_tag}" >&2
+              exit 1
+            fi
+          else
+            if ! git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+              git tag "${release_tag}" "${GITHUB_SHA}"
+              git push origin "${release_tag}"
+              echo "Создан tag ${release_tag} для ${GITHUB_SHA}"
+            else
+              echo "Tag ${release_tag} уже существует"
+            fi
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}" 2>/dev/null || true)"
+          has_asset="false"
+          if [[ -n "${release_json}" ]] && jq -e '.draft == false and ([.assets[]?.name] | index("BedMeshVisualizer_Mac.dmg")) != null' <<<"${release_json}" >/dev/null; then
+            has_asset="true"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          if [[ "${has_asset}" == "true" ]]; then
+            echo "should_release=false" >> "${GITHUB_OUTPUT}"
+            echo "macOS-релиз ${release_tag} уже опубликован"
+          else
+            echo "should_release=true" >> "${GITHUB_OUTPUT}"
+            echo "macOS-релиз ${release_tag} требует сборки/публикации"
+          fi
+
   build-macos:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: macos-latest
 
     steps:
@@ -66,9 +133,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/dmg/BedMeshVisualizer_Mac.dmg
-          name: "${{ github.ref_name }}"
+          tag_name: ${{ needs.prepare-release.outputs.release_tag }}
+          name: "${{ needs.prepare-release.outputs.release_tag }}"
           body: |
-            ## Bed Mesh Visualizer ${{ github.ref_name }}
+            ## Bed Mesh Visualizer ${{ needs.prepare-release.outputs.release_tag }}
 
             ### Исправления
             - Проверка обновлений: последний релиз ***-mac**, не глобальный `/latest`.
