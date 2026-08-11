@@ -551,19 +551,19 @@ class ConfigEditor(QWidget):
             
             group = QGroupBox(sec_data.get("title") if isinstance(sec_data, dict) else f"⚙️ [{sec_name}]")
             form = QGridLayout()
-            form.setHorizontalSpacing(14)
+            form.setHorizontalSpacing(10)
             form.setVerticalSpacing(6)
-            form.setColumnStretch(0, 2)
-            form.setColumnStretch(1, 1)
-            form.setColumnStretch(2, 2)
-            form.setColumnStretch(3, 1)
+            for column in (0, 2, 4):
+                form.setColumnStretch(column, 2)
+            for column in (1, 3, 5):
+                form.setColumnStretch(column, 1)
             group.setLayout(form)
             form_field_index = 0
 
             def add_form_field(label_text: str, widget: QWidget) -> None:
                 nonlocal form_field_index
-                row = form_field_index // 2
-                column = 0 if form_field_index % 2 == 0 else 2
+                row = form_field_index // 3
+                column = (form_field_index % 3) * 2
                 label = QLabel(f"{label_text}:")
                 label.setWordWrap(True)
                 label.setMinimumWidth(0)
