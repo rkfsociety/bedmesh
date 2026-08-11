@@ -8,7 +8,12 @@ PYQT_ROOT = Path(__file__).resolve().parents[2]
 if str(PYQT_ROOT) not in sys.path:
     sys.path.insert(0, str(PYQT_ROOT))
 
-from config_editor import _ace_current_label, _ace_preset_matches  # noqa: E402
+from config_editor import (  # noqa: E402
+    _ace_current_label,
+    _ace_preset_matches,
+    _parse_probe_count,
+    _probe_count_allows_lagrange,
+)
 
 
 STANDARD = {
@@ -58,6 +63,21 @@ class AcePresetTests(unittest.TestCase):
 
         self.assertIsNone(percent)
         self.assertEqual(label, "Текущее: ~105%")
+
+
+class ProbeCountTests(unittest.TestCase):
+    def test_single_value_is_used_for_both_axes(self):
+        self.assertEqual(_parse_probe_count("5"), (5, 5))
+
+    def test_lagrange_allowed_only_up_to_five_points_per_axis(self):
+        self.assertTrue(_probe_count_allows_lagrange("5,5"))
+        self.assertTrue(_probe_count_allows_lagrange("3,5"))
+        self.assertFalse(_probe_count_allows_lagrange("6,5"))
+        self.assertFalse(_probe_count_allows_lagrange("10"))
+
+    def test_incomplete_value_does_not_lock_the_editor(self):
+        self.assertIsNone(_parse_probe_count("5,"))
+        self.assertTrue(_probe_count_allows_lagrange("5,"))
 
 
 if __name__ == "__main__":

@@ -232,6 +232,25 @@ def _ace_current_label(
         return None, f"Текущее: ~{percent}%"
     return None, "Текущее: нестандартное"
 
+
+def _parse_probe_count(value: str) -> tuple[int, int] | None:
+    """Разбирает probe_count в пару положительных целых чисел."""
+    raw_value = (value or "").strip()
+    if "," in raw_value and any(not part.strip() for part in raw_value.split(",")):
+        return None
+    parts = [part for part in re.split(r"[,\s]+", raw_value) if part]
+    if len(parts) == 1:
+        parts *= 2
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return None
+    counts = int(parts[0]), int(parts[1])
+    return counts if all(count > 0 for count in counts) else None
+
+
+def _probe_count_allows_lagrange(value: str) -> bool:
+    counts = _parse_probe_count(value)
+    return counts is None or max(counts) <= 5
+
 class ConfigEditor(QWidget):
     # Сигнал для уведомления внешней системы о завершении SSH операции
     ssh_operation_finished = pyqtSignal()
@@ -253,6 +272,7 @@ class ConfigEditor(QWidget):
         self._ssh_backup_thread = None
         self._ssh_backup_worker = None
         self._auto_backup_done = False
+        self._algorithm_constraint_updating = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -740,6 +760,8 @@ class ConfigEditor(QWidget):
                         le.setPlaceholderText(placeholder)
                         le.setToolTip(tooltip)
                         le.textChanged.connect(self._on_changed)
+                        if sec_name == "bed_mesh" and key == "probe_count":
+                            le.textChanged.connect(self._on_probe_count_changed)
                         editor_widget = le
                 
                     add_form_field(label, editor_widget, tooltip)
@@ -749,11 +771,49 @@ class ConfigEditor(QWidget):
             if has_fields:
                 self.container_layout.addWidget(group)
 
+            if sec_name == "bed_mesh":
+                self._refresh_algorithm_constraint()
+
         self.container_layout.addStretch()
         self.logger.debug("Build UI done: widgets=%s", len(self.widgets))
 
     def _on_changed(self):
         self.btn_save.setEnabled(True)
+
+    def _on_probe_count_changed(self, _value: str) -> None:
+        self._refresh_algorithm_constraint()
+        self._on_changed()
+
+    def _refresh_algorithm_constraint(self) -> None:
+        probe_widget = self.widgets.get(("bed_mesh", "probe_count"))
+        algorithm = self.widgets.get(("bed_mesh", "algorithm"))
+        if not isinstance(probe_widget, QLineEdit) or not isinstance(algorithm, QComboBox):
+            return
+
+        allow_lagrange = _probe_count_allows_lagrange(probe_widget.text())
+        was_lagrange = algorithm.currentText() == "lagrange"
+        algorithm.blockSignals(True)
+        try:
+            lagrange_index = algorithm.findText("lagrange")
+            if allow_lagrange:
+                if lagrange_index < 0:
+                    algorithm.insertItem(0, "lagrange")
+            else:
+                if algorithm.currentText() == "lagrange":
+                    bicubic_index = algorithm.findText("bicubic")
+                    if bicubic_index >= 0:
+                        algorithm.setCurrentIndex(bicubic_index)
+                lagrange_index = algorithm.findText("lagrange")
+                if lagrange_index >= 0:
+                    algorithm.removeItem(lagrange_index)
+                if algorithm.currentText() != "bicubic":
+                    bicubic_index = algorithm.findText("bicubic")
+                    if bicubic_index >= 0:
+                        algorithm.setCurrentIndex(bicubic_index)
+        finally:
+            algorithm.blockSignals(False)
+        if was_lagrange and not allow_lagrange:
+            self._on_changed()
 
     def save_to_printer(self):
         if not self._ssh_config:
@@ -844,6 +904,9 @@ class ConfigEditor(QWidget):
         
         try:
             changed = False
+
+            # Не даём сохранить Lagrange при сетке больше 5x5.
+            self._refresh_algorithm_constraint()
 
             def _set_key_value(sec: str, key: str, new_val: str) -> bool:
                 nonlocal changed
