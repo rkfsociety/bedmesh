@@ -622,9 +622,11 @@ class ConfigEditor(QWidget):
                     label.setToolTip(tooltip)
                     widget.setToolTip(tooltip)
                     self._register_field_hint(widget, tooltip)
-                label.setWordWrap(True)
+                # Не переносим подпись между «по умолчанию» и его значением:
+                # длинная подпись должна оставаться одной строкой рядом с полем.
+                label.setWordWrap(False)
                 label.setMinimumWidth(0)
-                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
                 widget.setMinimumWidth(0)
                 widget.setFixedHeight(30)
                 widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
