@@ -569,6 +569,7 @@ class ConfigEditor(QWidget):
                 label.setMinimumWidth(0)
                 label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
                 widget.setMinimumWidth(0)
+                widget.setFixedHeight(30)
                 widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
                 form.addWidget(label, row, column)
                 form.addWidget(widget, row, column + 1)
