@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.release.outputs.release_tag }}
+      previous_tag_name: ${{ steps.release.outputs.previous_tag_name }}
       should_release: ${{ steps.release.outputs.should_release }}
     steps:
       - name: Получить исходники
@@ -45,6 +46,28 @@ jobs:
           )"
           release_tag="v${version}"
 
+          # Для заметок берём диапазон через одну предыдущую Windows-версию:
+          # текущая версия + предыдущий релиз. Это сохраняет важные изменения,
+          # если промежуточный релиз был небольшим фиксом и позже удалён.
+          previous_tag_name=""
+          previous_release_tag=""
+          seen_current="false"
+          while IFS= read -r candidate; do
+            [[ -z "${candidate}" ]] && continue
+            if [[ "${candidate}" == "${release_tag}" ]]; then
+              seen_current="true"
+              continue
+            fi
+            if [[ "${seen_current}" == "true" ]]; then
+              if [[ -z "${previous_release_tag}" ]]; then
+                previous_release_tag="${candidate}"
+              else
+                previous_tag_name="${candidate}"
+                break
+              fi
+            fi
+          done < <(git tag --list 'v*-win' --sort=-version:refname)
+
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             if [[ "${GITHUB_REF_NAME}" != "${release_tag}" ]]; then
               echo "Tag ${GITHUB_REF_NAME} не совпадает с версией ${release_tag}" >&2
@@ -70,6 +93,7 @@ jobs:
           fi
 
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "previous_tag_name=${previous_tag_name}" >> "${GITHUB_OUTPUT}"
           if [[ "${has_asset}" == "true" ]]; then
             echo "should_release=false" >> "${GITHUB_OUTPUT}"
             echo "Windows-релиз ${release_tag} уже опубликован с EXE"
@@ -176,6 +200,7 @@ jobs:
             dist/Bed.Mesh.Visualizer.exe.sha256
           name: "${{ needs.prepare-release.outputs.release_tag }}"
           generate_release_notes: true
+          previous_tag: ${{ needs.prepare-release.outputs.previous_tag_name }}
 
       - name: Удалить старые ассеты из релиза (после публикации)
         uses: actions/github-script@v7
