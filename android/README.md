@@ -52,7 +52,7 @@ android/
 
 ## CI / релизы
 
-Тег `v*-android` (например `v0.176-android`) запускает GitHub Actions:
+Тег `v*-android` (например `v0.177-android`) запускает GitHub Actions:
 сборка `assembleRelease` (подпись из `keystore.properties` в репо) и публикация
 `BedMeshVisualizer.apk` в GitHub Release.
 
