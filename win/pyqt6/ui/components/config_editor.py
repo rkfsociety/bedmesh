@@ -611,11 +611,13 @@ class ConfigEditor(QWidget):
                 label_text: str,
                 widget: QWidget,
                 tooltip: str = "",
+                standard_value: str = "",
             ) -> None:
                 nonlocal form_field_index
                 row = form_field_index // 3
                 column = (form_field_index % 3) * 2
-                label = QLabel(f"{label_text}:")
+                standard_suffix = f" (стандарт: {standard_value})" if standard_value else ""
+                label = QLabel(f"{label_text}{standard_suffix}:")
                 if tooltip:
                     label.setToolTip(tooltip)
                     widget.setToolTip(tooltip)
@@ -721,6 +723,7 @@ class ConfigEditor(QWidget):
                     "Множитель скоростей подачи и отката Ace Pro. "
                     "100% — стандарт, 300% — скорость в 3 раза выше. "
                     "Значения применятся после нажатия «Сохранить». ",
+                    "100%",
                 )
                 has_fields = True
 
@@ -740,6 +743,9 @@ class ConfigEditor(QWidget):
                     label = meta.get('label', key)
                     placeholder = meta.get('ph', '')
                     tooltip = meta.get('tip', '')
+                    standard_value = str(meta.get('default', '')).strip()
+                    if standard_value:
+                        tooltip = f"{tooltip} Стандарт версии 2.7.2.7: {standard_value}.".strip()
                 
                     editor_widget: QWidget
                     if key == "algorithm":
@@ -764,7 +770,7 @@ class ConfigEditor(QWidget):
                             le.textChanged.connect(self._on_probe_count_changed)
                         editor_widget = le
                 
-                    add_form_field(label, editor_widget, tooltip)
+                    add_form_field(label, editor_widget, tooltip, standard_value)
                     self.widgets[(sec_name, key)] = editor_widget
                     has_fields = True
             
