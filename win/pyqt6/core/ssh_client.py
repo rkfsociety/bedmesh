@@ -33,22 +33,31 @@ def sha256_local_file(path: str) -> str:
     return h.hexdigest()
 
 def sha256_remote_file_via_sftp(ip: str, port: int, username: str, password: str, remote_path: str) -> Optional[str]:
+    ssh = None
+    sftp = None
     try:
         ssh = get_ssh_connection(ip, port, username, password)
         sftp = ssh.open_sftp()
-        h = hashlib.sha256()
-        with sftp.open(remote_path, "rb") as f:
-            while True:
-                chunk = f.read(1024 * 1024)
-                if not chunk:
-                    break
-                h.update(chunk)
-        sftp.close()
-        ssh.close()
-        return h.hexdigest()
+        return _sha256_remote_file_on_sftp(sftp, remote_path)
     except Exception as e:
         logger.exception("Remote sha256 failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
         return None
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
+
+def _sha256_remote_file_on_sftp(sftp, remote_path: str) -> str:
+    h = hashlib.sha256()
+    with sftp.open(remote_path, "rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
 
 def _backup_glob(remote_path: str) -> str:
     # Pattern used to detect backups created by this app.
@@ -59,34 +68,42 @@ def list_remote_backups(ip: str, port: int, username: str, password: str, remote
     Returns backup file paths, newest first.
     Only returns backups that match this app's mask: `<remote_path>.bedmesh_bak_*`
     """
+    ssh = None
+    sftp = None
     try:
         ssh = get_ssh_connection(ip, port, username, password)
         sftp = ssh.open_sftp()
-        dir_name = os.path.dirname(remote_path)
-        base_name = os.path.basename(remote_path)
-        prefix = f"{base_name}.{BACKUP_TAG}_"
-
-        files: list[tuple[str, int]] = []
-        for name in sftp.listdir(dir_name):
-            if not name.startswith(prefix):
-                continue
-            full = f"{dir_name.rstrip('/')}/{name}"
-            try:
-                st = sftp.stat(full)
-                mtime = int(getattr(st, "st_mtime", 0) or 0)
-            except Exception:
-                mtime = 0
-            files.append((full, mtime))
-
-        sftp.close()
-        ssh.close()
-
-        # Sort newest first.
-        files.sort(key=lambda x: x[1], reverse=True)
-        return [p for (p, _) in files]
+        return _list_remote_backups_on_sftp(sftp, remote_path)
     except Exception as e:
         logger.exception("SSH list backups failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
         return []
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
+
+def _list_remote_backups_on_sftp(sftp, remote_path: str) -> list[str]:
+    dir_name = os.path.dirname(remote_path)
+    base_name = os.path.basename(remote_path)
+    prefix = f"{base_name}.{BACKUP_TAG}_"
+
+    files: list[tuple[str, int]] = []
+    for name in sftp.listdir(dir_name):
+        if not name.startswith(prefix):
+            continue
+        full = f"{dir_name.rstrip('/')}/{name}"
+        try:
+            st = sftp.stat(full)
+            mtime = int(getattr(st, "st_mtime", 0) or 0)
+        except Exception:
+            mtime = 0
+        files.append((full, mtime))
+
+    # Sort newest first.
+    files.sort(key=lambda x: x[1], reverse=True)
+    return [p for (p, _) in files]
 
 def restore_remote_backup(ip: str, port: int, username: str, password: str, backup_path: str, remote_path: str) -> bool:
     """Restores backup_path -> remote_path."""
@@ -176,47 +193,89 @@ def upload_cfg_via_ssh(local_path: str, ip: str, port: int = 2222, username: str
         logger.exception("SSH upload failed: host=%s port=%s user=%s remote_path=%s local_path=%s error=%s", ip, port, username, remote_path, local_path, e)
         return False
 
+
+def upload_cfg_with_backup_and_verify(
+    local_path: str,
+    ip: str,
+    port: int = 2222,
+    username: str = 'root',
+    password: str = 'rockchip',
+    remote_path: str = '/userdata/app/gk/printer.cfg',
+    max_backups: int = 5,
+    create_backup: bool = True,
+) -> tuple[bool, str]:
+    """Upload, verify and clean backups using one SSH connection."""
+    ssh = None
+    sftp = None
+    try:
+        if not os.path.exists(local_path):
+            raise FileNotFoundError(f"Local file not found: {local_path}")
+
+        local_sha = sha256_local_file(local_path)
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+
+        if create_backup and not _create_remote_backup_on_ssh(ssh, remote_path):
+            return False, "backup_failed"
+
+        logger.debug("SFTP PUT: %s -> %s", local_path, remote_path)
+        sftp.put(local_path, remote_path)
+        remote_sha = _sha256_remote_file_on_sftp(sftp, remote_path)
+        if remote_sha != local_sha:
+            logger.error(
+                "SSH upload verify mismatch: local=%s remote=%s remote_path=%s",
+                local_sha, remote_sha, remote_path,
+            )
+            return False, "verify_failed"
+
+        _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
+        logger.info("SSH upload verify ok: sha256=%s", remote_sha)
+        return True, ""
+    except Exception as e:
+        logger.exception(
+            "SSH upload with verification failed: host=%s port=%s user=%s remote_path=%s error=%s",
+            ip, port, username, remote_path, e,
+        )
+        return False, "upload_failed"
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
 def create_remote_backup(ip: str, port: int, username: str, password: str,
                          remote_path: str = '/userdata/app/gk/printer.cfg') -> Optional[str]:
     """
     Создает бекап файла НА ПРИНТЕРЕ.
     Команда: cp /path/to/file /path/to/file.bak_YYYYMMDD_HHMMSS
     """
+    ssh = None
     try:
         logger.info("SSH backup start: host=%s port=%s user=%s remote_path=%s", ip, port, username, remote_path)
         ssh = get_ssh_connection(ip, port, username, password)
-        
-        # Формируем имя бэкапа на удаленной машине (с нашей маской)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{remote_path}.{BACKUP_TAG}_{timestamp}"
-        
-        # Выполняем команду копирования
-        cmd = f"cp {_sh_quote(remote_path)} {_sh_quote(backup_path)}"
-        logger.debug("SSH exec: %s", cmd)
-        stdin, stdout, stderr = ssh.exec_command(cmd)
-        exit_status = stdout.channel.recv_exit_status()
-
-        if exit_status == 0:
-            # Verify file exists (best-effort).
-            v_cmd = f"test -f {_sh_quote(backup_path)}"
-            logger.debug("SSH exec: %s", v_cmd)
-            _, v_out, v_err = ssh.exec_command(v_cmd)
-            v_status = v_out.channel.recv_exit_status()
-            if v_status == 0:
-                logger.info("SSH backup success: backup_path=%s", backup_path)
-                ssh.close()
-                return backup_path
-            logger.error("SSH backup verify failed: backup_path=%s stderr=%s", backup_path, v_err.read().decode(errors='ignore'))
-        else:
-            error = stderr.read().decode(errors='ignore')
-            logger.error("SSH backup failed: exit_status=%s stderr=%s", exit_status, error)
-
-        ssh.close()
-        return None
-            
+        return _create_remote_backup_on_ssh(ssh, remote_path)
     except Exception as e:
         logger.exception("SSH backup exception: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
         return None
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def _create_remote_backup_on_ssh(ssh, remote_path: str) -> Optional[str]:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{remote_path}.{BACKUP_TAG}_{timestamp}"
+    status, _, error = _exec(ssh, f"cp {_sh_quote(remote_path)} {_sh_quote(backup_path)}")
+    if status != 0:
+        logger.error("SSH backup failed: exit_status=%s stderr=%s", status, error)
+        return None
+
+    verify_status, _, verify_error = _exec(ssh, f"test -f {_sh_quote(backup_path)}")
+    if verify_status != 0:
+        logger.error("SSH backup verify failed: backup_path=%s stderr=%s", backup_path, verify_error)
+        return None
+    logger.info("SSH backup success: backup_path=%s", backup_path)
+    return backup_path
 
 def cleanup_remote_backups(ip: str, port: int, username: str, password: str,
                            remote_path: str = '/userdata/app/gk/printer.cfg', max_backups: int = 5):
@@ -224,34 +283,82 @@ def cleanup_remote_backups(ip: str, port: int, username: str, password: str,
     Удаляет старые бекапы на принтере, оставляя только max_backups последних.
     Ищет файлы по маске `<remote_path>.bedmesh_bak_*`
     """
+    ssh = None
+    sftp = None
     try:
         logger.info("SSH cleanup start: host=%s port=%s user=%s remote_path=%s max_backups=%s", ip, port, username, remote_path, max_backups)
-        files = list_remote_backups(ip, port, username, password, remote_path)
-        if len(files) > max_backups:
-            for f in files[max_backups:]:
-                delete_remote_backup(ip, port, username, password, f)
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+        _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
         logger.info("SSH cleanup done")
     except Exception as e:
         logger.exception("SSH cleanup failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
+
+def _cleanup_remote_backups_on_sftp(sftp, remote_path: str, max_backups: int) -> None:
+    files = _list_remote_backups_on_sftp(sftp, remote_path)
+    for backup_path in files[max_backups:]:
+        try:
+            sftp.remove(backup_path)
+            logger.info("SSH delete backup ok: %s", backup_path)
+        except Exception as e:
+            logger.warning("SSH delete backup failed: backup=%s error=%s", backup_path, e)
 
 def ensure_remote_backup_exists(ip: str, port: int, username: str, password: str, remote_path: str, max_backups: int = 5) -> Optional[str]:
     """
     If there are no backups with our mask, create one.
     Always enforces cleanup(max_backups). Returns created backup path or None if nothing created/failed.
     """
-    backups = list_remote_backups(ip, port, username, password, remote_path)
-    if backups:
-        try:
-            cleanup_remote_backups(ip, port, username, password, remote_path, max_backups=max_backups)
-        except Exception:
-            pass
-        return None
-    created = create_remote_backup(ip, port, username, password, remote_path)
+    ssh = None
+    sftp = None
     try:
-        cleanup_remote_backups(ip, port, username, password, remote_path, max_backups=max_backups)
-    except Exception:
-        pass
-    return created
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+        backups = _list_remote_backups_on_sftp(sftp, remote_path)
+        created = None if backups else _create_remote_backup_on_ssh(ssh, remote_path)
+        _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
+        return created
+    except Exception as e:
+        logger.exception("SSH ensure backup failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
+        return None
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
+
+def create_remote_backup_and_cleanup(
+    ip: str,
+    port: int,
+    username: str,
+    password: str,
+    remote_path: str,
+    max_backups: int = 5,
+) -> Optional[str]:
+    """Create a backup and prune old ones through one SSH connection."""
+    ssh = None
+    sftp = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+        created = _create_remote_backup_on_ssh(ssh, remote_path)
+        if created:
+            _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
+        return created
+    except Exception as e:
+        logger.exception("SSH create and cleanup backup failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
+        return None
+    finally:
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

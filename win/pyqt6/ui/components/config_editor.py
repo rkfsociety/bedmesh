@@ -8,15 +8,13 @@ from utils.strings import S
 from utils.logger import get_logger
 from core.ssh_client import (
     download_cfg_via_ssh, 
-    upload_cfg_via_ssh, 
-    create_remote_backup,
-    cleanup_remote_backups,
+    upload_cfg_with_backup_and_verify,
     sha256_local_file,
-    sha256_remote_file_via_sftp,
     list_remote_backups,
     restore_remote_backup,
     delete_remote_backup,
     ensure_remote_backup_exists,
+    create_remote_backup_and_cleanup,
 )
 
 class _SshDownloadWorker(QObject):
@@ -59,31 +57,16 @@ class _SshUploadWorker(QObject):
             local_sha = sha256_local_file(self.local_path)
             self.logger.info("SSH upload verify: local_sha256=%s local_path=%s", local_sha, self.local_path)
 
-            if self.create_backup:
-                backup_path = create_remote_backup(self.ip, self.port, self.user, self.pwd, self.remote_path)
-                if not backup_path:
-                    # Caller may choose to retry without backup.
-                    self.finished.emit(False, "backup_failed")
-                    return
-                self.logger.info("SSH upload verify: backup_created=%s", backup_path)
-
-            ok = upload_cfg_via_ssh(self.local_path, self.ip, self.port, self.user, self.pwd, self.remote_path)
-            if not ok:
-                self.finished.emit(False, "upload_failed")
-                return
-
-            remote_sha = sha256_remote_file_via_sftp(self.ip, self.port, self.user, self.pwd, self.remote_path)
-            if not remote_sha:
-                self.finished.emit(False, "verify_failed")
-                return
-            if remote_sha != local_sha:
-                self.logger.error("SSH upload verify mismatch: local=%s remote=%s remote_path=%s", local_sha, remote_sha, self.remote_path)
-                self.finished.emit(False, "verify_failed")
-                return
-            self.logger.info("SSH upload verify ok: sha256=%s", remote_sha)
-
-            cleanup_remote_backups(self.ip, self.port, self.user, self.pwd, self.remote_path)
-            self.finished.emit(True, "")
+            ok, error = upload_cfg_with_backup_and_verify(
+                self.local_path,
+                self.ip,
+                self.port,
+                self.user,
+                self.pwd,
+                self.remote_path,
+                create_backup=self.create_backup,
+            )
+            self.finished.emit(ok, error)
         except Exception as e:
             self.finished.emit(False, str(e))
 
@@ -111,11 +94,17 @@ class _SshBackupWorker(QObject):
                 self.finished.emit(True, created, "")
                 return
             if self.action == "create":
-                created = create_remote_backup(self.ip, self.port, self.user, self.pwd, self.remote_path)
+                created = create_remote_backup_and_cleanup(
+                    self.ip,
+                    self.port,
+                    self.user,
+                    self.pwd,
+                    self.remote_path,
+                    max_backups=5,
+                )
                 if not created:
                     self.finished.emit(False, None, "create_failed")
                     return
-                cleanup_remote_backups(self.ip, self.port, self.user, self.pwd, self.remote_path, max_backups=5)
                 self.finished.emit(True, created, "")
                 return
             if self.action == "restore":
