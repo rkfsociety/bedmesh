@@ -2,7 +2,7 @@ import os
 import math
 import re
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QFileDialog, QScrollArea, QFormLayout,
+                             QLabel, QFileDialog, QScrollArea, QGridLayout,
                              QGroupBox, QLineEdit, QMessageBox, QListWidget, QComboBox, QSizePolicy)
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QTimer
 from utils.strings import S
@@ -548,8 +548,21 @@ class ConfigEditor(QWidget):
             fields_meta = sec_data.get("fields", {}) if isinstance(sec_data, dict) else {}
             
             group = QGroupBox(sec_data.get("title") if isinstance(sec_data, dict) else f"⚙️ [{sec_name}]")
-            form = QFormLayout()
+            form = QGridLayout()
+            form.setHorizontalSpacing(14)
+            form.setVerticalSpacing(6)
+            form.setColumnStretch(1, 1)
+            form.setColumnStretch(3, 1)
             group.setLayout(form)
+            form_field_index = 0
+
+            def add_form_field(label_text: str, widget: QWidget) -> None:
+                nonlocal form_field_index
+                row = form_field_index // 2
+                column = 0 if form_field_index % 2 == 0 else 2
+                form.addWidget(QLabel(f"{label_text}:"), row, column)
+                form.addWidget(widget, row, column + 1)
+                form_field_index += 1
             
             has_fields = False
 
@@ -636,7 +649,7 @@ class ConfigEditor(QWidget):
 
                 preset_layout.addWidget(cb_preset)
                 preset_layout.addStretch()
-                form.addRow("Ускорение Ace Pro:", preset_row)
+                add_form_field("Ускорение Ace Pro", preset_row)
                 has_fields = True
 
             else:
@@ -677,7 +690,7 @@ class ConfigEditor(QWidget):
                         le.textChanged.connect(self._on_changed)
                         editor_widget = le
                 
-                    form.addRow(f"{label}:", editor_widget)
+                    add_form_field(label, editor_widget)
                     self.widgets[(sec_name, key)] = editor_widget
                     has_fields = True
             
