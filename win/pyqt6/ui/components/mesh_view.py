@@ -108,11 +108,39 @@ class MeshView(QWidget):
         cell_w = width / data.x_count
         cell_h = height / data.y_count
 
-        img = QImage(width, height, QImage.Format.Format_ARGB32)
-        img.fill(QColor("#2b2b2b"))
+        # Строим цветовую заливку одним NumPy-растром. Раньше каждая ячейка
+        # отдельно проходила через QPainter, что становилось заметно на
+        # плотных mesh-сетках. Индексы пикселей сразу учитывают переворот Y,
+        # используемый отрисовкой карты.
+        pixel_columns = np.minimum(
+            data.x_count - 1,
+            (np.arange(width, dtype=np.int64) * data.x_count // width),
+        )
+        pixel_rows = np.minimum(
+            data.y_count - 1,
+            (np.arange(height, dtype=np.int64) * data.y_count // height),
+        )
+        pixel_rows = data.y_count - 1 - pixel_rows
+        rgb = np.ascontiguousarray(lut[idx[pixel_rows[:, None], pixel_columns]][:, :, :3])
+        image = QImage(
+            rgb.data,
+            width,
+            height,
+            rgb.strides[0],
+            QImage.Format.Format_RGB888,
+        ).copy()
 
-        painter = QPainter(img)
+        painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Границы рисуем линиями, а не прямоугольником для каждой ячейки.
+        painter.setPen(QColor(80, 80, 80))
+        for column in range(data.x_count + 1):
+            x = round(column * cell_w)
+            painter.drawLine(x, 0, x, height)
+        for row in range(data.y_count + 1):
+            y = round(row * cell_h)
+            painter.drawLine(0, y, width, y)
 
         preferred_font_px = 15
         font = QFont("Consolas")
@@ -134,34 +162,22 @@ class MeshView(QWidget):
             painter.setFont(font)
         self._last_render_labels_visible = labels_visible
 
-        for i in range(data.y_count):
-            y = (data.y_count - 1 - i) * cell_h
-            for j in range(data.x_count):
-                val = data.z[i, j]
-                color = QColor(*lut[idx[i, j]][:3])
-                rect = QRectF(j * cell_w, y, cell_w, cell_h)
-
-                painter.fillRect(rect, color)
-                painter.setPen(QColor(80, 80, 80))
-                painter.drawRect(rect)
-
-                if labels_visible:
+        if labels_visible:
+            for i in range(data.y_count):
+                y = (data.y_count - 1 - i) * cell_h
+                for j in range(data.x_count):
+                    val = data.z[i, j]
+                    rect = QRectF(j * cell_w, y, cell_w, cell_h)
                     text = f"{val:+.3f}"
-                    ratio = (val - z_min) / (z_max - z_min + 1e-9)
                     txt_color = (
                         QColor("black")
-                        if 0.25 < ratio < 0.75
+                        if 0.25 < norm[i, j] < 0.75
                         else QColor("white")
                     )
                     painter.setPen(txt_color)
-                    painter.drawText(
-                        rect,
-                        Qt.AlignmentFlag.AlignCenter,
-                        text,
-                    )
-
+                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
         painter.end()
-        return QPixmap.fromImage(img)
+        return QPixmap.fromImage(image)
 
     def _ensure_detail_item(self) -> None:
         if self._detail_pixmap_cache is not None:
