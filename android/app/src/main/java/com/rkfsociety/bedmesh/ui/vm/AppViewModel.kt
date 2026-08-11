@@ -26,6 +26,7 @@ import com.rkfsociety.bedmesh.core.UpdateState
 import com.rkfsociety.bedmesh.core.aceProValuesForPercent
 import com.rkfsociety.bedmesh.core.formatDiagnostic
 import com.rkfsociety.bedmesh.core.normalizeBedMeshPairValue
+import com.rkfsociety.bedmesh.core.probeCountAllowsLagrange
 import com.rkfsociety.bedmesh.core.resolveSection
 import com.rkfsociety.bedmesh.model.BedMeshData
 import kotlinx.coroutines.Dispatchers
@@ -187,7 +188,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun updateConfigField(section: String, key: String, value: String) {
         val mapKey = "$section.$key"
         _uiState.update { st ->
-            st.copy(configEdits = st.configEdits + (mapKey to value))
+            var edits = st.configEdits + (mapKey to value)
+            if (section == st.config?.resolveSection("bed_mesh") && key == "probe_count" &&
+                !probeCountAllowsLagrange(value)
+            ) {
+                val algorithmKey = "$section.algorithm"
+                val current = edits[algorithmKey] ?: st.config?.sections?.get(section)?.get("algorithm")?.value
+                if (current?.trim()?.equals("lagrange", ignoreCase = true) == true) {
+                    edits = edits + (algorithmKey to "bicubic")
+                }
+            }
+            st.copy(configEdits = edits)
         }
     }
 

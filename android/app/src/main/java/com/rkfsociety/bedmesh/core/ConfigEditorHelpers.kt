@@ -30,6 +30,14 @@ fun normalizeBedMeshPairValue(key: String, value: String): String {
     return if (numRe.matches(v)) "$v,$v" else v
 }
 
+/** Lagrange в Klipper допустим только для сеток не больше 5x5. */
+fun probeCountAllowsLagrange(value: String): Boolean {
+    val parts = value.trim().split(Regex("[,\\s]+" )).filter { it.isNotEmpty() }
+    if (parts.isEmpty() || parts.size > 2 || parts.any { it.toIntOrNull() == null }) return true
+    val counts = if (parts.size == 1) listOf(parts[0].toInt()) else parts.take(2).map { it.toInt() }
+    return counts.all { it > 0 } && counts.maxOrNull()!! <= 5
+}
+
 /**
  * Те же коэффициенты и ключи, что `_apply_preset` в `config_editor.py`.
  */

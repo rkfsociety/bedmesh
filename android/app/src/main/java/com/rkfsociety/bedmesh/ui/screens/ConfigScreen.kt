@@ -13,23 +13,30 @@ import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.core.KlipperConfig
 import com.rkfsociety.bedmesh.core.displayBedMeshPairValue
 import com.rkfsociety.bedmesh.core.resolveSection
+import com.rkfsociety.bedmesh.core.probeCountAllowsLagrange
 import com.rkfsociety.bedmesh.ui.vm.UiState
 
-private data class FieldDef(val key: String, val label: String, val placeholder: String)
+private data class FieldDef(
+    val key: String,
+    val label: String,
+    val placeholder: String,
+    val defaultValue: String,
+    val hint: String,
+)
 
 /** Те же поля, что в `win/pyqt6/ui/locale/ru.json` → `config.sections.bed_mesh.fields`. */
 private val BED_MESH_WHITELIST = listOf(
-    FieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5"),
-    FieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245"),
-    FieldDef("probe_count", "Кол-во точек (X,Y)", "10,10"),
+    FieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5", "5,5", "Левый нижний угол области."),
+    FieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245", "245,245", "Правый верхний угол области."),
+    FieldDef("probe_count", "Кол-во точек (X,Y)", "10,10", "5,5", "Одно число применяется и к X, и к Y. При значении больше 5 используется bicubic."),
 )
 
 /** Поля секции [leviQ3] — температуры калибровки стола. */
 private val LEVI_Q3_WHITELIST = listOf(
-    FieldDef("bed_temp",          "Температура стола (°C)",           "60"),
-    FieldDef("extru_temp",        "Температура экструдера (°C)",       "200"),
-    FieldDef("extru_end_temp",    "Конечная темп. экструдера (°C)",    "150"),
-    FieldDef("preheat_leveling",  "Предпрогрев выравнивания (°C)",    "60"),
+    FieldDef("bed_temp",          "Температура стола (°C)",           "60", "55", "Температура стола во время снятия карты."),
+    FieldDef("extru_temp",        "Температура экструдера (°C)",       "200", "200", "Температура экструдера при калибровке."),
+    FieldDef("extru_end_temp",    "Конечная темп. экструдера (°C)",    "150", "150", "Температура после завершения калибровки."),
+    FieldDef("preheat_leveling",  "Предпрогрев выравнивания (°C)",    "60", "60", "Температура предпрогрева перед выравниванием."),
 )
 
 private val ACE_PRESETS = listOf(100, 150, 200, 250, 300)
@@ -144,18 +151,22 @@ private fun BedMeshSectionCard(
                     placeholder = { Text(def.placeholder) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    supportingText = { Text("${def.hint} По умолчанию в версии 2.7.2.7: ${def.defaultValue}.") },
                 )
             }
 
             if ("algorithm" in secMap) {
                 val rawAlg = secMap["algorithm"]?.value.orEmpty().trim()
                 val mapKey = "$section.algorithm"
+                val probeRaw = edits["$section.probe_count"] ?: secMap["probe_count"]?.value.orEmpty()
+                val allowLagrange = probeCountAllowsLagrange(probeRaw)
                 val current = (edits[mapKey] ?: rawAlg).trim().ifEmpty { "lagrange" }
+                val displayedCurrent = if (!allowLagrange && current == "lagrange") "bicubic" else current
                 var expanded by remember { mutableStateOf(false) }
-                val options = listOf("lagrange", "bicubic")
+                val options = if (allowLagrange) listOf("lagrange", "bicubic") else listOf("bicubic")
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                     OutlinedTextField(
-                        value = current,
+                        value = displayedCurrent,
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Алгоритм") },
@@ -176,6 +187,11 @@ private fun BedMeshSectionCard(
                         }
                     }
                 }
+                Text(
+                    "Метод интерполяции. Lagrange доступен только для 5×5 и меньше. По умолчанию в версии 2.7.2.7: lagrange.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -209,6 +225,7 @@ private fun LeviQ3SectionCard(
                     placeholder = { Text(def.placeholder) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    supportingText = { Text("${def.hint} По умолчанию в версии 2.7.2.7: ${def.defaultValue}.") },
                 )
             }
         }

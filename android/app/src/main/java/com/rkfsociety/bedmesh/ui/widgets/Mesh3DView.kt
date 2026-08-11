@@ -16,6 +16,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.sp
 import com.rkfsociety.bedmesh.model.BedMeshData
 import kotlin.math.cos
 import kotlin.math.max
@@ -28,6 +33,7 @@ import kotlin.math.sin
  */
 @Composable
 fun Mesh3DView(mesh: BedMeshData, modifier: Modifier = Modifier) {
+    val textMeasurer = rememberTextMeasurer()
     var azimuth by remember { mutableFloatStateOf(-60f) }
     var elevation by remember { mutableFloatStateOf(35f) }
     var distance by remember { mutableFloatStateOf(1.6f) }
@@ -135,6 +141,48 @@ fun Mesh3DView(mesh: BedMeshData, modifier: Modifier = Modifier) {
                 drawPath(path, color = q.color)
                 drawPath(path, color = Color(0xFF404040), style = Stroke(width = 1f))
             }
+
+            // Координатная разметка повторяет Windows-вид: шаг 25 мм,
+            // границы рабочей области всегда подписаны.
+            val zFloor = zMin - span * 0.08
+            val labelStyle = TextStyle(fontSize = 10.sp, color = Color(0xFFD6D6D6))
+            fun projectFloor(xValue: Double, yValue: Double): Offset {
+                val x = ((xValue - xMean) / span).toFloat()
+                val y = ((yValue - yMean) / span).toFloat()
+                val z = (Mesh3DMath.scaledZ(zFloor) / span).toFloat()
+                val rx = x * cosAz.toFloat() - y * sinAz.toFloat()
+                val ry = x * sinAz.toFloat() * sinEl.toFloat() +
+                    y * cosAz.toFloat() * sinEl.toFloat() + z * cosEl.toFloat()
+                val scale = min(size.width, size.height) / (2.2f * distance)
+                return Offset(size.width / 2f + rx * scale, size.height / 2f - ry * scale)
+            }
+            fun drawCoordinateLabel(text: String, point: Offset) {
+                val layout = textMeasurer.measure(AnnotatedString(text), labelStyle)
+                drawText(layout, topLeft = Offset(point.x - layout.size.width / 2f, point.y - layout.size.height / 2f))
+            }
+            fun ticks(start: Double, end: Double): List<Double> {
+                if (end <= start) return listOf(start)
+                val result = mutableListOf(start)
+                var value = kotlin.math.ceil(start / 25.0) * 25.0
+                while (value < end - 1e-6) {
+                    if (value > start + 1e-6) result += value
+                    value += 25.0
+                }
+                if (result.last() < end - 1e-6) result += end
+                return result
+            }
+            fun formatCoordinate(value: Double): String =
+                if (kotlin.math.abs(value - kotlin.math.round(value)) < 1e-6) kotlin.math.round(value).toInt().toString()
+                else "%.1f".format(value)
+
+            ticks(mesh.minX, mesh.maxX).forEach { value ->
+                drawCoordinateLabel(formatCoordinate(value), projectFloor(value, mesh.minY))
+            }
+            ticks(mesh.minY, mesh.maxY).forEach { value ->
+                drawCoordinateLabel(formatCoordinate(value), projectFloor(mesh.minX, value))
+            }
+            drawCoordinateLabel("X (мм)", projectFloor(mesh.maxX, mesh.minY))
+            drawCoordinateLabel("Y (мм)", projectFloor(mesh.minX, mesh.maxY))
         }
     }
 }

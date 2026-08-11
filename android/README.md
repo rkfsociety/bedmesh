@@ -9,8 +9,8 @@ Android-клиент на **Kotlin + Jetpack Compose**.
 - **SSH**: загрузка `printer.cfg` по IP / порт / логин / пароль / путь
 - **Fallback**: если в `printer.cfg` нет points — `/userdata/app/gk/printer_mutable.cfg`
 - Парсинг bed_mesh из JSON (`printer_mutable.cfg`) и текстового cfg (`[bed_mesh ...]`, `probe_count`, `mesh_min` / `mesh_max`, многострочный `points`)
-- **Карта**: 2D heatmap и псевдо-3D (Canvas, жест: drag — орбита, pinch — зум); статистика (min / max / range / mean / var / rms) и коррекции по 3 точкам
-- **Config**: правка `[bed_mesh]`, `[filament_hub]`, температур leviQ3; сохранение по SSH с бекапом; список / создание / восстановление / удаление бекапов `<printer.cfg>.bedmesh_bak_*`
+- **Карта**: 2D heatmap и псевдо-3D (Canvas, жест: drag — орбита, pinch — зум) с координатами рабочей области и разметкой через 25 мм; статистика (min / max / range / mean / var / rms) и коррекции по 3 точкам
+- **Config**: правка `[bed_mesh]`, `[filament_hub]`, температур leviQ3; подсказки и значения по умолчанию версии 2.7.2.7; автоматическая замена `lagrange` на `bicubic` для сеток больше 5×5; сохранение по SSH с бекапом; список / создание / восстановление / удаление бекапов `<printer.cfg>.bedmesh_bak_*`
 - **Принтер**:
   - установка **постоянного SSH** (dropbear в `/useremain/ssh`, автозапуск в `run.sh` — без флешки)
   - установка **веб-панели gkbridge** (скачивание с GitHub → `/useremain/gkbridge`, порт `8088`)
@@ -52,7 +52,7 @@ android/
 
 ## CI / релизы
 
-Тег `v*-android` (например `v0.170-android`) запускает GitHub Actions:
+Тег `v*-android` (например `v0.176-android`) запускает GitHub Actions:
 сборка `assembleRelease` (подпись из `keystore.properties` в репо) и публикация
 `BedMeshVisualizer.apk` в GitHub Release.
 
