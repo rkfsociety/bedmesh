@@ -560,11 +560,18 @@ class ConfigEditor(QWidget):
             group.setLayout(form)
             form_field_index = 0
 
-            def add_form_field(label_text: str, widget: QWidget) -> None:
+            def add_form_field(
+                label_text: str,
+                widget: QWidget,
+                tooltip: str = "",
+            ) -> None:
                 nonlocal form_field_index
                 row = form_field_index // 3
                 column = (form_field_index % 3) * 2
                 label = QLabel(f"{label_text}:")
+                if tooltip:
+                    label.setToolTip(tooltip)
+                    widget.setToolTip(tooltip)
                 label.setWordWrap(True)
                 label.setMinimumWidth(0)
                 label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -660,7 +667,13 @@ class ConfigEditor(QWidget):
 
                 preset_layout.addWidget(cb_preset)
                 preset_layout.addStretch()
-                add_form_field("Ускорение Ace Pro", preset_row)
+                add_form_field(
+                    "Ускорение Ace Pro",
+                    preset_row,
+                    "Множитель скоростей подачи и отката Ace Pro. "
+                    "100% — стандарт, 300% — скорость в 3 раза выше. "
+                    "Значения применятся после нажатия «Сохранить». ",
+                )
                 has_fields = True
 
             else:
@@ -701,7 +714,7 @@ class ConfigEditor(QWidget):
                         le.textChanged.connect(self._on_changed)
                         editor_widget = le
                 
-                    add_form_field(label, editor_widget)
+                    add_form_field(label, editor_widget, tooltip)
                     self.widgets[(sec_name, key)] = editor_widget
                     has_fields = True
             
