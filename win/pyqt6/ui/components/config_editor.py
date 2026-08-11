@@ -314,9 +314,11 @@ class ConfigEditor(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         self.container = QWidget()
+        self.container.setMinimumWidth(0)
+        self.container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
@@ -551,7 +553,9 @@ class ConfigEditor(QWidget):
             form = QGridLayout()
             form.setHorizontalSpacing(14)
             form.setVerticalSpacing(6)
+            form.setColumnStretch(0, 2)
             form.setColumnStretch(1, 1)
+            form.setColumnStretch(2, 2)
             form.setColumnStretch(3, 1)
             group.setLayout(form)
             form_field_index = 0
@@ -560,7 +564,13 @@ class ConfigEditor(QWidget):
                 nonlocal form_field_index
                 row = form_field_index // 2
                 column = 0 if form_field_index % 2 == 0 else 2
-                form.addWidget(QLabel(f"{label_text}:"), row, column)
+                label = QLabel(f"{label_text}:")
+                label.setWordWrap(True)
+                label.setMinimumWidth(0)
+                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+                form.addWidget(label, row, column)
                 form.addWidget(widget, row, column + 1)
                 form_field_index += 1
             
