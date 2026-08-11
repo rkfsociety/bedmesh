@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import sys
@@ -50,6 +51,50 @@ def _http_get_json(url: str, timeout: int = 5):
         return json.loads(raw.decode("utf-8", errors="replace"))
     except Exception:
         return None
+
+
+def _http_get_text(url: str, timeout: int = 30) -> str:
+    if requests is not None:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.text
+
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "rkfsociety-bedmesh-updater"},
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _parse_sha256_text(text: str) -> Optional[str]:
+    match = re.search(r"(?i)(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", text or "")
+    return match.group(0).lower() if match else None
+
+
+def _asset_digest(asset: dict) -> Optional[str]:
+    digest = str(asset.get("digest") or "").strip()
+    if digest.lower().startswith("sha256:"):
+        return _parse_sha256_text(digest[7:])
+    return None
+
+
+def _find_checksum_asset(exe_asset: dict, assets: list[dict]) -> Optional[dict]:
+    exe_name = (exe_asset.get("name") or "").strip().lower()
+    expected_name = f"{exe_name}.sha256"
+    for asset in assets:
+        if isinstance(asset, dict) and (asset.get("name") or "").strip().lower() == expected_name:
+            return asset
+    return None
 
 
 def _latest_release_for_platform(*, tag_suffix: str, asset_ext: str) -> Optional[dict]:
@@ -266,11 +311,13 @@ def install_update(release_data: dict, parent=None) -> None:
             return
 
         assets = release_data.get("assets") or []
+        exe_asset = None
         url = None
         expected_size = None
         for a in assets:
             name = (a.get("name") or "").lower()
             if name.endswith(".exe"):
+                exe_asset = a
                 url = a.get("browser_download_url")
                 expected_size = a.get("size")
                 break
@@ -282,9 +329,20 @@ def install_update(release_data: dict, parent=None) -> None:
         base_dir = os.path.dirname(current_exe)
         new_exe_name = "BedMesh_Update_Temp.exe"
         new_exe_path = os.path.join(base_dir, new_exe_name)
+        download_path = new_exe_path + ".part"
+        checksum_asset = _find_checksum_asset(exe_asset, assets)
+        checksum_url = checksum_asset.get("browser_download_url") if checksum_asset else None
+        expected_sha256 = _asset_digest(exe_asset)
 
         # --- Скачивание в фоне + прогресс, чтобы UI не зависал ---
-        state = {"done": False, "error": None, "bytes": 0, "total": 0}
+        state = {
+            "done": False,
+            "error": None,
+            "bytes": 0,
+            "total": 0,
+            "sha256": None,
+            "expected_sha256": expected_sha256,
+        }
 
         def download_task():
             try:
@@ -296,7 +354,12 @@ def install_update(release_data: dict, parent=None) -> None:
                     if total > 0:
                         state["total"] = total
 
-                _http_download_stream(url, new_exe_path, chunk_size=1024 * 256, timeout=30, on_chunk=on_chunk)
+                _http_download_stream(url, download_path, chunk_size=1024 * 256, timeout=30, on_chunk=on_chunk)
+                if state["expected_sha256"] is None and checksum_url:
+                    state["expected_sha256"] = _parse_sha256_text(_http_get_text(checksum_url))
+                    if state["expected_sha256"] is None:
+                        raise ValueError("Файл SHA-256 релиза имеет неверный формат")
+                state["sha256"] = _sha256_file(download_path)
                 state["done"] = True
             except Exception as e:
                 state["error"] = str(e)
@@ -322,6 +385,7 @@ def install_update(release_data: dict, parent=None) -> None:
                 timer.stop()
                 dlg.close()
                 if state["error"]:
+                    _remove_update_files(download_path, new_exe_path)
                     QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось скачать обновление:\n{state['error']}")
                     return
                 # Проверка целостности по размеру ассета (если GitHub отдал размер).
@@ -334,10 +398,24 @@ def install_update(release_data: dict, parent=None) -> None:
                         f"Скачано: {state['bytes']} байт\n"
                         "Попробуйте ещё раз.",
                     )
-                    try:
-                        os.remove(new_exe_path)
-                    except Exception:
-                        pass
+                    _remove_update_files(download_path, new_exe_path)
+                    return
+                if state["expected_sha256"] and state["sha256"] != state["expected_sha256"]:
+                    QMessageBox.critical(
+                        parent,
+                        "Ошибка обновления",
+                        "Скачанный файл повреждён (не совпал SHA-256).\n"
+                        f"Ожидалось: {state['expected_sha256']}\n"
+                        f"Получено: {state['sha256']}\n"
+                        "Попробуйте ещё раз.",
+                    )
+                    _remove_update_files(download_path, new_exe_path)
+                    return
+                try:
+                    os.replace(download_path, new_exe_path)
+                except Exception as exc:
+                    QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось подготовить обновление:\n{exc}")
+                    _remove_update_files(download_path, new_exe_path)
                     return
                 _run_replace_script(current_exe, new_exe_name, base_dir, parent)
                 return
@@ -360,6 +438,16 @@ def install_update(release_data: dict, parent=None) -> None:
         return
     except Exception as e:
         QMessageBox.critical(parent, "Ошибка обновления", f"Не удалось установить обновление:\n{str(e)}")
+
+
+def _remove_update_files(download_path: str, new_exe_path: str) -> None:
+    for path in (download_path, new_exe_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
 
 def _build_replace_bat_content(*, current_exe: str, new_exe_path: str, current_exe_name: str) -> str:

@@ -63,7 +63,7 @@ jobs:
           release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}" 2>/dev/null || true)"
           has_asset="false"
           if [[ -n "${release_json}" ]]; then
-            if jq -e '.draft == false and ([.assets[]?.name] | index("Bed.Mesh.Visualizer.exe")) != null' \
+            if jq -e '.draft == false and ([.assets[]?.name] | index("Bed.Mesh.Visualizer.exe")) != null and ([.assets[]?.name] | index("Bed.Mesh.Visualizer.exe.sha256")) != null' \
               <<<"${release_json}" >/dev/null; then
               has_asset="true"
             fi
@@ -118,11 +118,19 @@ jobs:
             --collect-submodules OpenGL \
             win/pyqt6/main.py
 
+      - name: Подготовить SHA-256 EXE
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Path 'dist/Bed.Mesh.Visualizer.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'dist/Bed.Mesh.Visualizer.exe.sha256' -Value $hash -NoNewline -Encoding ascii
+
       - name: Загрузить артефакт
         uses: actions/upload-artifact@v4
         with:
           name: BedMeshVisualizer-Win-PyQt6
-          path: dist/Bed.Mesh.Visualizer.exe
+          path: |
+            dist/Bed.Mesh.Visualizer.exe
+            dist/Bed.Mesh.Visualizer.exe.sha256
 
       - name: Удалить старые ассеты из релиза (до публикации)
         uses: actions/github-script@v7
@@ -163,7 +171,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.release_tag }}
-          files: dist/Bed.Mesh.Visualizer.exe
+          files: |
+            dist/Bed.Mesh.Visualizer.exe
+            dist/Bed.Mesh.Visualizer.exe.sha256
           name: "${{ needs.prepare-release.outputs.release_tag }}"
           generate_release_notes: true
 
