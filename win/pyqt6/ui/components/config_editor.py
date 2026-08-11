@@ -4,7 +4,7 @@ import re
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QFileDialog, QScrollArea, QGridLayout,
                              QGroupBox, QLineEdit, QMessageBox, QListWidget, QComboBox, QSizePolicy)
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QTimer
+from PyQt6.QtCore import Qt, QEvent, pyqtSignal, QObject, QThread, QTimer
 from utils.strings import S
 from utils.logger import get_logger
 from core.ssh_client import (
@@ -312,6 +312,15 @@ class ConfigEditor(QWidget):
         
         layout.addLayout(toolbar)
 
+        self.field_hint = QLabel("ℹ️ Выберите поле, чтобы увидеть описание параметра")
+        self.field_hint.setWordWrap(True)
+        self.field_hint.setMinimumHeight(32)
+        self.field_hint.setStyleSheet(
+            "background: #26384a; color: #e8f1f8; border: 1px solid #5b8db8; "
+            "border-radius: 3px; padding: 6px 8px;"
+        )
+        layout.addWidget(self.field_hint)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -331,6 +340,24 @@ class ConfigEditor(QWidget):
         self.btn_backup_create.clicked.connect(lambda: self._run_backup_action("create"))
         self.btn_backup_restore.clicked.connect(lambda: self._run_backup_action("restore"))
         self.btn_backup_delete.clicked.connect(lambda: self._run_backup_action("delete"))
+
+    def _register_field_hint(self, widget: QWidget, tooltip: str) -> None:
+        if not tooltip:
+            return
+        widget.setProperty("config_hint", tooltip)
+        widget.installEventFilter(self)
+        # Составные поля (например, строка Ace Pro) передают фокус дочернему
+        # комбобоксу, поэтому регистрируем и его дочерние виджеты.
+        for child in widget.findChildren(QWidget):
+            child.setProperty("config_hint", tooltip)
+            child.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.FocusIn:
+            tooltip = watched.property("config_hint")
+            if tooltip:
+                self.field_hint.setText(f"ℹ️ {tooltip}")
+        return super().eventFilter(watched, event)
 
     def set_ssh_config(self, config):
         self._ssh_config = config
@@ -572,6 +599,7 @@ class ConfigEditor(QWidget):
                 if tooltip:
                     label.setToolTip(tooltip)
                     widget.setToolTip(tooltip)
+                    self._register_field_hint(widget, tooltip)
                 label.setWordWrap(True)
                 label.setMinimumWidth(0)
                 label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
