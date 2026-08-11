@@ -164,14 +164,14 @@ class BedMeshApp(QMainWindow):
                 raw_content = f.read()
             self.center_tabs.raw_text.setPlainText(raw_content)
 
-            data = self.parser.parse_file(filepath)
+            data = self.parser.parse_text(raw_content)
 
             if data:
                 self._last_mesh_data = data
                 self.center_tabs.update_mesh_views(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
-                self.right_panel.update_shaper(self.parser.parse_input_shaper(filepath))
+                self.right_panel.update_shaper(self.parser.parse_input_shaper_text(raw_content))
                 self.logger.info(f"✅ Mesh загружен: {data.x_count}x{data.y_count}")
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                 return True
@@ -187,20 +187,26 @@ class BedMeshApp(QMainWindow):
                     alt_local = download_cfg_via_ssh(ip, port, user, pwd, mutable_path)
                     if alt_local:
                         # Показываем в RAW реальный файл, из которого берём points.
+                        alt_content = None
                         try:
                             with open(alt_local, 'r', encoding='utf-8') as f:
-                                self.center_tabs.raw_text.setPlainText(f.read())
+                                alt_content = f.read()
+                            self.center_tabs.raw_text.setPlainText(alt_content)
                         except Exception:
                             # RAW — вспомогательная вкладка; не ломаем основной флоу из-за ошибки чтения.
                             self.logger.exception("Failed to update RAW from %s", alt_local)
-                        alt_data = self.parser.parse_file(alt_local)
+                        alt_data = self.parser.parse_text(alt_content) if alt_content is not None else None
                         if alt_data:
                             self._last_mesh_data = alt_data
                             self.center_tabs.update_mesh_views(alt_data)
                             stats = self._calculate_advanced_stats(alt_data)
                             self.right_panel.update_all(stats)
                             # Шейпер ищем сначала в mutable, потом в основном файле
-                            shaper = self.parser.parse_input_shaper(alt_local) or self.parser.parse_input_shaper(filepath)
+                            shaper = (
+                                self.parser.parse_input_shaper_text(alt_content)
+                                if alt_content is not None
+                                else None
+                            ) or self.parser.parse_input_shaper_text(raw_content)
                             self.right_panel.update_shaper(shaper)
                             self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                             self.logger.info("✅ Mesh загружен из printer_mutable.cfg: %sx%s", alt_data.x_count, alt_data.y_count)

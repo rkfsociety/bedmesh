@@ -20,6 +20,10 @@ class BedMeshData:
 class MeshParser:
     def parse_file(self, filepath: str) -> Optional[BedMeshData]:
         text = Path(filepath).read_text(encoding='utf-8')
+        return self.parse_text(text)
+
+    def parse_text(self, text: str) -> Optional[BedMeshData]:
+        """Разбирает содержимое конфигурации без повторного чтения файла."""
         try:
             data = json.loads(text)
             return self._parse_json(data)
@@ -188,6 +192,10 @@ class MeshParser:
     def parse_input_shaper(self, filepath: str) -> Optional[dict]:
         """Возвращает dict с ключами shaper_type_x/y, shaper_freq_x/y или None."""
         text = Path(filepath).read_text(encoding='utf-8')
+        return self.parse_input_shaper_text(text)
+
+    def parse_input_shaper_text(self, text: str) -> Optional[dict]:
+        """Разбирает input shaper из уже загруженного текста."""
         try:
             data = json.loads(text)
             sec = data.get("input_shaper") or data.get("[input_shaper]")
