@@ -616,7 +616,7 @@ class ConfigEditor(QWidget):
                 nonlocal form_field_index
                 row = form_field_index // 3
                 column = (form_field_index % 3) * 2
-                standard_suffix = f" (стандарт: {standard_value})" if standard_value else ""
+                standard_suffix = f" (по умолчанию: {standard_value})" if standard_value else ""
                 label = QLabel(f"{label_text}{standard_suffix}:")
                 if tooltip:
                     label.setToolTip(tooltip)
@@ -721,7 +721,7 @@ class ConfigEditor(QWidget):
                     "Ускорение Ace Pro",
                     preset_row,
                     "Множитель скоростей подачи и отката Ace Pro. "
-                    "100% — стандарт, 300% — скорость в 3 раза выше. "
+                    "100% — значение по умолчанию, 300% — скорость в 3 раза выше. "
                     "Значения применятся после нажатия «Сохранить». ",
                     "100%",
                 )
@@ -745,7 +745,7 @@ class ConfigEditor(QWidget):
                     tooltip = meta.get('tip', '')
                     standard_value = str(meta.get('default', '')).strip()
                     if standard_value:
-                        tooltip = f"{tooltip} Стандарт версии 2.7.2.7: {standard_value}.".strip()
+                        tooltip = f"{tooltip} По умолчанию в версии 2.7.2.7: {standard_value}.".strip()
                 
                     editor_widget: QWidget
                     if key == "algorithm":
