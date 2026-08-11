@@ -1,4 +1,5 @@
 import os
+import math
 import re
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QFileDialog, QScrollArea, QFormLayout,
@@ -160,7 +161,76 @@ class KlipperConfigParser:
                     if len(parts) == 2:
                         key = parts[0].strip()
                         val_part = parts[1].split('#')[0].strip()
-                        self.sections[current_section][key] = (val_part, i)
+                    self.sections[current_section][key] = (val_part, i)
+
+
+def _ace_numeric_value(section: dict[str, tuple[str, int]], key: str) -> float | None:
+    entry = section.get(key)
+    if not entry:
+        return None
+    try:
+        return float(entry[0].strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _ace_preset_values(
+    percent: int,
+    standard: dict[str, str],
+    optimized: dict[str, str],
+) -> dict[str, float]:
+    factor = percent / 100.0
+    values = {
+        key: float(value) * factor
+        for key, value in standard.items()
+        if key != "unwind_length_after_triggered"
+    }
+    values["unwind_length_after_triggered"] = float(
+        (optimized if percent != 100 else standard)["unwind_length_after_triggered"]
+    )
+    return values
+
+
+def _ace_preset_matches(
+    section: dict[str, tuple[str, int]],
+    percent: int,
+    standard: dict[str, str],
+    optimized: dict[str, str],
+) -> bool:
+    expected = _ace_preset_values(percent, standard, optimized)
+    observed = []
+    for key, expected_value in expected.items():
+        actual_value = _ace_numeric_value(section, key)
+        if actual_value is not None:
+            observed.append(math.isclose(actual_value, expected_value, abs_tol=0.01))
+    return bool(observed) and all(observed)
+
+
+def _ace_current_label(
+    section: dict[str, tuple[str, int]],
+    standard: dict[str, str],
+    optimized: dict[str, str],
+    presets: tuple[int, ...],
+) -> tuple[int | None, str | None]:
+    for percent in presets:
+        if _ace_preset_matches(section, percent, standard, optimized):
+            return percent, None
+
+    ratios = []
+    for key in (
+        "v1_unwind_speed",
+        "v2_unwind_speed",
+        "v1_feed_speed",
+        "v2_feed_speed",
+        "unwind_speed_old_ace",
+    ):
+        actual = _ace_numeric_value(section, key)
+        if actual is not None and float(standard[key]) != 0:
+            ratios.append(actual / float(standard[key]) * 100.0)
+    if ratios:
+        percent = max(0, int(round(sum(ratios) / len(ratios))))
+        return None, f"Текущее: ~{percent}%"
+    return None, "Текущее: нестандартное"
 
 class ConfigEditor(QWidget):
     # Сигнал для уведомления внешней системы о завершении SSH операции
@@ -515,7 +585,20 @@ class ConfigEditor(QWidget):
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
                 cb_preset.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
-                cb_preset.addItems(["100%", "150%", "200%", "250%", "300%"])
+                preset_percents = (100, 150, 200, 250, 300)
+                for percent in preset_percents:
+                    cb_preset.addItem(f"{percent}%", percent)
+                current_percent, current_label = _ace_current_label(
+                    self.parser.sections[sec_name],
+                    standard,
+                    optimized,
+                    preset_percents,
+                )
+                if current_label:
+                    cb_preset.insertItem(0, current_label, None)
+                    cb_preset.setCurrentIndex(0)
+                else:
+                    cb_preset.setCurrentIndex(preset_percents.index(current_percent))
                 # Make the dropdown wide enough to read percentages.
                 cb_preset.setMinimumWidth(110)
                 try:
@@ -524,11 +607,10 @@ class ConfigEditor(QWidget):
                     pass
 
                 def _apply_preset():
-                    pct_text = (cb_preset.currentText() or "100%").strip().replace("%", "")
-                    try:
-                        pct = int(pct_text)
-                    except Exception:
-                        pct = 100
+                    pct_data = cb_preset.currentData()
+                    if pct_data is None:
+                        return
+                    pct = int(pct_data)
                     factor = max(0, pct) / 100.0 if pct else 1.0
                     use_optimized = pct != 100
 
