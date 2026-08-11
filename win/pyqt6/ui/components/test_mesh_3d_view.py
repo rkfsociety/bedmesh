@@ -66,6 +66,26 @@ class TestMesh3DView(unittest.TestCase):
         self.assertIsNotNone(widget._gl_view.set_home_view.call_args)
         self.assertFalse(widget._gl_view.set_home_view.call_args.kwargs["reset"])
 
+    def test_update_mesh_adds_xy_coordinate_labels(self):
+        widget = Mesh3DView()
+        widget._ready = True
+        widget._surface = Mock()
+        widget._grid = Mock()
+        widget._axis = Mock()
+        widget._gl = Mock()
+        widget._gl.GLTextItem.side_effect = lambda **kwargs: kwargs
+        widget._gl_view = Mock()
+        widget._gl_view.opts = {}
+
+        widget.update_mesh(sample_mesh())
+
+        widget._axis.setSize.assert_called_once()
+        widget._axis.setPos.assert_called_once()
+        self.assertEqual(widget._gl.GLTextItem.call_count, 12)
+        self.assertEqual(len(widget._coordinate_labels), 12)
+        self.assertIn("X (мм)", [item["text"] for item in widget._coordinate_labels])
+        self.assertIn("Y (мм)", [item["text"] for item in widget._coordinate_labels])
+
 
 if __name__ == "__main__":
     unittest.main()

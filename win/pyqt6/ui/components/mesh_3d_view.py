@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 
@@ -17,6 +18,8 @@ class Mesh3DView(QWidget):
         self._data: BedMeshData | None = None
         self._gl_view = None
         self._grid = None
+        self._axis = None
+        self._coordinate_labels = []
         self._surface = None
         self._gl = None
         self._ready = False
@@ -52,11 +55,14 @@ class Mesh3DView(QWidget):
 
             grid = gl.GLGridItem()
             view.addItem(grid)
+            axis = gl.GLAxisItem()
+            view.addItem(axis)
             view.hide()
             self._layout.addWidget(view)
             self._gl = gl
             self._gl_view = view
             self._grid = grid
+            self._axis = axis
             self._surface = None
             self._ready = True
             self._placeholder.setText("3D: нет данных")
@@ -89,6 +95,7 @@ class Mesh3DView(QWidget):
             )
             self._grid.setSize(x=payload.span_x, y=payload.span_y)
             self._grid.setSpacing(x=payload.spacing_x, y=payload.spacing_y)
+            self._update_coordinate_axes(data, payload)
             self._gl_view.set_home_view(fit_camera(payload), reset=reset_camera)
             self._placeholder.hide()
             self._gl_view.show()
@@ -98,3 +105,57 @@ class Mesh3DView(QWidget):
             self._gl_view.hide()
             self._placeholder.setText(f"3D недоступен:\n{exc}")
             self._placeholder.show()
+
+    def _update_coordinate_axes(self, data: BedMeshData, payload) -> None:
+        if self._axis is None or self._gl is None or self._gl_view is None:
+            return
+
+        # Оси располагаются в нижнем углу поверхности. Z здесь визуальный,
+        # поэтому физические координаты подписываем только для X/Y.
+        z_floor = float(np.min(payload.z)) - max(payload.span_x, payload.span_y) * 0.08
+        axis_offset = max(payload.span_x, payload.span_y) * 0.08
+        self._axis.setSize(
+            x=payload.span_x,
+            y=payload.span_y,
+            z=max(payload.span_x, payload.span_y) * 0.18,
+        )
+        self._axis.setPos(-payload.span_x / 2.0, -payload.span_y / 2.0, z_floor)
+
+        for label in self._coordinate_labels:
+            self._gl_view.removeItem(label)
+        self._coordinate_labels = []
+
+        def add_label(text: str, pos: tuple[float, float, float]) -> None:
+            label = self._gl.GLTextItem(
+                pos=pos,
+                text=text,
+                color=(220, 220, 220, 230),
+            )
+            self._gl_view.addItem(label)
+            self._coordinate_labels.append(label)
+
+        x_center = float(np.mean(data.x))
+        y_center = float(np.mean(data.y))
+        x_ticks = np.linspace(data.min_x, data.max_x, 5)
+        y_ticks = np.linspace(data.min_y, data.max_y, 5)
+        for value in x_ticks:
+            x = float(value - x_center)
+            add_label(
+                f"{value:g}",
+                (x, -payload.span_y / 2.0 - axis_offset, z_floor),
+            )
+        for value in y_ticks:
+            y = float(value - y_center)
+            add_label(
+                f"{value:g}",
+                (-payload.span_x / 2.0 - axis_offset, y, z_floor),
+            )
+
+        add_label(
+            "X (мм)",
+            (payload.span_x / 2.0 + axis_offset, -payload.span_y / 2.0 - axis_offset, z_floor),
+        )
+        add_label(
+            "Y (мм)",
+            (-payload.span_x / 2.0 - axis_offset, payload.span_y / 2.0 + axis_offset, z_floor),
+        )
