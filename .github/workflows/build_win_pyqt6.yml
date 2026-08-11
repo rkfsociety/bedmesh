@@ -3,6 +3,8 @@ name: Сборка Windows (PyQt6)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*-win"
 
@@ -10,12 +12,82 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Определить версию и состояние Windows-релиза
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      should_release: ${{ steps.release.outputs.should_release }}
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Создать tag и проверить состояние релиза
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("win/pyqt6/utils/version.py").read_text(encoding="utf-8")
+          match = re.search(r'^VERSION\s*=\s*["\x27]([^"\x27]+)["\x27]\s*$', text, re.MULTILINE)
+          if not match:
+              raise SystemExit("VERSION не найден в win/pyqt6/utils/version.py")
+          print(match.group(1))
+          PY
+          )"
+          release_tag="v${version}"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "${release_tag}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} не совпадает с версией ${release_tag}" >&2
+              exit 1
+            fi
+          else
+            if ! git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+              git tag "${release_tag}" "${GITHUB_SHA}"
+              git push origin "${release_tag}"
+              echo "Создан tag ${release_tag} для ${GITHUB_SHA}"
+            else
+              echo "Tag ${release_tag} уже существует"
+            fi
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}" 2>/dev/null || true)"
+          has_asset="false"
+          if [[ -n "${release_json}" ]]; then
+            if jq -e '.draft == false and ([.assets[]?.name] | index("Bed.Mesh.Visualizer.exe")) != null' \
+              <<<"${release_json}" >/dev/null; then
+              has_asset="true"
+            fi
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          if [[ "${has_asset}" == "true" ]]; then
+            echo "should_release=false" >> "${GITHUB_OUTPUT}"
+            echo "Windows-релиз ${release_tag} уже опубликован с EXE"
+          else
+            echo "should_release=true" >> "${GITHUB_OUTPUT}"
+            echo "Windows-релиз ${release_tag} требует сборки/публикации"
+          fi
+
   build-windows-pyqt6:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: windows-latest
 
     steps:
       - name: Получить исходники
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Настроить Python
         uses: actions/setup-python@v5
@@ -54,11 +126,13 @@ jobs:
 
       - name: Удалить старые ассеты из релиза (до публикации)
         uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = process.env.RELEASE_TAG;
             const keepName = 'Bed.Mesh.Visualizer.exe';
             const legacyNames = new Set([
               'BedMeshVisualizer_Win_PyQt6.exe',
@@ -88,10 +162,11 @@ jobs:
       - name: Опубликовать релиз на GitHub
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare-release.outputs.release_tag }}
           files: dist/Bed.Mesh.Visualizer.exe
-          name: "${{ github.ref_name }}"
+          name: "${{ needs.prepare-release.outputs.release_tag }}"
           body: |
-            ## Bed Mesh Visualizer ${{ github.ref_name }}
+            ## Bed Mesh Visualizer ${{ needs.prepare-release.outputs.release_tag }}
 
             Обновление с версии 0.173.
 
@@ -111,11 +186,13 @@ jobs:
 
       - name: Удалить старые ассеты из релиза (после публикации)
         uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = process.env.RELEASE_TAG;
             const keepName = 'Bed.Mesh.Visualizer.exe';
             const legacyNames = new Set([
               'BedMeshVisualizer_Win_PyQt6.exe',
