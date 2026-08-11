@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 
 from core.mesh_parser import BedMeshData
-from ui.components.mesh_3d_math import colors_from_z, scaled_z
+from ui.components.mesh_3d_math import fit_camera, prepare_surface
+from utils.logger import get_logger
 
 # pyqtgraph/OpenGL импортируются лениво внутри ensure_ready()
 
@@ -15,9 +17,14 @@ class Mesh3DView(QWidget):
         self._palette_key = "soft"
         self._data: BedMeshData | None = None
         self._gl_view = None
+        self._grid = None
+        self._axis = None
+        self._coordinate_labels = []
         self._surface = None
+        self._gl = None
         self._ready = False
         self._failed = False
+        self._logger = get_logger(__name__)
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -32,7 +39,7 @@ class Mesh3DView(QWidget):
     def set_palette(self, palette_key: str) -> None:
         self._palette_key = palette_key or "classic"
         if self._ready and self._data is not None:
-            self.update_mesh(self._data)
+            self.update_mesh(self._data, reset_camera=False)
 
     def ensure_ready(self) -> bool:
         if self._ready:
@@ -40,37 +47,25 @@ class Mesh3DView(QWidget):
         if self._failed:
             return False
         try:
-            import numpy as np
             import pyqtgraph.opengl as gl  # noqa: WPS433
+            from ui.components.mesh_3d_camera import Mesh3DGLView
 
-            view = gl.GLViewWidget()
+            view = Mesh3DGLView()
             view.setBackgroundColor((30, 30, 30))
-            view.opts["distance"] = 40
-            view.opts["elevation"] = 25
-            view.opts["azimuth"] = -60
 
             grid = gl.GLGridItem()
-            grid.setSize(x=20, y=20)
-            grid.setSpacing(x=1, y=1)
             view.addItem(grid)
-
-            # Пустая поверхность; данные придут в update_mesh.
-            # GLSurfacePlotItem ждёт z shape (len(x), len(y)).
-            z0 = np.zeros((2, 2))
-            surface = gl.GLSurfacePlotItem(
-                z=z0,
-                shader="shaded",
-                smooth=False,
-                computeNormals=True,
-            )
-            view.addItem(surface)
-
-            self._layout.removeWidget(self._placeholder)
-            self._placeholder.hide()
+            axis = gl.GLAxisItem()
+            view.addItem(axis)
+            view.hide()
             self._layout.addWidget(view)
+            self._gl = gl
             self._gl_view = view
-            self._surface = surface
+            self._grid = grid
+            self._axis = axis
+            self._surface = None
             self._ready = True
+            self._placeholder.setText("3D: нет данных")
             if self._data is not None:
                 self.update_mesh(self._data)
             return True
@@ -79,32 +74,129 @@ class Mesh3DView(QWidget):
             self._placeholder.setText(f"3D недоступен:\n{e}")
             return False
 
-    def update_mesh(self, data: BedMeshData) -> None:
+    def update_mesh(self, data: BedMeshData, *, reset_camera: bool = True) -> None:
         self._data = data
-        if not self._ready or self._surface is None:
+        if not self._ready or self._gl_view is None or self._grid is None:
             return
-        import numpy as np
-        from pyqtgraph import Vector
+        try:
+            payload = prepare_surface(
+                data.x,
+                data.y,
+                data.z,
+                self._palette_key,
+                bed_bounds=self._bed_bounds(data),
+            )
+            if self._surface is None:
+                self._surface = self._gl.GLSurfacePlotItem(
+                    shader="shaded",
+                    smooth=False,
+                    computeNormals=True,
+                )
+                self._gl_view.addItem(self._surface)
+            self._surface.setData(
+                x=payload.x,
+                y=payload.y,
+                z=payload.z,
+                colors=payload.colors,
+            )
+            self._grid.setSize(x=payload.span_x, y=payload.span_y)
+            self._grid.setSpacing(x=payload.spacing_x, y=payload.spacing_y)
+            self._update_coordinate_axes(data, payload)
+            self._gl_view.set_home_view(fit_camera(payload), reset=reset_camera)
+            self._placeholder.hide()
+            self._gl_view.show()
+            self._gl_view.update()
+        except Exception as exc:
+            self._logger.exception("Не удалось обновить 3D-карту")
+            self._gl_view.hide()
+            self._placeholder.setText(f"3D недоступен:\n{exc}")
+            self._placeholder.show()
 
-        z = np.asarray(data.z, dtype=float)  # (ny, nx)
-        z_vis = scaled_z(z)
-        cols = colors_from_z(z, self._palette_key)  # (ny, nx, 4)
+    def _update_coordinate_axes(self, data: BedMeshData, payload) -> None:
+        if self._axis is None or self._gl is None or self._gl_view is None:
+            return
 
-        x = np.asarray(data.x, dtype=float)
-        y = np.asarray(data.y, dtype=float)
-        x_c = x - float(np.mean(x))
-        y_c = y - float(np.mean(y))
-
-        # API: z/colors shape (len(x), len(y)) == (nx, ny)
-        self._surface.setData(
-            x=x_c,
-            y=y_c,
-            z=z_vis.T,
-            colors=np.transpose(cols, (1, 0, 2)),
+        # Оси располагаются в нижнем углу поверхности. Z здесь визуальный,
+        # поэтому физические координаты подписываем только для X/Y.
+        z_floor = float(np.min(payload.z)) - max(payload.span_x, payload.span_y) * 0.08
+        axis_offset = max(payload.span_x, payload.span_y) * 0.08
+        self._axis.setSize(
+            x=payload.span_x,
+            y=payload.span_y,
+            z=max(payload.span_x, payload.span_y) * 0.18,
+        )
+        self._axis.resetTransform()
+        self._axis.translate(
+            -payload.span_x / 2.0,
+            -payload.span_y / 2.0,
+            z_floor,
         )
 
-        span = max(float(np.ptp(x)), float(np.ptp(y)), 1.0)
-        if self._gl_view is not None:
-            self._gl_view.opts["distance"] = span * 1.8
-            self._gl_view.opts["center"] = Vector(0, 0, float(np.mean(z_vis)))
-            self._gl_view.update()
+        for label in self._coordinate_labels:
+            self._gl_view.removeItem(label)
+        self._coordinate_labels = []
+
+        def add_label(text: str, pos: tuple[float, float, float]) -> None:
+            label = self._gl.GLTextItem(
+                pos=pos,
+                text=text,
+                color=(220, 220, 220, 230),
+            )
+            self._gl_view.addItem(label)
+            self._coordinate_labels.append(label)
+
+        bed_min_x, bed_max_x, bed_min_y, bed_max_y = self._bed_bounds(data)
+        x_center = (bed_min_x + bed_max_x) / 2.0
+        y_center = (bed_min_y + bed_max_y) / 2.0
+        # Для стандартной области 250 мм получаем подписи через 25 мм:
+        # 0, 25, 50, ..., 250. Для другого размера сохраняем тот же
+        # ориентир по шагу и обязательно включаем обе границы.
+        x_ticks = self._coordinate_ticks(bed_min_x, bed_max_x)
+        y_ticks = self._coordinate_ticks(bed_min_y, bed_max_y)
+        for value in x_ticks:
+            x = float(value - x_center)
+            add_label(
+                f"{value:g}",
+                (x, -payload.span_y / 2.0 - axis_offset, z_floor),
+            )
+        for value in y_ticks:
+            y = float(value - y_center)
+            add_label(
+                f"{value:g}",
+                (-payload.span_x / 2.0 - axis_offset, y, z_floor),
+            )
+
+        add_label(
+            "X (мм)",
+            (payload.span_x / 2.0 + axis_offset, -payload.span_y / 2.0 - axis_offset, z_floor),
+        )
+        add_label(
+            "Y (мм)",
+            (-payload.span_x / 2.0 - axis_offset, payload.span_y / 2.0 + axis_offset, z_floor),
+        )
+
+    @staticmethod
+    def _bed_bounds(data: BedMeshData) -> tuple[float, float, float, float]:
+        """Возвращает рабочую область, либо границы mesh для старых форматов."""
+        if data.bed_min_x is None or data.bed_max_x is None:
+            min_x, max_x = data.min_x, data.max_x
+        else:
+            min_x, max_x = data.bed_min_x, data.bed_max_x
+        if data.bed_min_y is None or data.bed_max_y is None:
+            min_y, max_y = data.min_y, data.max_y
+        else:
+            min_y, max_y = data.bed_min_y, data.bed_max_y
+        return min_x, max_x, min_y, max_y
+
+    @staticmethod
+    def _coordinate_ticks(start: float, end: float) -> np.ndarray:
+        step = 25.0
+        first = np.ceil(start / step) * step
+        ticks = np.arange(first, end + step * 0.01, step)
+        if len(ticks) == 0 or ticks[0] > start + 1e-6:
+            ticks = np.insert(ticks, 0, start)
+        elif abs(ticks[0] - start) > 1e-6:
+            ticks = np.insert(ticks, 0, start)
+        if abs(ticks[-1] - end) > 1e-6:
+            ticks = np.append(ticks, end)
+        return ticks

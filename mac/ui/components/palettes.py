@@ -1,6 +1,7 @@
 import numpy as np
 
 
+# Ключ -> (отображаемое имя, якорные цвета RGB)
 PALETTES: dict[str, tuple[str, list[tuple[int, int, int]]]] = {
     "classic": (
         "Классическая (яркая)",
@@ -18,6 +19,9 @@ PALETTES: dict[str, tuple[str, list[tuple[int, int, int]]]] = {
 
 
 def build_lut(palette_key: str) -> np.ndarray:
+    """
+    Возвращает LUT (256x4 uint8) для палитры.
+    """
     if palette_key not in PALETTES:
         palette_key = "classic"
 
@@ -25,7 +29,7 @@ def build_lut(palette_key: str) -> np.ndarray:
     pos = np.linspace(0, 255, num=len(colors)).astype(int)
 
     lut = np.zeros((256, 4), dtype=np.uint8)
-    for channel in range(3):
-        lut[:, channel] = np.interp(np.arange(256), pos, [color[channel] for color in colors])
+    for c in range(3):
+        lut[:, c] = np.interp(np.arange(256), pos, [x[c] for x in colors])
     lut[:, 3] = 255
     return lut

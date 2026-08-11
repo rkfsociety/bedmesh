@@ -1,14 +1,13 @@
 import json
 import os
-
 from PyQt6.QtCore import QByteArray, QStandardPaths
 
 
 def get_app_data_dir() -> str:
+    # AppDataLocation already includes org/app name when set on QApplication.
     base_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     if not base_dir:
-        home = os.path.expanduser("~")
-        base_dir = os.path.join(home, "Library", "Application Support", "rkfsociety", "BedMesh Visualizer")
+        base_dir = os.path.join(os.getenv("APPDATA") or os.getcwd(), "rkfsociety", "BedMesh Visualizer")
     os.makedirs(base_dir, exist_ok=True)
     return base_dir
 
@@ -37,33 +36,33 @@ class AppConfig:
             "ssh_path": "/userdata/app/gk/printer.cfg",
             "debug_mode": "true",
             "mesh_view_mode": "2d",
-            "window_geometry": "",
+            "window_geometry": ""
         }
         self.settings = self.defaults.copy()
 
     def _migrate(self):
-        old_path = "/userdata/app/gk/printer_mutable.cfg"
-        new_path = "/userdata/app/gk/printer.cfg"
-        if self.settings.get("ssh_path") == old_path:
-            self.settings["ssh_path"] = new_path
+        # Если раньше использовали printer_mutable.cfg по умолчанию — переедем на printer.cfg
+        old = "/userdata/app/gk/printer_mutable.cfg"
+        new = "/userdata/app/gk/printer.cfg"
+        if self.settings.get("ssh_path") == old:
+            self.settings["ssh_path"] = new
 
     def load(self):
         if os.path.exists(self.file_path):
             try:
-                with open(self.file_path, "r", encoding="utf-8") as file_obj:
-                    self.settings.update(json.load(file_obj))
-            except Exception:
-                pass
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    self.settings.update(json.load(f))
+            except Exception: pass
+        # This option is UI-only and must not persist.
         self.settings.pop("show_advanced", None)
         self._migrate()
         return self.settings
 
     def save(self):
         try:
-            with open(self.file_path, "w", encoding="utf-8") as file_obj:
-                json.dump(self.settings, file_obj, indent=2, ensure_ascii=False)
-        except Exception as error:
-            print(f"Config save error: {error}")
+            with open(self.file_path, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, indent=2, ensure_ascii=False)
+        except Exception as e: print(f"Config save error: {e}")
 
     def get(self, key, default=None):
         return self.settings.get(key, default)

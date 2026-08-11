@@ -1,42 +1,25 @@
 import os
+import math
 import re
-
-from PyQt6.QtCore import QObject, QThread, QTimer, Qt, pyqtSignal
-from PyQt6.QtWidgets import (
-    QComboBox,
-    QFileDialog,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QListWidget,
-    QMessageBox,
-    QPushButton,
-    QScrollArea,
-    QSizePolicy,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QFileDialog, QScrollArea, QGridLayout,
+                             QGroupBox, QLineEdit, QMessageBox, QListWidget, QComboBox, QSizePolicy)
+from PyQt6.QtCore import Qt, QEvent, pyqtSignal, QObject, QThread, QTimer
+from utils.strings import S
+from utils.logger import get_logger
 from core.ssh_client import (
-    cleanup_remote_backups,
-    create_remote_backup,
-    delete_remote_backup,
     download_cfg_via_ssh,
-    ensure_remote_backup_exists,
+    upload_cfg_with_backup_and_verify,
+    sha256_local_file,
     list_remote_backups,
     restore_remote_backup,
-    sha256_local_file,
-    sha256_remote_file_via_sftp,
-    upload_cfg_via_ssh,
+    delete_remote_backup,
+    ensure_remote_backup_exists,
+    create_remote_backup_and_cleanup,
 )
-from utils.logger import get_logger
-from utils.strings import S
-
 
 class _SshDownloadWorker(QObject):
-    finished = pyqtSignal(bool, str, str)
+    finished = pyqtSignal(bool, str, str)  # ok, local_path, error_text
 
     def __init__(self, ip: str, port: int, user: str, pwd: str, remote_path: str):
         super().__init__()
@@ -53,23 +36,13 @@ class _SshDownloadWorker(QObject):
                 self.finished.emit(True, local_path, "")
             else:
                 self.finished.emit(False, "", "download_cfg_via_ssh returned None")
-        except Exception as error:
-            self.finished.emit(False, "", str(error))
-
+        except Exception as e:
+            self.finished.emit(False, "", str(e))
 
 class _SshUploadWorker(QObject):
-    finished = pyqtSignal(bool, str)
+    finished = pyqtSignal(bool, str)  # ok, error_text
 
-    def __init__(
-        self,
-        local_path: str,
-        ip: str,
-        port: int,
-        user: str,
-        pwd: str,
-        remote_path: str,
-        create_backup: bool = True,
-    ):
+    def __init__(self, local_path: str, ip: str, port: int, user: str, pwd: str, remote_path: str, create_backup: bool = True):
         super().__init__()
         self.local_path = local_path
         self.ip = ip
@@ -85,52 +58,23 @@ class _SshUploadWorker(QObject):
             local_sha = sha256_local_file(self.local_path)
             self.logger.info("SSH upload verify: local_sha256=%s local_path=%s", local_sha, self.local_path)
 
-            if self.create_backup:
-                backup_path = create_remote_backup(self.ip, self.port, self.user, self.pwd, self.remote_path)
-                if not backup_path:
-                    self.finished.emit(False, "backup_failed")
-                    return
-                self.logger.info("SSH upload verify: backup_created=%s", backup_path)
-
-            ok = upload_cfg_via_ssh(self.local_path, self.ip, self.port, self.user, self.pwd, self.remote_path)
-            if not ok:
-                self.finished.emit(False, "upload_failed")
-                return
-
-            remote_sha = sha256_remote_file_via_sftp(self.ip, self.port, self.user, self.pwd, self.remote_path)
-            if not remote_sha:
-                self.finished.emit(False, "verify_failed")
-                return
-            if remote_sha != local_sha:
-                self.logger.error(
-                    "SSH upload verify mismatch: local=%s remote=%s remote_path=%s",
-                    local_sha,
-                    remote_sha,
-                    self.remote_path,
-                )
-                self.finished.emit(False, "verify_failed")
-                return
-            self.logger.info("SSH upload verify ok: sha256=%s", remote_sha)
-
-            cleanup_remote_backups(self.ip, self.port, self.user, self.pwd, self.remote_path)
-            self.finished.emit(True, "")
-        except Exception as error:
-            self.finished.emit(False, str(error))
-
+            ok, error = upload_cfg_with_backup_and_verify(
+                self.local_path,
+                self.ip,
+                self.port,
+                self.user,
+                self.pwd,
+                self.remote_path,
+                create_backup=self.create_backup,
+            )
+            self.finished.emit(ok, error)
+        except Exception as e:
+            self.finished.emit(False, str(e))
 
 class _SshBackupWorker(QObject):
-    finished = pyqtSignal(bool, object, str)
+    finished = pyqtSignal(bool, object, str)  # ok, payload, error_text
 
-    def __init__(
-        self,
-        action: str,
-        ip: str,
-        port: int,
-        user: str,
-        pwd: str,
-        remote_path: str,
-        backup_path: str | None = None,
-    ):
+    def __init__(self, action: str, ip: str, port: int, user: str, pwd: str, remote_path: str, backup_path: str | None = None):
         super().__init__()
         self.action = action
         self.ip = ip
@@ -151,11 +95,17 @@ class _SshBackupWorker(QObject):
                 self.finished.emit(True, created, "")
                 return
             if self.action == "create":
-                created = create_remote_backup(self.ip, self.port, self.user, self.pwd, self.remote_path)
+                created = create_remote_backup_and_cleanup(
+                    self.ip,
+                    self.port,
+                    self.user,
+                    self.pwd,
+                    self.remote_path,
+                    max_backups=5,
+                )
                 if not created:
                     self.finished.emit(False, None, "create_failed")
                     return
-                cleanup_remote_backups(self.ip, self.port, self.user, self.pwd, self.remote_path, max_backups=5)
                 self.finished.emit(True, created, "")
                 return
             if self.action == "restore":
@@ -173,9 +123,8 @@ class _SshBackupWorker(QObject):
                 self.finished.emit(ok, self.backup_path, "" if ok else "delete_failed")
                 return
             self.finished.emit(False, None, f"unknown_action:{self.action}")
-        except Exception as error:
-            self.finished.emit(False, None, str(error))
-
+        except Exception as e:
+            self.finished.emit(False, None, str(e))
 
 class KlipperConfigParser:
     def __init__(self, filepath):
@@ -187,42 +136,135 @@ class KlipperConfigParser:
         if not os.path.exists(self.filepath):
             return
 
-        with open(self.filepath, "r", encoding="utf-8") as file_obj:
-            self.raw_lines = file_obj.readlines()
+        with open(self.filepath, 'r', encoding='utf-8') as f:
+            self.raw_lines = f.readlines()
 
         self.sections.clear()
         current_section = None
 
-        for index, line in enumerate(self.raw_lines):
+        for i, line in enumerate(self.raw_lines):
             stripped = line.strip()
 
-            if not stripped or stripped.startswith("#"):
+            if not stripped or stripped.startswith('#'):
                 continue
 
-            match = re.match(r"^\[(.+)\]$", stripped)
-            if match:
-                current_section = match.group(1)
+            m = re.match(r'^\[(.+)\]$', stripped)
+            if m:
+                current_section = m.group(1)
                 if current_section not in self.sections:
                     self.sections[current_section] = {}
                 continue
 
-            if current_section and ":" in stripped and not stripped.startswith("#"):
-                parts = stripped.split(":", 1)
-                if len(parts) == 2:
-                    key = parts[0].strip()
-                    val_part = parts[1].split("#")[0].strip()
-                    self.sections[current_section][key] = (val_part, index)
+            if current_section and ':' in stripped:
+                if not stripped.startswith('#'):
+                    parts = stripped.split(':', 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val_part = parts[1].split('#')[0].strip()
+                    self.sections[current_section][key] = (val_part, i)
 
+
+def _ace_numeric_value(section: dict[str, tuple[str, int]], key: str) -> float | None:
+    entry = section.get(key)
+    if not entry:
+        return None
+    try:
+        return float(entry[0].strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _ace_preset_values(
+    percent: int,
+    standard: dict[str, str],
+    optimized: dict[str, str],
+) -> dict[str, float]:
+    factor = percent / 100.0
+    values = {
+        key: float(value) * factor
+        for key, value in standard.items()
+        if key != "unwind_length_after_triggered"
+    }
+    values["unwind_length_after_triggered"] = float(
+        (optimized if percent != 100 else standard)["unwind_length_after_triggered"]
+    )
+    return values
+
+
+def _ace_preset_matches(
+    section: dict[str, tuple[str, int]],
+    percent: int,
+    standard: dict[str, str],
+    optimized: dict[str, str],
+) -> bool:
+    expected = _ace_preset_values(percent, standard, optimized)
+    observed = []
+    for key, expected_value in expected.items():
+        actual_value = _ace_numeric_value(section, key)
+        if actual_value is not None:
+            observed.append(math.isclose(actual_value, expected_value, abs_tol=0.01))
+    return bool(observed) and all(observed)
+
+
+def _ace_current_label(
+    section: dict[str, tuple[str, int]],
+    standard: dict[str, str],
+    optimized: dict[str, str],
+    presets: tuple[int, ...],
+) -> tuple[int | None, str | None]:
+    for percent in presets:
+        if _ace_preset_matches(section, percent, standard, optimized):
+            return percent, None
+
+    ratios = []
+    for key in (
+        "v1_unwind_speed",
+        "v2_unwind_speed",
+        "v1_feed_speed",
+        "v2_feed_speed",
+        "unwind_speed_old_ace",
+    ):
+        actual = _ace_numeric_value(section, key)
+        if actual is not None and float(standard[key]) != 0:
+            ratios.append(actual / float(standard[key]) * 100.0)
+    if ratios:
+        percent = max(0, int(round(sum(ratios) / len(ratios))))
+        return None, f"Текущее: ~{percent}%"
+    return None, "Текущее: нестандартное"
+
+
+def _parse_probe_count(value: str) -> tuple[int, int] | None:
+    """Разбирает probe_count в пару положительных целых чисел."""
+    raw_value = (value or "").strip()
+    if "," in raw_value and any(not part.strip() for part in raw_value.split(",")):
+        return None
+    parts = [part for part in re.split(r"[,\s]+", raw_value) if part]
+    if len(parts) == 1:
+        parts *= 2
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return None
+    counts = int(parts[0]), int(parts[1])
+    return counts if all(count > 0 for count in counts) else None
+
+
+def _probe_count_allows_lagrange(value: str) -> bool:
+    counts = _parse_probe_count(value)
+    return counts is None or max(counts) <= 5
 
 class ConfigEditor(QWidget):
+    # Сигнал для уведомления внешней системы о завершении SSH операции
     ssh_operation_finished = pyqtSignal()
-    ssh_download_succeeded = pyqtSignal(str)
+    ssh_download_succeeded = pyqtSignal(str)  # local_path
 
     def __init__(self):
         super().__init__()
+        # Три колонки с подписями и полями не должны сжиматься до состояния,
+        # в котором текст перекрывается соседними редакторами.
+        self.setMinimumWidth(900)
         self.logger = get_logger(__name__)
         self.parser = None
         self.widgets = {}
+        # Pending Ace Pro changes (applied on save)
         self._ace_pending: dict[str, str] = {}
         self._file_path = None
         self._ssh_config = None
@@ -233,13 +275,16 @@ class ConfigEditor(QWidget):
         self._ssh_backup_thread = None
         self._ssh_backup_worker = None
         self._auto_backup_done = False
+        self._algorithm_constraint_updating = False
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
 
+        # Панель управления бэкапами (идёт первой)
         self.backup_group = QGroupBox("🧰 Бекапы printer.cfg")
+        # Don't let this block steal vertical space.
         self.backup_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         b_layout = QVBoxLayout(self.backup_group)
         b_layout.setContentsMargins(8, 8, 8, 8)
@@ -290,11 +335,22 @@ class ConfigEditor(QWidget):
 
         layout.addLayout(toolbar)
 
+        self.field_hint = QLabel("ℹ️ Выберите поле, чтобы увидеть описание параметра")
+        self.field_hint.setWordWrap(True)
+        self.field_hint.setMinimumHeight(32)
+        self.field_hint.setStyleSheet(
+            "background: #26384a; color: #e8f1f8; border: 1px solid #5b8db8; "
+            "border-radius: 3px; padding: 6px 8px;"
+        )
+        layout.addWidget(self.field_hint)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.container = QWidget()
+        self.container.setMinimumWidth(0)
+        self.container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -308,10 +364,29 @@ class ConfigEditor(QWidget):
         self.btn_backup_restore.clicked.connect(lambda: self._run_backup_action("restore"))
         self.btn_backup_delete.clicked.connect(lambda: self._run_backup_action("delete"))
 
+    def _register_field_hint(self, widget: QWidget, tooltip: str) -> None:
+        if not tooltip:
+            return
+        widget.setProperty("config_hint", tooltip)
+        widget.installEventFilter(self)
+        # Составные поля (например, строка Ace Pro) передают фокус дочернему
+        # комбобоксу, поэтому регистрируем и его дочерние виджеты.
+        for child in widget.findChildren(QWidget):
+            child.setProperty("config_hint", tooltip)
+            child.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.FocusIn:
+            tooltip = watched.property("config_hint")
+            if tooltip:
+                self.field_hint.setText(f"ℹ️ {tooltip}")
+        return super().eventFilter(watched, event)
+
     def set_ssh_config(self, config):
         self._ssh_config = config
 
     def load_from_ssh_data(self, ssh_data):
+        """Вызывается главным окном при получении сигнала от LeftPanel"""
         if self._ssh_thread and self._ssh_thread.isRunning():
             self.logger.warning("SSH download requested while previous still running")
             return
@@ -336,7 +411,7 @@ class ConfigEditor(QWidget):
             "port": port,
             "user": user,
             "password": pwd,
-            "path": remote_path,
+            "path": remote_path
         }
 
         self.status.setText(f"⏳ Подключение к {ip}...")
@@ -364,18 +439,17 @@ class ConfigEditor(QWidget):
                 self.status.setText(f"✅ Загружено с принтера ({ip})")
                 self.ssh_download_succeeded.emit(local_path)
 
+                # После первого успешного подключения — создаём "базовый" бекап, если наших бекапов ещё нет.
+                # И всегда обновляем список бэкапов.
                 if not self._auto_backup_done and self._ssh_config:
                     self._auto_backup_done = True
+                    # `ensure` will schedule a refresh when it completes.
                     self._run_backup_action("ensure", silent=True)
                 else:
                     self._refresh_backups()
             else:
                 self.logger.error("SSH UI download failed: %s", error_text)
-                QMessageBox.critical(
-                    self,
-                    "Ошибка SSH",
-                    "Не удалось скачать файл.\nПроверьте настройки подключения.\nПодробности в debug.log",
-                )
+                QMessageBox.critical(self, "Ошибка SSH", "Не удалось скачать файл.\nПроверьте настройки подключения.\nПодробности в debug.log")
                 self.status.setText("❌ Ошибка загрузки")
         finally:
             self._ssh_worker = None
@@ -409,9 +483,7 @@ class ConfigEditor(QWidget):
         self._ssh_backup_worker = _SshBackupWorker(action, ip, port, user, pwd, remote_path, backup_path=backup_path)
         self._ssh_backup_worker.moveToThread(self._ssh_backup_thread)
         self._ssh_backup_thread.started.connect(self._ssh_backup_worker.run)
-        self._ssh_backup_worker.finished.connect(
-            lambda ok, payload, err: self._on_backup_action_finished(action, ok, payload, err, silent)
-        )
+        self._ssh_backup_worker.finished.connect(lambda ok, payload, err: self._on_backup_action_finished(action, ok, payload, err, silent))
         self._ssh_backup_worker.finished.connect(self._ssh_backup_thread.quit)
         self._ssh_backup_thread.finished.connect(self._ssh_backup_thread.deleteLater)
         self._ssh_backup_thread.start()
@@ -421,13 +493,17 @@ class ConfigEditor(QWidget):
         try:
             if action == "list" and ok:
                 self.backup_list.clear()
-                for path in payload or []:
-                    self.backup_list.addItem(str(path))
+                for p in (payload or []):
+                    self.backup_list.addItem(str(p))
                 self._update_backup_list_height()
                 self.backup_status.setText(f"✅ Бекапов: {self.backup_list.count()} (лимит 5)")
                 return
 
-            if action in ("ensure", "create", "restore", "delete") and ok:
+            if action in ("ensure", "create") and ok:
+                self.backup_status.setText("✅ Готово")
+                should_refresh = True
+
+            if action in ("restore", "delete") and ok:
                 self.backup_status.setText("✅ Готово")
                 should_refresh = True
 
@@ -439,11 +515,17 @@ class ConfigEditor(QWidget):
             self._ssh_backup_worker = None
             self._ssh_backup_thread = None
             if should_refresh:
+                # Defer refresh until after thread objects are cleared,
+                # otherwise `_run_backup_action` may think an operation is still running.
                 QTimer.singleShot(0, self._refresh_backups)
 
     def _update_backup_list_height(self, max_rows: int = 5):
+        """
+        Keep the list compact and show up to max_rows without a vertical scrollbar.
+        """
         rows = min(self.backup_list.count(), max_rows)
         if rows <= 0:
+            # reasonable default for an empty list (no scrollbar anyway)
             row_h = max(self.fontMetrics().height() + 6, 18)
             rows = 1
         else:
@@ -452,7 +534,7 @@ class ConfigEditor(QWidget):
                 row_h = max(self.fontMetrics().height() + 6, 18)
 
         frame = self.backup_list.frameWidth() * 2
-        height = frame + (row_h * rows) + 2
+        height = frame + (row_h * rows) + 2  # small padding
         self.backup_list.setFixedHeight(height)
 
     def load_file(self, path=None):
@@ -463,6 +545,7 @@ class ConfigEditor(QWidget):
             return
 
         self._process_loaded_file(path)
+        # Local load doesn't imply we can upload; keep Save disabled until SSH load.
         self.btn_save.setEnabled(False)
 
     def _process_loaded_file(self, path):
@@ -478,16 +561,16 @@ class ConfigEditor(QWidget):
             self.logger.info(
                 "Config processing done: sections=%s file_path=%s",
                 len(self.parser.sections) if self.parser else None,
-                self._file_path,
+                self._file_path
             )
-        except Exception as error:
-            self.logger.exception("Config processing failed: path=%s error=%s", path, error)
-            QMessageBox.critical(self, "Ошибка", S.get("config.msg_load_error", error=str(error)))
+        except Exception as e:
+            self.logger.exception("Config processing failed: path=%s error=%s", path, e)
+            QMessageBox.critical(self, "Ошибка", S.get("config.msg_load_error", error=str(e)))
 
     def _build_ui(self):
         self.logger.debug(
             "Build UI start: sections_present=%s",
-            list(self.parser.sections.keys())[:10] if self.parser and self.parser.sections else [],
+            list(self.parser.sections.keys())[:10] if self.parser and self.parser.sections else []
         )
         while self.container_layout.count():
             item = self.container_layout.takeAt(0)
@@ -500,7 +583,7 @@ class ConfigEditor(QWidget):
             self.logger.warning("Build UI: no sections parsed")
             return
 
-        target_sections = ["bed_mesh", "filament_hub"]
+        target_sections = ["bed_mesh", "probe", "printer", "safe_z_home", "leviQ3", "filament_hub"]
 
         for sec_name in target_sections:
             if sec_name not in self.parser.sections:
@@ -509,29 +592,83 @@ class ConfigEditor(QWidget):
 
             sec_meta_key = f"config.sections.{sec_name}"
             sec_data = S.get(sec_meta_key, title=f"⚙️ [{sec_name}]")
+            # `S.get` returns key string if the locale key is missing (or locale isn't loaded in packaged app).
+            # Keep UI functional even without metadata.
             if isinstance(sec_data, str):
                 self.logger.warning("Build UI: locale/meta missing for %s (got str)", sec_meta_key)
                 sec_data = {"title": f"⚙️ [{sec_name}]", "fields": {}}
             fields_meta = sec_data.get("fields", {}) if isinstance(sec_data, dict) else {}
 
             group = QGroupBox(sec_data.get("title") if isinstance(sec_data, dict) else f"⚙️ [{sec_name}]")
-            form = QFormLayout()
+            form = QGridLayout()
+            form.setHorizontalSpacing(10)
+            form.setVerticalSpacing(6)
+            for column in (0, 2, 4):
+                form.setColumnStretch(column, 2)
+            for column in (1, 3, 5):
+                form.setColumnStretch(column, 1)
             group.setLayout(form)
+            form_field_index = 0
+
+            def add_form_field(
+                label_text: str,
+                widget: QWidget,
+                tooltip: str = "",
+                standard_value: str = "",
+            ) -> None:
+                nonlocal form_field_index
+                row = form_field_index // 3
+                column = (form_field_index % 3) * 2
+                # NBSP внутри суффикса не даёт Qt разорвать пару
+                # «по умолчанию: значение» на разные строки.
+                standard_suffix = (
+                    f" (по\u00a0умолчанию:\u00a0{standard_value})"
+                    if standard_value
+                    else ""
+                )
+                label = QLabel(f"{label_text}{standard_suffix}:")
+                if tooltip:
+                    label.setToolTip(tooltip)
+                    widget.setToolTip(tooltip)
+                    self._register_field_hint(widget, tooltip)
+                # Разрешаем перенос длинной подписи, но суффикс с эталонным
+                # значением переносится только целиком.
+                label.setWordWrap(True)
+                label.setMinimumWidth(0)
+                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                widget.setMinimumWidth(0)
+                widget.setFixedHeight(30)
+                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+                form.addWidget(label, row, column)
+                form.addWidget(widget, row, column + 1)
+                form_field_index += 1
 
             has_fields = False
 
+            # Special UI for Ace Pro: show 2 unified fields, but write into v1/v2 keys.
             if sec_name == "filament_hub" and isinstance(fields_meta, dict) and (
                 "ace_feed_speed" in fields_meta or "ace_unwind_speed" in fields_meta
             ):
-                standard = {
+                # Do not show individual params here — only percent selector.
+                # Changes are stored in self._ace_pending and written on Save.
+
+                # "Acceleration" factor for Ace Pro:
+                # - only speeds are scaled relative to STANDARD values
+                # - unwind_length_after_triggered is switched only when >100%
+                # - all other parameters are left untouched
+                standard: dict[str, str] = {
+                    # Speeds (scaled):
                     "v1_unwind_speed": "20",
                     "v2_unwind_speed": "20",
                     "v1_feed_speed": "30",
                     "v2_feed_speed": "30",
                     "unwind_speed_old_ace": "15",
+                    # Non-speed param (standard):
                     "unwind_length_after_triggered": "1300",
                 }
-                optimized = {
+
+                optimized: dict[str, str] = {
+                    # Tuned for Ace Pro mode.
                     "unwind_length_after_triggered": "1220",
                 }
 
@@ -540,7 +677,21 @@ class ConfigEditor(QWidget):
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
                 cb_preset.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
-                cb_preset.addItems(["100%", "150%", "200%", "250%", "300%"])
+                preset_percents = (100, 150, 200, 250, 300)
+                for percent in preset_percents:
+                    cb_preset.addItem(f"{percent}%", percent)
+                current_percent, current_label = _ace_current_label(
+                    self.parser.sections[sec_name],
+                    standard,
+                    optimized,
+                    preset_percents,
+                )
+                if current_label:
+                    cb_preset.insertItem(0, current_label, None)
+                    cb_preset.setCurrentIndex(0)
+                else:
+                    cb_preset.setCurrentIndex(preset_percents.index(current_percent))
+                # Make the dropdown wide enough to read percentages.
                 cb_preset.setMinimumWidth(110)
                 try:
                     cb_preset.view().setMinimumWidth(110)
@@ -548,29 +699,27 @@ class ConfigEditor(QWidget):
                     pass
 
                 def _apply_preset():
-                    pct_text = (cb_preset.currentText() or "100%").strip().replace("%", "")
-                    try:
-                        pct = int(pct_text)
-                    except Exception:
-                        pct = 100
+                    pct_data = cb_preset.currentData()
+                    if pct_data is None:
+                        return
+                    pct = int(pct_data)
                     factor = max(0, pct) / 100.0 if pct else 1.0
                     use_optimized = pct != 100
 
-                    def _scale_int(value: str) -> str:
+                    def _scale_int(s: str) -> str:
                         try:
-                            return str(int(round(float(value) * factor)))
+                            return str(int(round(float(s) * factor)))
                         except Exception:
-                            return value
+                            return s
 
+                    # Store pending changes (written on Save).
                     self._ace_pending = {
                         "v2_unwind_speed": _scale_int(standard["v2_unwind_speed"]),
                         "v1_unwind_speed": _scale_int(standard["v1_unwind_speed"]),
                         "v2_feed_speed": _scale_int(standard["v2_feed_speed"]),
                         "v1_feed_speed": _scale_int(standard["v1_feed_speed"]),
                         "unwind_speed_old_ace": _scale_int(standard["unwind_speed_old_ace"]),
-                        "unwind_length_after_triggered": (
-                            optimized if use_optimized else standard
-                        )["unwind_length_after_triggered"],
+                        "unwind_length_after_triggered": (optimized if use_optimized else standard)["unwind_length_after_triggered"],
                     }
 
                     self._on_changed()
@@ -579,19 +728,37 @@ class ConfigEditor(QWidget):
 
                 preset_layout.addWidget(cb_preset)
                 preset_layout.addStretch()
-                form.addRow("Ускорение Ace Pro:", preset_row)
+                add_form_field(
+                    "Ускорение Ace Pro",
+                    preset_row,
+                    "Множитель скоростей подачи и отката Ace Pro. "
+                    "100% — значение по умолчанию, 300% — скорость в 3 раза выше. "
+                    "Значения применятся после нажатия «Сохранить». ",
+                    "100%",
+                )
                 has_fields = True
 
             else:
-                for key, (val, _line_idx) in self.parser.sections[sec_name].items():
+                visible_keys = list(self.parser.sections[sec_name].keys())
+                for key in fields_meta:
+                    if key not in visible_keys:
+                        visible_keys.append(key)
+
+                for key in visible_keys:
+                    current_entry = self.parser.sections[sec_name].get(key)
+                    val = current_entry[0] if current_entry else ""
                     meta = fields_meta.get(key)
                     if not meta:
                         continue
 
-                    label = meta.get("label", key)
-                    placeholder = meta.get("ph", "")
-                    tooltip = meta.get("tip", "")
+                    label = meta.get('label', key)
+                    placeholder = meta.get('ph', '')
+                    tooltip = meta.get('tip', '')
+                    standard_value = str(meta.get('default', '')).strip()
+                    if standard_value:
+                        tooltip = f"{tooltip} По умолчанию в версии 2.7.2.7: {standard_value}.".strip()
 
+                    editor_widget: QWidget
                     if key == "algorithm":
                         cb = QComboBox()
                         cb.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
@@ -610,20 +777,60 @@ class ConfigEditor(QWidget):
                         le.setPlaceholderText(placeholder)
                         le.setToolTip(tooltip)
                         le.textChanged.connect(self._on_changed)
+                        if sec_name == "bed_mesh" and key == "probe_count":
+                            le.textChanged.connect(self._on_probe_count_changed)
                         editor_widget = le
 
-                    form.addRow(f"{label}:", editor_widget)
+                    add_form_field(label, editor_widget, tooltip, standard_value)
                     self.widgets[(sec_name, key)] = editor_widget
                     has_fields = True
 
             if has_fields:
                 self.container_layout.addWidget(group)
 
+            if sec_name == "bed_mesh":
+                self._refresh_algorithm_constraint()
+
         self.container_layout.addStretch()
         self.logger.debug("Build UI done: widgets=%s", len(self.widgets))
 
     def _on_changed(self):
         self.btn_save.setEnabled(True)
+
+    def _on_probe_count_changed(self, _value: str) -> None:
+        self._refresh_algorithm_constraint()
+        self._on_changed()
+
+    def _refresh_algorithm_constraint(self) -> None:
+        probe_widget = self.widgets.get(("bed_mesh", "probe_count"))
+        algorithm = self.widgets.get(("bed_mesh", "algorithm"))
+        if not isinstance(probe_widget, QLineEdit) or not isinstance(algorithm, QComboBox):
+            return
+
+        allow_lagrange = _probe_count_allows_lagrange(probe_widget.text())
+        was_lagrange = algorithm.currentText() == "lagrange"
+        algorithm.blockSignals(True)
+        try:
+            lagrange_index = algorithm.findText("lagrange")
+            if allow_lagrange:
+                if lagrange_index < 0:
+                    algorithm.insertItem(0, "lagrange")
+            else:
+                if algorithm.currentText() == "lagrange":
+                    bicubic_index = algorithm.findText("bicubic")
+                    if bicubic_index >= 0:
+                        algorithm.setCurrentIndex(bicubic_index)
+                lagrange_index = algorithm.findText("lagrange")
+                if lagrange_index >= 0:
+                    algorithm.removeItem(lagrange_index)
+                if algorithm.currentText() != "bicubic":
+                    bicubic_index = algorithm.findText("bicubic")
+                    if bicubic_index >= 0:
+                        algorithm.setCurrentIndex(bicubic_index)
+        finally:
+            algorithm.blockSignals(False)
+        if was_lagrange and not allow_lagrange:
+            self._on_changed()
 
     def save_to_printer(self):
         if not self._ssh_config:
@@ -641,11 +848,7 @@ class ConfigEditor(QWidget):
 
         self.logger.info(
             "SSH UI upload requested: host=%s port=%s user=%s remote_path=%s local_path=%s",
-            ip,
-            port,
-            user,
-            remote_path,
-            self._file_path,
+            ip, port, user, remote_path, self._file_path
         )
 
         if self._ssh_upload_thread and self._ssh_upload_thread.isRunning():
@@ -668,10 +871,7 @@ class ConfigEditor(QWidget):
     def _on_ssh_upload_finished(self, ok: bool, error_text: str):
         try:
             if ok:
-                self.logger.info(
-                    "SSH UI upload success: remote_path=%s",
-                    self._ssh_config.get("path") if self._ssh_config else None,
-                )
+                self.logger.info("SSH UI upload success: remote_path=%s", self._ssh_config.get("path") if self._ssh_config else None)
                 self.status.setText("✅ Сохранено на принтер")
                 QMessageBox.information(self, "Успех", "Файл отправлен. Бэкап создан. Не забудьте перезагрузить принтер.")
                 return
@@ -681,12 +881,13 @@ class ConfigEditor(QWidget):
                     self,
                     "Предупреждение",
                     "Не удалось создать бекап на принтере. Продолжить сохранение без бекапа?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.No:
                     self.status.setText("❌ Отменено")
                     return
 
+                # Retry upload without backup in UI thread is still a bad idea; do it in a short worker.
                 ip = self._ssh_config["ip"]
                 port = self._ssh_config["port"]
                 user = self._ssh_config["user"]
@@ -697,15 +898,7 @@ class ConfigEditor(QWidget):
                 self.repaint()
 
                 self._ssh_upload_thread = QThread(self)
-                self._ssh_upload_worker = _SshUploadWorker(
-                    self._file_path,
-                    ip,
-                    port,
-                    user,
-                    pwd,
-                    remote_path,
-                    create_backup=False,
-                )
+                self._ssh_upload_worker = _SshUploadWorker(self._file_path, ip, port, user, pwd, remote_path, create_backup=False)
                 self._ssh_upload_worker.moveToThread(self._ssh_upload_thread)
                 self._ssh_upload_thread.started.connect(self._ssh_upload_worker.run)
                 self._ssh_upload_worker.finished.connect(self._on_ssh_upload_finished)
@@ -729,31 +922,62 @@ class ConfigEditor(QWidget):
         try:
             changed = False
 
+            # Не даём сохранить Lagrange при сетке больше 5x5.
+            self._refresh_algorithm_constraint()
+
             def _set_key_value(sec: str, key: str, new_val: str) -> bool:
                 nonlocal changed
-                if sec not in self.parser.sections or key not in self.parser.sections[sec]:
+                if sec not in self.parser.sections:
                     return False
+                if key not in self.parser.sections[sec]:
+                    if not new_val:
+                        return False
+
+                    section_start = None
+                    insert_at = len(self.parser.raw_lines)
+                    section_pattern = re.compile(r'^\s*\[(.+)\]\s*$')
+                    for index, line in enumerate(self.parser.raw_lines):
+                        match = section_pattern.match(line.strip())
+                        if match and match.group(1) == sec:
+                            section_start = index
+                            continue
+                        if section_start is not None and match:
+                            insert_at = index
+                            break
+                    if section_start is None:
+                        return False
+
+                    self.parser.raw_lines.insert(insert_at, f"{key}: {new_val}\n")
+                    for section_data in self.parser.sections.values():
+                        for existing_key, (existing_value, existing_index) in list(section_data.items()):
+                            if existing_index >= insert_at:
+                                section_data[existing_key] = (existing_value, existing_index + 1)
+                    self.parser.sections[sec][key] = (new_val, insert_at)
+                    changed = True
+                    return True
+
                 old_val, line_idx = self.parser.sections[sec][key]
                 if new_val == old_val:
                     return False
                 original_line = self.parser.raw_lines[line_idx]
-                indent = original_line[: len(original_line) - len(original_line.lstrip())]
+                indent = original_line[:len(original_line) - len(original_line.lstrip())]
                 self.parser.raw_lines[line_idx] = f"{indent}{key}: {new_val}\n"
                 changed = True
                 return True
 
-            for (sec, key), widget in self.widgets.items():
-                new_val = self._get_widget_value(widget).strip()
-                new_val = self._normalize_bed_mesh_value(key, new_val, widget if isinstance(widget, QLineEdit) else None)
+            for (sec, key), w in self.widgets.items():
+                new_val = self._get_widget_value(w).strip()
+                new_val = self._normalize_bed_mesh_value(key, new_val, w if isinstance(w, QLineEdit) else None)
                 _set_key_value(sec, key, new_val)
 
+            # Ace Pro percent selector writes pending values into [filament_hub]
             if self._ace_pending:
-                for key, value in (self._ace_pending or {}).items():
-                    _set_key_value("filament_hub", key, str(value).strip())
+                for k, v in (self._ace_pending or {}).items():
+                    _set_key_value("filament_hub", k, str(v).strip())
 
             if changed:
-                with open(self._file_path, "w", encoding="utf-8") as file_obj:
-                    file_obj.writelines(self.parser.raw_lines)
+                with open(self._file_path, 'w', encoding='utf-8') as f:
+                    f.writelines(self.parser.raw_lines)
                 self.parser.load()
 
             self.btn_save.setEnabled(False)
@@ -763,47 +987,58 @@ class ConfigEditor(QWidget):
                 QMessageBox.information(self, S.get("config.msg_save_ok_title"), S.get("config.msg_save_ok_text"))
 
             return True
-        except Exception as error:
+
+        except Exception as e:
             if not silent:
-                QMessageBox.critical(self, "Ошибка", str(error))
+                QMessageBox.critical(self, "Ошибка", str(e))
             return False
 
-    def _get_widget_value(self, widget: QWidget) -> str:
-        if isinstance(widget, QLineEdit):
-            return widget.text()
-        if isinstance(widget, QComboBox):
-            return widget.currentText()
+    def _get_widget_value(self, w: QWidget) -> str:
+        if isinstance(w, QLineEdit):
+            return w.text()
+        if isinstance(w, QComboBox):
+            return w.currentText()
         return ""
 
     def _display_bed_mesh_value(self, key: str, raw_val: str) -> str:
+        """
+        UX helper: show single number in editor for pair values if they are identical.
+        Example: "5,5" -> "5"
+        """
         if key not in ("mesh_min", "mesh_max", "probe_count"):
             return raw_val
         if raw_val is None:
             return ""
-        value = str(raw_val).strip()
-        parts = [part.strip() for part in value.split(",")]
+        s = str(raw_val).strip()
+        parts = [p.strip() for p in s.split(",")]
         if len(parts) != 2:
-            return value
-        first, second = parts[0], parts[1]
-        if first == "" or second == "":
-            return value
-        if first == second:
-            return first
-        return value
+            return s
+        a, b = parts[0], parts[1]
+        if a == "" or b == "":
+            return s
+        if a == b:
+            return a
+        return s
 
     def _normalize_bed_mesh_value(self, key: str, value: str, le: QLineEdit | None = None) -> str:
-        del le
+        """
+        UX helper: for pair values like mesh_min/mesh_max/probe_count allow entering single number (e.g. "5")
+        and write it as "5,5" in config.
+        """
         if key not in ("mesh_min", "mesh_max", "probe_count"):
             return value
-        normalized = (value or "").strip()
-        if not normalized:
-            return normalized
-        if "," in normalized:
-            return normalized
+        v = (value or "").strip()
+        if not v:
+            return v
+        if "," in v:
+            return v
+        # If user entered a single number, duplicate it.
+        # For probe_count prefer integers.
         num_re = r"\d+" if key == "probe_count" else r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
-        if re.fullmatch(num_re, normalized):
-            return f"{normalized},{normalized}"
-        return normalized
+        if re.fullmatch(num_re, v):
+            normalized = f"{v},{v}"
+            return normalized
+        return v
 
     def load_from_path(self, path):
         self.load_file(path)

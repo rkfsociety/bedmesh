@@ -1,11 +1,9 @@
-import json
 import re
+import json
+import numpy as np
+from typing import Optional
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
-import numpy as np
-
 
 @dataclass
 class BedMeshData:
@@ -18,11 +16,20 @@ class BedMeshData:
     max_x: float
     min_y: float
     max_y: float
-
+    # Рабочая область печати из `print_size`. Если её нет, 3D использует
+    # границы самой mesh-сетки.
+    bed_min_x: Optional[float] = None
+    bed_max_x: Optional[float] = None
+    bed_min_y: Optional[float] = None
+    bed_max_y: Optional[float] = None
 
 class MeshParser:
     def parse_file(self, filepath: str) -> Optional[BedMeshData]:
-        text = Path(filepath).read_text(encoding="utf-8")
+        text = Path(filepath).read_text(encoding='utf-8')
+        return self.parse_text(text)
+
+    def parse_text(self, text: str) -> Optional[BedMeshData]:
+        """Разбирает содержимое конфигурации без повторного чтения файла."""
         try:
             data = json.loads(text)
             return self._parse_json(data)
@@ -32,12 +39,11 @@ class MeshParser:
 
     def _parse_json(self, data: dict) -> Optional[BedMeshData]:
         mesh = data.get("bed_mesh default")
-        if not mesh:
-            return None
+        if not mesh: return None
 
         try:
-            x_count = int(mesh.get("x_count", 0))
-            y_count = int(mesh.get("y_count", 0))
+            x_c = int(mesh.get("x_count", 0))
+            y_c = int(mesh.get("y_count", 0))
             x_min = float(mesh.get("min_x", 0))
             x_max = float(mesh.get("max_x", 0))
             y_min = float(mesh.get("min_y", 0))
@@ -45,54 +51,67 @@ class MeshParser:
         except (TypeError, ValueError):
             return None
 
-        if x_count <= 0 or y_count <= 0:
+        # min_x/min_y часто равны 0 — это валидно, поэтому не проверяем "truthy".
+        if x_c <= 0 or y_c <= 0:
             return None
 
         points_str = mesh.get("points", "")
-        z_flat = [float(value) for value in points_str.replace(",", " ").split()]
-        if len(z_flat) != x_count * y_count:
-            return None
+        z_flat = [float(v) for v in points_str.replace(',', ' ').split()]
+        if len(z_flat) != x_c * y_c: return None
 
         return BedMeshData(
-            x=np.linspace(x_min, x_max, x_count),
-            y=np.linspace(y_min, y_max, y_count),
-            z=np.array(z_flat).reshape((y_count, x_count)),
-            x_count=x_count,
-            y_count=y_count,
-            min_x=x_min,
-            max_x=x_max,
-            min_y=y_min,
-            max_y=y_max,
+            x=np.linspace(x_min, x_max, x_c),
+            y=np.linspace(y_min, y_max, y_c),
+            z=np.array(z_flat).reshape((y_c, x_c)),
+            x_count=x_c, y_count=y_c,
+            min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max
         )
+
+    def parse_print_size(self, config_text: str) -> Optional[tuple[float, float]]:
+        """Возвращает X/Y рабочей области из `print_size: X*Y*Zmm`."""
+        match = re.search(
+            r"(?im)^\s*print_size\s*[:=]\s*"
+            r"([+-]?\d+(?:\.\d+)?)\s*[*x×]\s*"
+            r"([+-]?\d+(?:\.\d+)?)",
+            config_text,
+        )
+        if not match:
+            return None
+        try:
+            size_x, size_y = float(match.group(1)), float(match.group(2))
+        except ValueError:
+            return None
+        if size_x <= 0 or size_y <= 0:
+            return None
+        return size_x, size_y
 
     def parse_config(self, config_text: str) -> Optional[BedMeshData]:
         lines = config_text.splitlines()
         section_lines, in_section = [], False
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("[") and "bed_mesh" in stripped:
+            if stripped.startswith('[') and 'bed_mesh' in stripped:
                 in_section, section_lines = True, []
                 continue
             if in_section:
-                if stripped.startswith("["):
-                    break
+                if stripped.startswith('['): break
                 section_lines.append(line)
-        if not section_lines:
-            return None
+        if not section_lines: return None
 
         def get(key, fallback):
-            for line in section_lines:
-                line = line.split("#")[0].strip()
-                if line.startswith(f"{key}:") or line.startswith(f"{key} :"):
-                    return line.split(":", 1)[1].strip()
-                if line.startswith(f"{key} =") or line.startswith(f"{key}="):
-                    return line.split("=", 1)[1].strip()
+            for l in section_lines:
+                l = l.split('#')[0].strip()
+                # Klipper часто использует "key:"; иногда встречается "key=".
+                if l.startswith(f"{key}:") or l.startswith(f"{key} :"):
+                    return l.split(':', 1)[1].strip()
+                if l.startswith(f"{key} =") or l.startswith(f"{key}="):
+                    return l.split('=', 1)[1].strip()
             return fallback
 
         def _parse_pair(raw: str) -> Optional[tuple[float, float]]:
             if raw is None:
                 return None
-            parts = [part.strip() for part in str(raw).replace(" ", "").split(",") if part.strip() != ""]
+            parts = [p.strip() for p in str(raw).replace(" ", "").split(",") if p.strip() != ""]
             if len(parts) != 2:
                 return None
             try:
@@ -101,25 +120,27 @@ class MeshParser:
                 return None
 
         def _parse_int_pair(raw: str) -> Optional[tuple[int, int]]:
-            pair = _parse_pair(raw)
-            if not pair:
+            p = _parse_pair(raw)
+            if not p:
                 return None
-            return int(round(pair[0])), int(round(pair[1]))
+            return int(round(p[0])), int(round(p[1]))
 
+        # Формат A (старый/нестандартный): x_count/y_count + min_x/max_x + min_y/max_y + points
+        # Формат B (типичный Klipper): probe_count + mesh_min/mesh_max + points
         try:
-            x_count = int(get("x_count", 0))
-            y_count = int(get("y_count", 0))
+            x_c = int(get('x_count', 0))
+            y_c = int(get('y_count', 0))
         except (TypeError, ValueError):
-            x_count, y_count = 0, 0
+            x_c, y_c = 0, 0
 
         mesh_min_pair = _parse_pair(get("mesh_min", None))
         mesh_max_pair = _parse_pair(get("mesh_max", None))
         probe_count_pair = _parse_int_pair(get("probe_count", None))
 
-        if (x_count <= 0 or y_count <= 0) and probe_count_pair:
-            x_count, y_count = probe_count_pair[0], probe_count_pair[1]
+        if (x_c <= 0 or y_c <= 0) and probe_count_pair:
+            x_c, y_c = probe_count_pair[0], probe_count_pair[1]
 
-        if x_count <= 0 or y_count <= 0:
+        if x_c <= 0 or y_c <= 0:
             return None
 
         if mesh_min_pair and mesh_max_pair:
@@ -127,67 +148,137 @@ class MeshParser:
             x_max, y_max = mesh_max_pair[0], mesh_max_pair[1]
         else:
             try:
-                x_min = float(get("min_x", 0))
-                x_max = float(get("max_x", 0))
-                y_min = float(get("min_y", 0))
-                y_max = float(get("max_y", 0))
+                x_min = float(get('min_x', 0))
+                x_max = float(get('max_x', 0))
+                y_min = float(get('min_y', 0))
+                y_max = float(get('max_y', 0))
             except (TypeError, ValueError):
                 return None
 
-        points, capture = [], False
+        pts, capture = [], False
         for raw_line in section_lines:
-            no_comment = raw_line.split("#")[0].rstrip("\r\n")
+            # points обычно многострочные и с отступами; сохраняем сырой вариант, но убираем комментарии
+            no_comment = raw_line.split('#')[0].rstrip("\r\n")
             stripped = no_comment.strip()
             if stripped.startswith("points") and (":" in stripped or "=" in stripped):
                 capture = True
                 if ":" in stripped:
-                    after = stripped.split(":", 1)[1].strip()
+                    after = stripped.split(':', 1)[1].strip()
                 else:
-                    after = stripped.split("=", 1)[1].strip()
-                if after:
-                    points.append(after)
+                    after = stripped.split('=', 1)[1].strip()
+                if after: pts.append(after)
                 continue
             if capture:
-                if stripped.startswith("["):
+                # Остановимся на следующем ключе (например, "fade_start:"), но позволим строкам с числами/запятыми.
+                if stripped.startswith('['):
                     break
                 if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*[:=]", stripped):
                     break
                 if stripped != "":
-                    points.append(stripped)
+                    pts.append(stripped)
 
-        if not points:
+        if not pts:
             return None
 
+        # Попробуем распарсить как матрицу строк (y строк по x значений).
         rows: list[list[float]] = []
-        for line in points:
+        for line in pts:
+            # допускаем форматы: "0.1,0.2,0.3" или "[0.1, 0.2]" или "0.1 0.2 0.3"
             cleaned = line.strip().strip("[]()")
-            parts = [part for part in re.split(r"[,\s]+", cleaned) if part]
+            parts = [p for p in re.split(r"[,\s]+", cleaned) if p]
             try:
-                row = [float(part) for part in parts]
+                row = [float(p) for p in parts]
             except ValueError:
                 continue
             if row:
                 rows.append(row)
 
         z: Optional[np.ndarray] = None
-        if len(rows) == y_count and all(len(row) == x_count for row in rows):
+        if len(rows) == y_c and all(len(r) == x_c for r in rows):
             z = np.array(rows, dtype=float)
         else:
+            # fallback: плоский список
             flat: list[float] = []
-            for row in rows:
-                flat.extend(row)
-            if len(flat) != x_count * y_count:
+            for r in rows:
+                flat.extend(r)
+            if len(flat) != x_c * y_c:
                 return None
-            z = np.array(flat, dtype=float).reshape((y_count, x_count))
+            z = np.array(flat, dtype=float).reshape((y_c, x_c))
 
+        print_size = self.parse_print_size(config_text)
         return BedMeshData(
-            x=np.linspace(x_min, x_max, x_count),
-            y=np.linspace(y_min, y_max, y_count),
+            x=np.linspace(x_min, x_max, x_c),
+            y=np.linspace(y_min, y_max, y_c),
             z=z,
-            x_count=x_count,
-            y_count=y_count,
-            min_x=x_min,
-            max_x=x_max,
-            min_y=y_min,
-            max_y=y_max,
+            x_count=x_c, y_count=y_c,
+            min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max,
+            bed_min_x=0.0 if print_size else None,
+            bed_max_x=print_size[0] if print_size else None,
+            bed_min_y=0.0 if print_size else None,
+            bed_max_y=print_size[1] if print_size else None,
         )
+
+    def parse_input_shaper(self, filepath: str) -> Optional[dict]:
+        """Возвращает dict с ключами shaper_type_x/y, shaper_freq_x/y или None."""
+        text = Path(filepath).read_text(encoding='utf-8')
+        return self.parse_input_shaper_text(text)
+
+    def parse_input_shaper_text(self, text: str) -> Optional[dict]:
+        """Разбирает input shaper из уже загруженного текста."""
+        try:
+            data = json.loads(text)
+            sec = data.get("input_shaper") or data.get("[input_shaper]")
+            if isinstance(sec, dict):
+                return self._extract_shaper_fields(sec)
+        except json.JSONDecodeError:
+            pass
+        return self._parse_shaper_cfg(text)
+
+    def _extract_shaper_fields(self, sec: dict) -> Optional[dict]:
+        try:
+            result = {
+                "shaper_type_x": str(sec.get("shaper_type_x", "")).strip().lower(),
+                "shaper_type_y": str(sec.get("shaper_type_y", "")).strip().lower(),
+                "shaper_freq_x": float(sec.get("shaper_freq_x", 0)),
+                "shaper_freq_y": float(sec.get("shaper_freq_y", 0)),
+            }
+            if result["shaper_freq_x"] > 0 and result["shaper_freq_y"] > 0:
+                return result
+        except (TypeError, ValueError):
+            pass
+        return None
+
+    def _parse_shaper_cfg(self, text: str) -> Optional[dict]:
+        lines = text.splitlines()
+        sec_lines, in_sec = [], False
+        for line in lines:
+            s = line.strip()
+            if s.lower() in ("[input_shaper]", "input_shaper"):
+                in_sec, sec_lines = True, []
+                continue
+            if in_sec:
+                if s.startswith("["):
+                    break
+                sec_lines.append(s)
+        if not sec_lines:
+            return None
+
+        def get(key):
+            for l in sec_lines:
+                l = l.split("#")[0].strip()
+                for sep in (":", "="):
+                    if l.lower().startswith(key + sep) or l.lower().startswith(key + " " + sep):
+                        return l.split(sep, 1)[1].strip()
+            return None
+
+        try:
+            fx = float(get("shaper_freq_x") or 0)
+            fy = float(get("shaper_freq_y") or 0)
+            tx = (get("shaper_type_x") or "").strip().lower()
+            ty = (get("shaper_type_y") or "").strip().lower()
+            if fx > 0 and fy > 0:
+                return {"shaper_type_x": tx, "shaper_type_y": ty,
+                        "shaper_freq_x": fx, "shaper_freq_y": fy}
+        except (TypeError, ValueError):
+            pass
+        return None

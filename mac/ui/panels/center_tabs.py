@@ -1,19 +1,11 @@
 from PyQt6.QtWidgets import (
-    QButtonGroup,
-    QHBoxLayout,
-    QMessageBox,
-    QPushButton,
-    QStackedWidget,
-    QTabWidget,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
+    QWidget, QVBoxLayout, QTabWidget, QTextEdit, QPushButton, QHBoxLayout,
+    QStackedWidget, QButtonGroup, QMessageBox,
 )
 from PyQt6.QtCore import pyqtSignal
-
-from ui.components.config_editor import ConfigEditor
-from ui.components.mesh_3d_view import Mesh3DView
 from ui.components.mesh_view import MeshView
+from ui.components.mesh_3d_view import Mesh3DView
+from ui.components.config_editor import ConfigEditor
 from utils.strings import S
 
 
@@ -33,14 +25,14 @@ class CenterTabs(QWidget):
         self._last_mesh = None
 
         self.mesh_tab = QWidget()
-        mesh_layout = QVBoxLayout(self.mesh_tab)
-        mesh_layout.setContentsMargins(0, 0, 0, 0)
+        m_layout = QVBoxLayout(self.mesh_tab)
+        m_layout.setContentsMargins(0, 0, 0, 0)
 
-        button_row = QHBoxLayout()
+        btn_row = QHBoxLayout()
         self.btn_copy = QPushButton(S.get("mesh.copy_btn"))
         self.btn_copy.setFixedSize(180, 28)
         self.btn_copy.clicked.connect(self._on_copy_mesh)
-        button_row.addWidget(self.btn_copy)
+        btn_row.addWidget(self.btn_copy)
 
         self.btn_2d = QPushButton("2D")
         self.btn_3d = QPushButton("3D")
@@ -55,33 +47,33 @@ class CenterTabs(QWidget):
         mode_group.addButton(self.btn_3d)
         self.btn_2d.clicked.connect(lambda: self.set_view_mode("2d"))
         self.btn_3d.clicked.connect(lambda: self.set_view_mode("3d"))
-        button_row.addWidget(self.btn_2d)
-        button_row.addWidget(self.btn_3d)
-        button_row.addStretch()
-        mesh_layout.addLayout(button_row)
+        btn_row.addWidget(self.btn_2d)
+        btn_row.addWidget(self.btn_3d)
+        btn_row.addStretch()
+        m_layout.addLayout(btn_row)
 
         self._mesh_stack = QStackedWidget()
         self.mesh_view = MeshView()
         self._mesh_stack.addWidget(self.mesh_view)
-        mesh_layout.addWidget(self._mesh_stack)
+        m_layout.addWidget(self._mesh_stack)
         self.tabs.addTab(self.mesh_tab, S.get("mesh.tab_title"))
 
         self.config_tab = QWidget()
-        config_layout = QVBoxLayout(self.config_tab)
-        config_layout.setContentsMargins(0, 0, 0, 0)
+        c_layout = QVBoxLayout(self.config_tab)
+        c_layout.setContentsMargins(0, 0, 0, 0)
         self.config_editor = ConfigEditor()
-        config_layout.addWidget(self.config_editor)
+        c_layout.addWidget(self.config_editor)
         self.tabs.addTab(self.config_tab, S.get("config.tab_title"))
 
         self.raw_tab = QWidget()
-        raw_layout = QVBoxLayout(self.raw_tab)
-        raw_layout.setContentsMargins(5, 5, 5, 5)
+        r_layout = QVBoxLayout(self.raw_tab)
+        r_layout.setContentsMargins(5, 5, 5, 5)
         self.raw_text = QTextEdit()
         self.raw_text.setReadOnly(True)
         self.raw_text.setStyleSheet(
             "font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4;"
         )
-        raw_layout.addWidget(self.raw_text)
+        r_layout.addWidget(self.raw_text)
         self.tabs.addTab(self.raw_tab, S.get("raw.tab_title"))
 
         self.set_advanced_visible(False)
@@ -144,17 +136,15 @@ class CenterTabs(QWidget):
                 return -1
 
         if not visible:
-            current_widget = self.tabs.currentWidget()
-            if current_widget in (self.config_tab, self.raw_tab):
+            cur = self.tabs.currentWidget()
+            if cur in (self.config_tab, self.raw_tab):
                 self.tabs.setCurrentWidget(self.mesh_tab)
-
-            raw_index = _tab_index(self.raw_tab)
-            if raw_index >= 0:
-                self.tabs.removeTab(raw_index)
-
-            config_index = _tab_index(self.config_tab)
-            if config_index >= 0:
-                self.tabs.removeTab(config_index)
+            idx_raw = _tab_index(self.raw_tab)
+            if idx_raw >= 0:
+                self.tabs.removeTab(idx_raw)
+            idx_cfg = _tab_index(self.config_tab)
+            if idx_cfg >= 0:
+                self.tabs.removeTab(idx_cfg)
             return
 
         if _tab_index(self.config_tab) < 0:
