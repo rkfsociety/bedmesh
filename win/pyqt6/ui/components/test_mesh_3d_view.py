@@ -80,7 +80,8 @@ class TestMesh3DView(unittest.TestCase):
         widget.update_mesh(sample_mesh())
 
         widget._axis.setSize.assert_called_once()
-        widget._axis.setPos.assert_called_once()
+        widget._axis.resetTransform.assert_called_once()
+        widget._axis.translate.assert_called_once()
         self.assertEqual(widget._gl.GLTextItem.call_count, 12)
         self.assertEqual(len(widget._coordinate_labels), 12)
         self.assertIn("X (мм)", [item["text"] for item in widget._coordinate_labels])

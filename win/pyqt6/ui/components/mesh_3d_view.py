@@ -119,7 +119,12 @@ class Mesh3DView(QWidget):
             y=payload.span_y,
             z=max(payload.span_x, payload.span_y) * 0.18,
         )
-        self._axis.setPos(-payload.span_x / 2.0, -payload.span_y / 2.0, z_floor)
+        self._axis.resetTransform()
+        self._axis.translate(
+            -payload.span_x / 2.0,
+            -payload.span_y / 2.0,
+            z_floor,
+        )
 
         for label in self._coordinate_labels:
             self._gl_view.removeItem(label)
