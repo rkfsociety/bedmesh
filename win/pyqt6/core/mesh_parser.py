@@ -16,6 +16,12 @@ class BedMeshData:
     max_x: float
     min_y: float
     max_y: float
+    # Рабочая область печати из `print_size`. Если её нет, 3D использует
+    # границы самой mesh-сетки.
+    bed_min_x: Optional[float] = None
+    bed_max_x: Optional[float] = None
+    bed_min_y: Optional[float] = None
+    bed_max_y: Optional[float] = None
 
 class MeshParser:
     def parse_file(self, filepath: str) -> Optional[BedMeshData]:
@@ -60,6 +66,24 @@ class MeshParser:
             x_count=x_c, y_count=y_c,
             min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max
         )
+
+    def parse_print_size(self, config_text: str) -> Optional[tuple[float, float]]:
+        """Возвращает X/Y рабочей области из `print_size: X*Y*Zmm`."""
+        match = re.search(
+            r"(?im)^\s*print_size\s*[:=]\s*"
+            r"([+-]?\d+(?:\.\d+)?)\s*[*x×]\s*"
+            r"([+-]?\d+(?:\.\d+)?)",
+            config_text,
+        )
+        if not match:
+            return None
+        try:
+            size_x, size_y = float(match.group(1)), float(match.group(2))
+        except ValueError:
+            return None
+        if size_x <= 0 or size_y <= 0:
+            return None
+        return size_x, size_y
 
     def parse_config(self, config_text: str) -> Optional[BedMeshData]:
         lines = config_text.splitlines()
@@ -181,12 +205,17 @@ class MeshParser:
                 return None
             z = np.array(flat, dtype=float).reshape((y_c, x_c))
 
+        print_size = self.parse_print_size(config_text)
         return BedMeshData(
             x=np.linspace(x_min, x_max, x_c),
             y=np.linspace(y_min, y_max, y_c),
             z=z,
             x_count=x_c, y_count=y_c,
-            min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max
+            min_x=x_min, max_x=x_max, min_y=y_min, max_y=y_max,
+            bed_min_x=0.0 if print_size else None,
+            bed_max_x=print_size[0] if print_size else None,
+            bed_min_y=0.0 if print_size else None,
+            bed_max_y=print_size[1] if print_size else None,
         )
 
     def parse_input_shaper(self, filepath: str) -> Optional[dict]:

@@ -79,7 +79,13 @@ class Mesh3DView(QWidget):
         if not self._ready or self._gl_view is None or self._grid is None:
             return
         try:
-            payload = prepare_surface(data.x, data.y, data.z, self._palette_key)
+            payload = prepare_surface(
+                data.x,
+                data.y,
+                data.z,
+                self._palette_key,
+                bed_bounds=self._bed_bounds(data),
+            )
             if self._surface is None:
                 self._surface = self._gl.GLSurfacePlotItem(
                     shader="shaded",
@@ -139,10 +145,11 @@ class Mesh3DView(QWidget):
             self._gl_view.addItem(label)
             self._coordinate_labels.append(label)
 
-        x_center = float(np.mean(data.x))
-        y_center = float(np.mean(data.y))
-        x_ticks = np.linspace(data.min_x, data.max_x, 5)
-        y_ticks = np.linspace(data.min_y, data.max_y, 5)
+        bed_min_x, bed_max_x, bed_min_y, bed_max_y = self._bed_bounds(data)
+        x_center = (bed_min_x + bed_max_x) / 2.0
+        y_center = (bed_min_y + bed_max_y) / 2.0
+        x_ticks = np.linspace(bed_min_x, bed_max_x, 5)
+        y_ticks = np.linspace(bed_min_y, bed_max_y, 5)
         for value in x_ticks:
             x = float(value - x_center)
             add_label(
@@ -164,3 +171,16 @@ class Mesh3DView(QWidget):
             "Y (мм)",
             (-payload.span_x / 2.0 - axis_offset, payload.span_y / 2.0 + axis_offset, z_floor),
         )
+
+    @staticmethod
+    def _bed_bounds(data: BedMeshData) -> tuple[float, float, float, float]:
+        """Возвращает рабочую область, либо границы mesh для старых форматов."""
+        if data.bed_min_x is None or data.bed_max_x is None:
+            min_x, max_x = data.min_x, data.max_x
+        else:
+            min_x, max_x = data.bed_min_x, data.bed_max_x
+        if data.bed_min_y is None or data.bed_max_y is None:
+            min_y, max_y = data.min_y, data.max_y
+        else:
+            min_y, max_y = data.bed_min_y, data.bed_max_y
+        return min_x, max_x, min_y, max_y

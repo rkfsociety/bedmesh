@@ -93,6 +93,22 @@ class TestMesh3DMath(unittest.TestCase):
         self.assertLess(fit.minimum_distance, fit.distance)
         self.assertGreater(fit.maximum_distance, fit.distance)
 
+    def test_prepare_surface_uses_printable_area_as_scene_bounds(self):
+        x = np.linspace(10.0, 240.0, 3)
+        y = np.linspace(10.0, 240.0, 3)
+        payload = prepare_surface(
+            x,
+            y,
+            np.zeros((3, 3)),
+            "soft",
+            bed_bounds=(0.0, 250.0, 0.0, 250.0),
+        )
+
+        self.assertAlmostEqual(payload.span_x, 250.0)
+        self.assertAlmostEqual(payload.span_y, 250.0)
+        np.testing.assert_allclose(payload.x, [-115.0, 0.0, 115.0])
+        np.testing.assert_allclose(payload.y, [-115.0, 0.0, 115.0])
+
     def test_clamp_zoom_distance_obeys_limits(self):
         self.assertEqual(clamp_zoom_distance(100.0, 100000, 20.0, 500.0), 20.0)
         self.assertEqual(clamp_zoom_distance(100.0, -100000, 20.0, 500.0), 500.0)

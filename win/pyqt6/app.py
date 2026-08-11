@@ -197,6 +197,14 @@ class BedMeshApp(QMainWindow):
                             self.logger.exception("Failed to update RAW from %s", alt_local)
                         alt_data = self.parser.parse_text(alt_content) if alt_content is not None else None
                         if alt_data:
+                            # Размер печати находится в основном printer.cfg,
+                            # а точки mesh часто лежат в printer_mutable.cfg.
+                            print_size = self.parser.parse_print_size(raw_content)
+                            if print_size:
+                                alt_data.bed_min_x = 0.0
+                                alt_data.bed_max_x = print_size[0]
+                                alt_data.bed_min_y = 0.0
+                                alt_data.bed_max_y = print_size[1]
                             self._last_mesh_data = alt_data
                             self.center_tabs.update_mesh_views(alt_data)
                             stats = self._calculate_advanced_stats(alt_data)

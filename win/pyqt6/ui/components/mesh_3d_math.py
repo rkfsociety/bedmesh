@@ -48,6 +48,7 @@ def prepare_surface(
     y: np.ndarray,
     z: np.ndarray,
     palette_key: str,
+    bed_bounds: tuple[float, float, float, float] | None = None,
 ) -> SurfacePayload:
     x_values = np.asarray(x, dtype=float)
     y_values = np.asarray(y, dtype=float)
@@ -66,13 +67,23 @@ def prepare_surface(
     ):
         raise ValueError("3D mesh contains non-finite values")
 
-    x_centered = x_values - float(np.mean(x_values))
-    y_centered = y_values - float(np.mean(y_values))
+    if bed_bounds is None:
+        bed_min_x, bed_max_x = float(np.min(x_values)), float(np.max(x_values))
+        bed_min_y, bed_max_y = float(np.min(y_values)), float(np.max(y_values))
+    else:
+        bed_min_x, bed_max_x, bed_min_y, bed_max_y = map(float, bed_bounds)
+        if not (bed_max_x > bed_min_x and bed_max_y > bed_min_y):
+            raise ValueError("bed bounds must have positive size")
+
+    bed_center_x = (bed_min_x + bed_max_x) / 2.0
+    bed_center_y = (bed_min_y + bed_max_y) / 2.0
+    x_centered = x_values - bed_center_x
+    y_centered = y_values - bed_center_y
     z_visual = scaled_z(z_values).T
     colors = np.transpose(colors_from_z(z_values, palette_key), (1, 0, 2))
     colors_flat = np.ascontiguousarray(colors.reshape(-1, 4))
-    span_x = max(float(np.ptp(x_values)), 1.0)
-    span_y = max(float(np.ptp(y_values)), 1.0)
+    span_x = max(float(bed_max_x - bed_min_x), 1.0)
+    span_y = max(float(bed_max_y - bed_min_y), 1.0)
     return SurfacePayload(
         x=x_centered,
         y=y_centered,

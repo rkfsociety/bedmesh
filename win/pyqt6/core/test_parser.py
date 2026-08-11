@@ -117,6 +117,21 @@ class MeshParserTests(unittest.TestCase):
             "[input_shaper]\nshaper_freq_x: 0\nshaper_freq_y: 40\n"
         ))
 
+    def test_parse_print_size(self):
+        self.assertEqual(
+            self.parser.parse_print_size("[printer]\nprint_size: 250*250*250mm\n"),
+            (250.0, 250.0),
+        )
+
+    def test_parse_config_attaches_printable_area(self):
+        text = CONFIG_TEXT.replace(
+            "[bed_mesh default]",
+            "[printer]\nprint_size: 250*250*250mm\n\n[bed_mesh default]",
+        )
+        data = self.parser.parse_text(text)
+        self.assertEqual((data.bed_min_x, data.bed_max_x), (0.0, 250.0))
+        self.assertEqual((data.bed_min_y, data.bed_max_y), (0.0, 250.0))
+
 
 if __name__ == "__main__":
     unittest.main()
