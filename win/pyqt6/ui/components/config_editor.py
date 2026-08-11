@@ -616,17 +616,23 @@ class ConfigEditor(QWidget):
                 nonlocal form_field_index
                 row = form_field_index // 3
                 column = (form_field_index % 3) * 2
-                standard_suffix = f" (по умолчанию: {standard_value})" if standard_value else ""
+                # NBSP внутри суффикса не даёт Qt разорвать пару
+                # «по умолчанию: значение» на разные строки.
+                standard_suffix = (
+                    f" (по\u00a0умолчанию:\u00a0{standard_value})"
+                    if standard_value
+                    else ""
+                )
                 label = QLabel(f"{label_text}{standard_suffix}:")
                 if tooltip:
                     label.setToolTip(tooltip)
                     widget.setToolTip(tooltip)
                     self._register_field_hint(widget, tooltip)
-                # Не переносим подпись между «по умолчанию» и его значением:
-                # длинная подпись должна оставаться одной строкой рядом с полем.
-                label.setWordWrap(False)
+                # Разрешаем перенос длинной подписи, но суффикс с эталонным
+                # значением переносится только целиком.
+                label.setWordWrap(True)
                 label.setMinimumWidth(0)
-                label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+                label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
                 widget.setMinimumWidth(0)
                 widget.setFixedHeight(30)
                 widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
