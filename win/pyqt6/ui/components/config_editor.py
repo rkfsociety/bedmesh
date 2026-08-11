@@ -258,6 +258,9 @@ class ConfigEditor(QWidget):
 
     def __init__(self):
         super().__init__()
+        # Три колонки с подписями и полями не должны сжиматься до состояния,
+        # в котором текст перекрывается соседними редакторами.
+        self.setMinimumWidth(620)
         self.logger = get_logger(__name__)
         self.parser = None
         self.widgets = {}
