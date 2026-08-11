@@ -68,10 +68,16 @@ class LeftPanel(QWidget):
         layout.addWidget(title)
         layout.addSpacing(10)
 
+        self._pending_setting_updates: dict[str, str] = {}
+        self._settings_save_timer = QTimer(self)
+        self._settings_save_timer.setSingleShot(True)
+        self._settings_save_timer.setInterval(350)
+        self._settings_save_timer.timeout.connect(self._flush_setting_updates)
+
         lbl_ip = QLabel("IP адрес принтера:")
         layout.addWidget(lbl_ip)
         self.input_ip = QLineEdit(initial_settings.get("ssh_ip", "192.168."))
-        self.input_ip.textChanged.connect(lambda t: self.setting_updated.emit("ssh_ip", t))
+        self.input_ip.textChanged.connect(lambda t: self._queue_setting_update("ssh_ip", t))
         layout.addWidget(self.input_ip)
 
         self.btn_ssh = QPushButton("🌐 Загрузить по SSH")
@@ -110,7 +116,7 @@ class LeftPanel(QWidget):
             line = QLineEdit(default)
             if key == "ssh_pass":
                 line.setEchoMode(QLineEdit.EchoMode.Password)
-            line.textChanged.connect(lambda t, k=key: self.setting_updated.emit(k, t))
+            line.textChanged.connect(lambda t, k=key: self._queue_setting_update(k, t))
             row.addWidget(line)
             adv_layout.addLayout(row)
             self.adv_fields[key] = line
@@ -166,6 +172,23 @@ class LeftPanel(QWidget):
         layout.addWidget(self.btn_log)
         
         layout.addStretch()
+
+    def _queue_setting_update(self, key: str, value: str) -> None:
+        """Откладывает сохранение, пока пользователь продолжает печатать."""
+        self._pending_setting_updates[key] = value
+        self._settings_save_timer.start()
+
+    def _flush_setting_updates(self) -> None:
+        pending = self._pending_setting_updates
+        self._pending_setting_updates = {}
+        for key, value in pending.items():
+            self.setting_updated.emit(key, value)
+
+    def flush_pending_settings(self) -> None:
+        """Синхронно отправляет отложенные изменения перед закрытием приложения."""
+        if self._settings_save_timer.isActive():
+            self._settings_save_timer.stop()
+        self._flush_setting_updates()
 
     def _request_ssh_download(self):
         """Собирает данные из полей и отправляет сигнал"""

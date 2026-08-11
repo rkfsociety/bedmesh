@@ -237,6 +237,7 @@ class BedMeshApp(QMainWindow):
             self.restoreGeometry(geo)
 
     def closeEvent(self, event):
+        self.left_panel.flush_pending_settings()
         self.config.save_window_geometry(self.saveGeometry())
         self.logger.info("🔒 Приложение закрыто")
         event.accept()
