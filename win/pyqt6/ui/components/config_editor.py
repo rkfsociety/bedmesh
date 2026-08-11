@@ -472,7 +472,7 @@ class ConfigEditor(QWidget):
             self.logger.warning("Build UI: no sections parsed")
             return
 
-        target_sections = ["bed_mesh", "leviQ3", "filament_hub"]
+        target_sections = ["bed_mesh", "probe", "printer", "safe_z_home", "leviQ3", "filament_hub"]
         
         for sec_name in target_sections:
             if sec_name not in self.parser.sections:
@@ -569,7 +569,14 @@ class ConfigEditor(QWidget):
                 has_fields = True
 
             else:
-                for key, (val, line_idx) in self.parser.sections[sec_name].items():
+                visible_keys = list(self.parser.sections[sec_name].keys())
+                for key in fields_meta:
+                    if key not in visible_keys:
+                        visible_keys.append(key)
+
+                for key in visible_keys:
+                    current_entry = self.parser.sections[sec_name].get(key)
+                    val = current_entry[0] if current_entry else ""
                     meta = fields_meta.get(key)
                     if not meta:
                         continue 
@@ -704,8 +711,35 @@ class ConfigEditor(QWidget):
 
             def _set_key_value(sec: str, key: str, new_val: str) -> bool:
                 nonlocal changed
-                if sec not in self.parser.sections or key not in self.parser.sections[sec]:
+                if sec not in self.parser.sections:
                     return False
+                if key not in self.parser.sections[sec]:
+                    if not new_val:
+                        return False
+
+                    section_start = None
+                    insert_at = len(self.parser.raw_lines)
+                    section_pattern = re.compile(r'^\s*\[(.+)\]\s*$')
+                    for index, line in enumerate(self.parser.raw_lines):
+                        match = section_pattern.match(line.strip())
+                        if match and match.group(1) == sec:
+                            section_start = index
+                            continue
+                        if section_start is not None and match:
+                            insert_at = index
+                            break
+                    if section_start is None:
+                        return False
+
+                    self.parser.raw_lines.insert(insert_at, f"{key}: {new_val}\n")
+                    for section_data in self.parser.sections.values():
+                        for existing_key, (existing_value, existing_index) in list(section_data.items()):
+                            if existing_index >= insert_at:
+                                section_data[existing_key] = (existing_value, existing_index + 1)
+                    self.parser.sections[sec][key] = (new_val, insert_at)
+                    changed = True
+                    return True
+
                 old_val, line_idx = self.parser.sections[sec][key]
                 if new_val == old_val:
                     return False
