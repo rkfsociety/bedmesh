@@ -705,7 +705,18 @@ class ConfigEditor(QWidget):
                 # Make the dropdown wide enough to read percentages.
                 cb_preset.setMinimumWidth(110)
                 try:
-                    cb_preset.view().setMinimumWidth(110)
+                    preset_view = cb_preset.view()
+                    preset_view.setMinimumWidth(110)
+                    # Keep the popup consistent with the dark application
+                    # theme instead of falling back to the Windows palette.
+                    preset_view.setStyleSheet(
+                        "QAbstractItemView {"
+                        "background: #14223a; color: #e8eef8; "
+                        "border: 1px solid #3c5b84; "
+                        "selection-background-color: #2d5591; "
+                        "selection-color: #f5f8ff; padding: 2px;"
+                        "}"
+                    )
                 except Exception:
                     pass
 
