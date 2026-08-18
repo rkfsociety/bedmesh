@@ -3,12 +3,16 @@ import sys
 import unittest
 from pathlib import Path
 
+from PyQt6.QtWidgets import QApplication
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 PYQT_ROOT = Path(__file__).resolve().parents[2]
 if str(PYQT_ROOT) not in sys.path:
     sys.path.insert(0, str(PYQT_ROOT))
 
 from config_editor import (  # noqa: E402
+    ConfigEditor,
+    KlipperConfigParser,
     _ace_current_label,
     _ace_preset_matches,
     _parse_probe_count,
@@ -78,6 +82,36 @@ class ProbeCountTests(unittest.TestCase):
     def test_incomplete_value_does_not_lock_the_editor(self):
         self.assertIsNone(_parse_probe_count("5,"))
         self.assertTrue(_probe_count_allows_lagrange("5,"))
+
+
+class ZHomingEditorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_advanced_editor_exposes_z_homing_controls(self):
+        editor = ConfigEditor()
+        editor.parser = KlipperConfigParser("")
+        editor.parser.sections = {
+            "stepper_z": {
+                "homing_speed": ("6", 1),
+                "second_homing_speed": ("3", 2),
+                "homing_retract_dist": ("4", 3),
+            }
+        }
+        editor.parser.raw_lines = [
+            "[stepper_z]\n",
+            "homing_speed: 6\n",
+            "second_homing_speed: 3\n",
+            "homing_retract_dist: 4\n",
+        ]
+
+        editor._build_ui()
+
+        self.assertEqual(editor.widgets[("stepper_z", "homing_speed")].text(), "6")
+        self.assertEqual(editor.widgets[("stepper_z", "second_homing_speed")].text(), "3")
+        self.assertEqual(editor.widgets[("stepper_z", "homing_retract_dist")].text(), "4")
+        editor.deleteLater()
 
 
 if __name__ == "__main__":

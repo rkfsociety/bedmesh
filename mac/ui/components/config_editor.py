@@ -583,7 +583,10 @@ class ConfigEditor(QWidget):
             self.logger.warning("Build UI: no sections parsed")
             return
 
-        target_sections = ["bed_mesh", "probe", "printer", "safe_z_home", "leviQ3", "filament_hub"]
+        # The config editor is available only in the advanced mode. Keep the
+        # printer's Z homing controls here as well, while leaving the normal
+        # mode focused on mesh/probe settings.
+        target_sections = ["bed_mesh", "probe", "printer", "stepper_z", "safe_z_home", "leviQ3", "filament_hub"]
 
         for sec_name in target_sections:
             if sec_name not in self.parser.sections:
