@@ -680,6 +680,10 @@ class ConfigEditor(QWidget):
                 }
 
                 preset_row = QWidget()
+                # The wrapper must blend into the group box. Otherwise the
+                # global QWidget background creates a visible strip behind
+                # the Ace Pro label.
+                preset_row.setStyleSheet("background: transparent;")
                 preset_layout = QHBoxLayout(preset_row)
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
