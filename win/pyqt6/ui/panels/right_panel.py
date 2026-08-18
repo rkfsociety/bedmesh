@@ -50,12 +50,12 @@ class RightPanel(QWidget):
         corr_col.setSpacing(6)
 
         corr_title = QLabel("🔧 КОРРЕКЦИЯ")
-        corr_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #bbb; margin-top: 10px;")
+        corr_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #dbe8f8; margin-top: 10px;")
         corr_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         corr_col.addWidget(corr_title)
 
         self.lbl_correction_info = QLabel("(от среднего, кручение валов)")
-        self.lbl_correction_info.setStyleSheet("font-size: 10px; color: #666;")
+        self.lbl_correction_info.setStyleSheet("font-size: 11px; color: #9aa9bf;")
         self.lbl_correction_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         corr_col.addWidget(self.lbl_correction_info)
 
@@ -73,12 +73,12 @@ class RightPanel(QWidget):
         shaper_col.setSpacing(6)
 
         shaper_title = QLabel("⚡ ШЕЙПЕР")
-        shaper_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #bbb; margin-top: 10px;")
+        shaper_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #dbe8f8; margin-top: 10px;")
         shaper_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         shaper_col.addWidget(shaper_title)
 
         shaper_sub = QLabel("(рек. ускорение)")
-        shaper_sub.setStyleSheet("font-size: 10px; color: #666;")
+        shaper_sub.setStyleSheet("font-size: 11px; color: #9aa9bf;")
         shaper_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         shaper_col.addWidget(shaper_sub)
 
@@ -89,16 +89,16 @@ class RightPanel(QWidget):
         shaper_layout.setContentsMargins(8, 8, 8, 8)
 
         self._lbl_shaper_x = QLabel("X: —")
-        self._lbl_shaper_x.setStyleSheet("font-size: 11px; color: #ccc;")
+        self._lbl_shaper_x.setStyleSheet("font-size: 12px; color: #d7e2f2;")
         self._lbl_shaper_y = QLabel("Y: —")
-        self._lbl_shaper_y.setStyleSheet("font-size: 11px; color: #ccc;")
+        self._lbl_shaper_y.setStyleSheet("font-size: 12px; color: #d7e2f2;")
 
         sep = QLabel()
         sep.setFixedHeight(1)
         sep.setStyleSheet("background-color: #3a3a3a;")
 
         self._lbl_shaper_rec = QLabel("Нет данных")
-        self._lbl_shaper_rec.setStyleSheet("font-size: 10px; color: #888;")
+        self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf;")
         self._lbl_shaper_rec.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_shaper_rec.setWordWrap(False)
 
@@ -131,7 +131,7 @@ class RightPanel(QWidget):
 
         self.lbl_version_status = QLabel("v?")
         self.lbl_version_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        self.lbl_version_status.setStyleSheet("font-size: 12px; color: #b9c9e0;")
         upd_l.addWidget(self.lbl_version_status)
 
         self.btn_update = QPushButton("Проверить обновления")
@@ -159,13 +159,13 @@ class RightPanel(QWidget):
             self.lbl_version_status.setText(f"Требуется обновление (v{current_version} → v{latest})" if latest else "Требуется обновление")
         else:
             self.lbl_version_status.setText(f"Найдена v{latest}" if latest else "Требуется обновление")
-        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #f59e0b; font-weight: bold;")
+        self.lbl_version_status.setStyleSheet("font-size: 12px; color: #fbbf24; font-weight: bold;")
         self.btn_update.setText("Обновить")
 
     def clear_update_available(self, version_text: str):
         self._update_release_data = None
         self.lbl_version_status.setText(version_text)
-        self.lbl_version_status.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        self.lbl_version_status.setStyleSheet("font-size: 12px; color: #b9c9e0;")
         self.btn_update.setText("Проверить обновления")
 
     def set_checking_updates(self, checking: bool):
@@ -185,7 +185,7 @@ class RightPanel(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-size: 10px; color: #888;")
+        lbl_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #b9c9e0;")
         lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         lbl_val = QLabel(value)
@@ -203,7 +203,7 @@ class RightPanel(QWidget):
         layout = QVBoxLayout(card)
         
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #aaa;")
+        lbl_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #d7e2f2;")
         layout.addWidget(lbl_title)
 
         row = QHBoxLayout()
@@ -256,7 +256,7 @@ class RightPanel(QWidget):
             rec = int(min(ax, ay) / 500) * 500
             limit_axis = "X" if ax < ay else "Y"
             self._lbl_shaper_rec.setText(f"лимит: ось {limit_axis}")
-            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #888;")
+            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf;")
             self._lbl_shaper_accel.setText(f"≤ {rec} мм/с²")
             self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80;")
         else:
