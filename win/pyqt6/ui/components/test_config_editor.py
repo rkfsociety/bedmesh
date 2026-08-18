@@ -29,7 +29,7 @@ STANDARD = {
     "unwind_length_after_triggered": "1300",
 }
 OPTIMIZED = {"unwind_length_after_triggered": "1220"}
-PRESETS = (100, 150, 200, 250, 300)
+PRESETS = (100, 150, 200, 250, 300, 400, 500)
 
 
 def section(values: dict[str, str]) -> dict[str, tuple[str, int]]:
@@ -67,6 +67,21 @@ class AcePresetTests(unittest.TestCase):
 
         self.assertIsNone(percent)
         self.assertEqual(label, "Текущее: ~105%")
+
+    def test_current_500_percent_is_selected(self):
+        current = section({
+            "v1_unwind_speed": "100",
+            "v2_unwind_speed": "100",
+            "v1_feed_speed": "150",
+            "v2_feed_speed": "150",
+            "unwind_speed_old_ace": "75",
+            "unwind_length_after_triggered": "1220",
+        })
+
+        self.assertEqual(
+            _ace_current_label(current, STANDARD, OPTIMIZED, PRESETS),
+            (500, None),
+        )
 
 
 class ProbeCountTests(unittest.TestCase):

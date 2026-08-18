@@ -688,7 +688,7 @@ class ConfigEditor(QWidget):
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
                 cb_preset.setStyleSheet("")
-                preset_percents = (100, 150, 200, 250, 300)
+                preset_percents = (100, 150, 200, 250, 300, 400, 500)
                 for percent in preset_percents:
                     cb_preset.addItem(f"{percent}%", percent)
                 current_percent, current_label = _ace_current_label(
@@ -743,7 +743,7 @@ class ConfigEditor(QWidget):
                     "Ускорение Ace Pro",
                     preset_row,
                     "Множитель скоростей подачи и отката Ace Pro. "
-                    "100% — значение по умолчанию, 300% — скорость в 3 раза выше. "
+                    "100% — значение по умолчанию, 500% — скорость в 5 раз выше. "
                     "Значения применятся после нажатия «Сохранить». ",
                     "100%",
                 )
