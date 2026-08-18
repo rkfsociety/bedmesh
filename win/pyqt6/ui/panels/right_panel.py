@@ -89,21 +89,21 @@ class RightPanel(QWidget):
         shaper_layout.setContentsMargins(8, 8, 8, 8)
 
         self._lbl_shaper_x = QLabel("X: —")
-        self._lbl_shaper_x.setStyleSheet("font-size: 12px; color: #d7e2f2;")
+        self._lbl_shaper_x.setStyleSheet("font-size: 12px; color: #d7e2f2; background: transparent; border: none;")
         self._lbl_shaper_y = QLabel("Y: —")
-        self._lbl_shaper_y.setStyleSheet("font-size: 12px; color: #d7e2f2;")
+        self._lbl_shaper_y.setStyleSheet("font-size: 12px; color: #d7e2f2; background: transparent; border: none;")
 
         sep = QLabel()
         sep.setFixedHeight(1)
         sep.setStyleSheet("background-color: #3a3a3a;")
 
         self._lbl_shaper_rec = QLabel("Нет данных")
-        self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf;")
+        self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf; background: transparent; border: none;")
         self._lbl_shaper_rec.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_shaper_rec.setWordWrap(False)
 
         self._lbl_shaper_accel = QLabel("")
-        self._lbl_shaper_accel.setStyleSheet("font-size: 16px; font-weight: bold; color: #4ade80;")
+        self._lbl_shaper_accel.setStyleSheet("font-size: 16px; font-weight: bold; color: #4ade80; background: transparent; border: none;")
         self._lbl_shaper_accel.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         shaper_layout.addWidget(self._lbl_shaper_x)
@@ -185,11 +185,11 @@ class RightPanel(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #b9c9e0;")
+        lbl_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #b9c9e0; background: transparent; border: none;")
         lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         lbl_val = QLabel(value)
-        lbl_val.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {color};")
+        lbl_val.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {color}; background: transparent; border: none;")
         lbl_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(lbl_title)
@@ -203,16 +203,16 @@ class RightPanel(QWidget):
         layout = QVBoxLayout(card)
         
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #d7e2f2;")
+        lbl_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #d7e2f2; background: transparent; border: none;")
         layout.addWidget(lbl_title)
 
         row = QHBoxLayout()
         
         lbl_mm = QLabel(f"{val_mm:+.3f} мм")
-        lbl_mm.setStyleSheet("font-size: 14px; font-weight: bold;")
+        lbl_mm.setStyleSheet("font-size: 14px; font-weight: bold; background: transparent; border: none;")
         
         lbl_turns = QLabel(f"({turns} об. {direction_text})")
-        lbl_turns.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {'#4ade80' if 'ВВЕРХ' in direction_text else '#f87171'}")
+        lbl_turns.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {'#4ade80' if 'ВВЕРХ' in direction_text else '#f87171'}; background: transparent; border: none;")
 
         row.addWidget(lbl_mm)
         row.addStretch()
@@ -256,12 +256,12 @@ class RightPanel(QWidget):
             rec = int(min(ax, ay) / 500) * 500
             limit_axis = "X" if ax < ay else "Y"
             self._lbl_shaper_rec.setText(f"лимит: ось {limit_axis}")
-            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf;")
+            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #9aa9bf; background: transparent; border: none;")
             self._lbl_shaper_accel.setText(f"≤ {rec} мм/с²")
-            self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80;")
+            self._lbl_shaper_accel.setStyleSheet("font-size: 18px; font-weight: bold; color: #4ade80; background: transparent; border: none;")
         else:
             self._lbl_shaper_rec.setText(f"Тип шейпера не распознан")
-            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #f87171;")
+            self._lbl_shaper_rec.setStyleSheet("font-size: 11px; color: #f87171; background: transparent; border: none;")
             self._lbl_shaper_accel.setText("")
 
     def update_all(self, stats: dict):
@@ -284,4 +284,4 @@ class RightPanel(QWidget):
         lbl_turns.setText(f"({turns:.2f} об. {direction})")
         
         color = '#4ade80' if direction == "ВВЕРХ" else '#f87171'
-        lbl_turns.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color}")
+        lbl_turns.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color}; background: transparent; border: none;")
