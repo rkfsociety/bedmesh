@@ -16,6 +16,14 @@ class TestReplaceBatContent(unittest.TestCase):
         self.assertIn("Windows TEMP", content)
         self.assertNotIn("--runtime-tmpdir .", content)
 
+    def test_resets_pyinstaller_environment_before_restart(self):
+        content = _build_replace_bat_content(
+            current_exe=r"C:\app\Bed.Mesh.Visualizer.exe",
+            new_exe_path=r"C:\app\BedMesh_Update_Temp.exe",
+            current_exe_name="Bed.Mesh.Visualizer.exe",
+        )
+        self.assertIn('set "PYINSTALLER_RESET_ENVIRONMENT=1"', content)
+
     def test_still_moves_update_exe(self):
         content = _build_replace_bat_content(
             current_exe=r"C:\app\Bed.Mesh.Visualizer.exe",

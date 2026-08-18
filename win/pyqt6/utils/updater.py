@@ -470,6 +470,9 @@ def _build_replace_bat_content(*, current_exe: str, new_exe_path: str, current_e
         "timeout /t 3 /nobreak > nul",
         ":startloop",
         'set "RUNNING="',
+        # PyInstaller one-file restart: do not inherit the old bootloader's
+        # parent-process state after the executable has been replaced.
+        'set "PYINSTALLER_RESET_ENVIRONMENT=1"',
         f'start "" "{current_exe}" >nul 2>&1',
         "timeout /t 2 /nobreak > nul",
         (

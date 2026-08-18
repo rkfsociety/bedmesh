@@ -11,6 +11,7 @@ QMainWindow, QWidget {
     font-size: 12px;
 }
 QMainWindow { background: #0b1220; }
+QLabel { background: transparent; }
 QSplitter::handle {
     background: #1d2a42;
     width: 5px;
