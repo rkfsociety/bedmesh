@@ -30,7 +30,9 @@ class Mesh3DView(QWidget):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._placeholder = QLabel("3D: не инициализировано")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._placeholder.setStyleSheet("background: #1e1e1e; color: #888; border: 1px solid #444;")
+        self._placeholder.setStyleSheet(
+            "background: #0b1220; color: #8fa3c0; border: 1px solid #2f4668;"
+        )
         self._layout.addWidget(self._placeholder)
 
     def is_ready(self) -> bool:

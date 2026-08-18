@@ -73,7 +73,8 @@ class CenterTabs(QWidget):
         self.raw_text = QTextEdit()
         self.raw_text.setReadOnly(True)
         self.raw_text.setStyleSheet(
-            "font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4;"
+            "font-family: Consolas, monospace; font-size: 12px; "
+            "background: #101a2b; color: #d7e2f2; border: 1px solid #2f4668;"
         )
         r_layout.addWidget(self.raw_text)
         self.tabs.addTab(self.raw_tab, S.get("raw.tab_title"))

@@ -32,7 +32,7 @@ class MeshView(QWidget):
 
         self.graphics_view = MeshGraphicsView()
         self.graphics_view.setStyleSheet(
-            "background: #1e1e1e; border: 1px solid #444;"
+            "background: #0b1220; border: 1px solid #2f4668;"
         )
         self.graphics_view.setRenderHints(
             QPainter.RenderHint.Antialiasing

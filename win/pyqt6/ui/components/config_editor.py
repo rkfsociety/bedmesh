@@ -304,7 +304,9 @@ class ConfigEditor(QWidget):
         self.backup_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.backup_list.setUniformItemSizes(True)
         self.backup_list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        self.backup_list.setStyleSheet("background: #1e1e1e; color: #d4d4d4; border: 1px solid #444;")
+        self.backup_list.setStyleSheet(
+            "background: #101a2b; color: #d7e2f2; border: 1px solid #2f4668;"
+        )
         b_layout.addWidget(self.backup_list)
 
         btn_row = QHBoxLayout()
@@ -341,8 +343,8 @@ class ConfigEditor(QWidget):
         self.field_hint.setWordWrap(True)
         self.field_hint.setMinimumHeight(32)
         self.field_hint.setStyleSheet(
-            "background: #26384a; color: #e8f1f8; border: 1px solid #5b8db8; "
-            "border-radius: 3px; padding: 6px 8px;"
+            "background: #1a2d49; color: #dbe8f8; border: 1px solid #456a9b; "
+            "border-radius: 5px; padding: 6px 8px;"
         )
         layout.addWidget(self.field_hint)
 

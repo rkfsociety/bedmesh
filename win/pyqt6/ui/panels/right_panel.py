@@ -6,7 +6,7 @@ class RightPanel(QWidget):
         super().__init__()
         self.setStyleSheet("""
             QWidget {
-                background-color: #101a2b;
+                background-color: #0f1728;
                 color: #e8eef8;
                 font-family: 'Segoe UI', sans-serif;
             }
@@ -124,7 +124,7 @@ class RightPanel(QWidget):
         self._on_update_clicked = None
 
         upd_wrap = QWidget()
-        upd_wrap.setStyleSheet("background-color: #111d31; border-top: 1px solid #304765;")
+        upd_wrap.setStyleSheet("background-color: #111b2e; border-top: 1px solid #304765;")
         upd_l = QVBoxLayout(upd_wrap)
         upd_l.setContentsMargins(8, 10, 8, 10)
         upd_l.setSpacing(6)
@@ -179,7 +179,7 @@ class RightPanel(QWidget):
 
     def _create_card(self, title, value, color):
         card = QWidget()
-        card.setStyleSheet("background-color: #182841; border: 1px solid #2d4465; border-radius: 8px; padding: 8px;")
+        card.setStyleSheet("background-color: #16243a; border: 1px solid #304765; border-radius: 8px; padding: 8px;")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
