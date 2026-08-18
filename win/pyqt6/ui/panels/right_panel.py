@@ -124,7 +124,9 @@ class RightPanel(QWidget):
         self._on_update_clicked = None
 
         upd_wrap = QWidget()
-        upd_wrap.setStyleSheet("background-color: #111b2e; border-top: 1px solid #304765;")
+        # Keep the update area visually quiet: the surrounding panel already
+        # provides enough separation, so extra horizontal rules are redundant.
+        upd_wrap.setStyleSheet("background: transparent; border: none;")
         upd_l = QVBoxLayout(upd_wrap)
         upd_l.setContentsMargins(8, 10, 8, 10)
         upd_l.setSpacing(6)
