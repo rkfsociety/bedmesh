@@ -322,8 +322,10 @@ class ConfigEditor(QWidget):
         toolbar = QHBoxLayout()
         self.btn_load = QPushButton(S.get("config.btn_load"))
         self.btn_save = QPushButton(S.get("config.btn_save"))
+        self.btn_load.setObjectName("secondaryButton")
+        self.btn_save.setObjectName("primaryButton")
         self.btn_save.setEnabled(False)
-        self.btn_save.setStyleSheet("background-color: #2d5a2d; color: white;")
+        self.btn_save.setStyleSheet("")
         
         toolbar.addWidget(self.btn_load)
         toolbar.addWidget(self.btn_save)
@@ -679,7 +681,7 @@ class ConfigEditor(QWidget):
                 preset_layout = QHBoxLayout(preset_row)
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
-                cb_preset.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                cb_preset.setStyleSheet("")
                 preset_percents = (100, 150, 200, 250, 300)
                 for percent in preset_percents:
                     cb_preset.addItem(f"{percent}%", percent)
@@ -764,7 +766,7 @@ class ConfigEditor(QWidget):
                     editor_widget: QWidget
                     if key == "algorithm":
                         cb = QComboBox()
-                        cb.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                        cb.setStyleSheet("")
                         cb.setToolTip(tooltip)
                         cb.addItems(["lagrange", "bicubic"])
                         current = (val or "").strip()
@@ -776,7 +778,7 @@ class ConfigEditor(QWidget):
                     else:
                         display_val = self._display_bed_mesh_value(key, val)
                         le = QLineEdit(display_val)
-                        le.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
+                        le.setStyleSheet("")
                         le.setPlaceholderText(placeholder)
                         le.setToolTip(tooltip)
                         le.textChanged.connect(self._on_changed)

@@ -16,6 +16,7 @@ class CenterTabs(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
@@ -30,6 +31,7 @@ class CenterTabs(QWidget):
 
         btn_row = QHBoxLayout()
         self.btn_copy = QPushButton(S.get("mesh.copy_btn"))
+        self.btn_copy.setObjectName("secondaryButton")
         self.btn_copy.setFixedSize(180, 28)
         self.btn_copy.clicked.connect(self._on_copy_mesh)
         btn_row.addWidget(self.btn_copy)

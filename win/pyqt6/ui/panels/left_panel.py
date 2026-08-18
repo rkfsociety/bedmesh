@@ -61,6 +61,7 @@ class LeftPanel(QWidget):
     def __init__(self, initial_settings: dict):
         super().__init__()
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
         title = QLabel("🔧 Управление")
@@ -81,6 +82,7 @@ class LeftPanel(QWidget):
         layout.addWidget(self.input_ip)
 
         self.btn_ssh = QPushButton("🌐 Загрузить по SSH")
+        self.btn_ssh.setObjectName("primaryButton")
         self.btn_ssh.clicked.connect(self._request_ssh_download)
         layout.addWidget(self.btn_ssh)
 
@@ -95,7 +97,7 @@ class LeftPanel(QWidget):
         toggle_row.addStretch()
         layout.addLayout(toggle_row)
 
-        self.adv_group = QGroupBox()
+        self.adv_group = QGroupBox("Параметры подключения и сервисы")
         self.adv_group.setVisible(self.chk_advanced.isChecked())
         adv_layout = QVBoxLayout(self.adv_group)
         adv_layout.setContentsMargins(5, 5, 5, 5)

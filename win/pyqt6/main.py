@@ -6,12 +6,14 @@ from PyQt6.QtGui import QIcon
 from app import BedMeshApp
 from utils.logger import setup_logger
 from utils.app_config import AppConfig
+from ui.theme import apply_app_theme
 
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("BedMesh Visualizer")
     app.setOrganizationName("rkfsociety")
     app.setStyle("Fusion")
+    apply_app_theme(app)
 
     # Для Windows: задаём AppUserModelID, чтобы иконка корректно отображалась в панели задач.
     # (Особенно важно для сборок PyInstaller onefile.)

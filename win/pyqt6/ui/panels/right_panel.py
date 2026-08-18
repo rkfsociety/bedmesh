@@ -6,19 +6,19 @@ class RightPanel(QWidget):
         super().__init__()
         self.setStyleSheet("""
             QWidget {
-                background-color: #1e1e1e;
-                color: #ffffff;
+                background-color: #101a2b;
+                color: #e8eef8;
                 font-family: 'Segoe UI', sans-serif;
             }
-            QLabel { color: #ffffff; }
+            QLabel { color: #e8eef8; }
         """)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(20)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(14)
 
         title = QLabel("📊 АНАЛИЗ МЕША")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ddd; border-bottom: 1px solid #444; padding-bottom: 10px;")
+        title.setStyleSheet("font-size: 17px; font-weight: bold; color: #e8eef8; border-bottom: 1px solid #304765; padding-bottom: 10px;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
@@ -83,7 +83,7 @@ class RightPanel(QWidget):
         shaper_col.addWidget(shaper_sub)
 
         self._shaper_block = QWidget()
-        self._shaper_block.setStyleSheet("background-color: #252525; border: 1px solid #333; border-radius: 6px;")
+        self._shaper_block.setStyleSheet("background-color: #16243a; border: 1px solid #304765; border-radius: 7px;")
         shaper_layout = QVBoxLayout(self._shaper_block)
         shaper_layout.setSpacing(6)
         shaper_layout.setContentsMargins(8, 8, 8, 8)
@@ -124,7 +124,7 @@ class RightPanel(QWidget):
         self._on_update_clicked = None
 
         upd_wrap = QWidget()
-        upd_wrap.setStyleSheet("background-color: #1b1b1b; border-top: 1px solid #333;")
+        upd_wrap.setStyleSheet("background-color: #111d31; border-top: 1px solid #304765;")
         upd_l = QVBoxLayout(upd_wrap)
         upd_l.setContentsMargins(8, 10, 8, 10)
         upd_l.setSpacing(6)
@@ -135,19 +135,10 @@ class RightPanel(QWidget):
         upd_l.addWidget(self.lbl_version_status)
 
         self.btn_update = QPushButton("Проверить обновления")
+        self.btn_update.setObjectName("secondaryButton")
         self.btn_update.setFixedHeight(28)
         self.btn_update.clicked.connect(self._handle_update_clicked)
-        self.btn_update.setStyleSheet("""
-            QPushButton {
-                background-color: #2d2d2d;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px 10px;
-                color: #ffffff;
-            }
-            QPushButton:hover { background-color: #333333; }
-            QPushButton:disabled { color: #777; border-color: #2a2a2a; }
-        """)
+        self.btn_update.setStyleSheet("")
         upd_l.addWidget(self.btn_update)
 
         layout.addWidget(upd_wrap)
@@ -188,7 +179,7 @@ class RightPanel(QWidget):
 
     def _create_card(self, title, value, color):
         card = QWidget()
-        card.setStyleSheet("background-color: #2d2d2d; border-radius: 8px; padding: 8px;")
+        card.setStyleSheet("background-color: #182841; border: 1px solid #2d4465; border-radius: 8px; padding: 8px;")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -208,7 +199,7 @@ class RightPanel(QWidget):
 
     def _create_correction_card(self, title, val_mm, turns, direction_text):
         card = QWidget()
-        card.setStyleSheet("background-color: #252525; border: 1px solid #333; border-radius: 6px; padding: 10px;")
+        card.setStyleSheet("background-color: #16243a; border: 1px solid #304765; border-radius: 7px; padding: 10px;")
         layout = QVBoxLayout(card)
         
         lbl_title = QLabel(title)

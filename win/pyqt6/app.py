@@ -53,7 +53,7 @@ class BedMeshApp(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(self.splitter)
@@ -73,6 +73,7 @@ class BedMeshApp(QMainWindow):
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 4)
         self.splitter.setStretchFactor(2, 2)
+        self.splitter.setSizes([245, 1110, 385])
 
         # --- Коннекты ---
         # SSH загрузка через ConfigEditor
