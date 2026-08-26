@@ -31,7 +31,14 @@ def _http_get_json(url: str, timeout: int = 5):
     """
     try:
         if requests is not None:
-            r = requests.get(url, timeout=timeout)
+            r = requests.get(
+                url,
+                headers={
+                    "User-Agent": "rkfsociety-bedmesh-updater",
+                    "Accept": "application/vnd.github+json",
+                },
+                timeout=timeout,
+            )
             if r.status_code != 200:
                 return None
             return r.json()
@@ -97,7 +104,9 @@ def _find_checksum_asset(exe_asset: dict, assets: list[dict]) -> Optional[dict]:
     return None
 
 
-def _latest_release_for_platform(*, tag_suffix: str, asset_ext: str) -> Optional[dict]:
+def _latest_release_for_platform(
+    *, tag_suffix: str, asset_ext: str, asset_name: str | None = None
+) -> Optional[dict]:
     """
     GitHub /releases/latest is global (last published of any platform).
     Pick the newest non-draft release whose tag contains -<suffix> and has the asset.
@@ -115,10 +124,17 @@ def _latest_release_for_platform(*, tag_suffix: str, asset_ext: str) -> Optional
         if rel.get("draft") or rel.get("prerelease"):
             continue
         tag = (rel.get("tag_name") or "").strip().lower()
-        if needle not in tag:
+        if not re.fullmatch(rf"v?\d+(?:\.\d+)*{re.escape(needle)}", tag):
             continue
         assets = rel.get("assets") or []
-        if not any((a.get("name") or "").lower().endswith(ext) for a in assets if isinstance(a, dict)):
+        if not any(
+            isinstance(a, dict)
+            and (
+                (asset_name and (a.get("name") or "").strip().lower() == asset_name.lower())
+                or (not asset_name and (a.get("name") or "").lower().endswith(ext))
+            )
+            for a in assets
+        ):
             continue
         candidates.append(rel)
 
@@ -201,7 +217,9 @@ def check_for_updates(current_version: str, update_callback: Callable[[str, dict
 
     def task():
         try:
-            data = _latest_release_for_platform(tag_suffix="win", asset_ext=".exe")
+            data = _latest_release_for_platform(
+                tag_suffix="win", asset_ext=".exe", asset_name="Bed.Mesh.Visualizer.exe"
+            )
             if not data:
                 return
             latest_tag = (data.get("tag_name") or "").strip()
@@ -228,7 +246,9 @@ def check_for_updates_detailed(
 
     def task():
         try:
-            data = _latest_release_for_platform(tag_suffix="win", asset_ext=".exe")
+            data = _latest_release_for_platform(
+                tag_suffix="win", asset_ext=".exe", asset_name="Bed.Mesh.Visualizer.exe"
+            )
             if not data:
                 result_callback("error", None, None)
                 return
@@ -316,7 +336,7 @@ def install_update(release_data: dict, parent=None) -> None:
         expected_size = None
         for a in assets:
             name = (a.get("name") or "").lower()
-            if name.endswith(".exe"):
+            if name == "bed.mesh.visualizer.exe":
                 exe_asset = a
                 url = a.get("browser_download_url")
                 expected_size = a.get("size")

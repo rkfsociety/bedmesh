@@ -117,6 +117,20 @@ class MeshParserTests(unittest.TestCase):
             "[input_shaper]\nshaper_freq_x: 0\nshaper_freq_y: 40\n"
         ))
 
+    def test_invalid_json_points_return_none(self):
+        payload = {
+            "bed_mesh default": {
+                "x_count": 2, "y_count": 2,
+                "min_x": 0, "max_x": 1, "min_y": 0, "max_y": 1,
+                "points": "0.1 nope 0.2 0.3",
+            }
+        }
+        self.assertIsNone(self.parser.parse_text(json.dumps(payload)))
+
+    def test_non_integral_probe_count_is_rejected(self):
+        text = CONFIG_TEXT.replace("x_count = 3\ny_count = 3", "probe_count: 3.5, 3")
+        self.assertIsNone(self.parser.parse_text(text))
+
     def test_parse_print_size(self):
         self.assertEqual(
             self.parser.parse_print_size("[printer]\nprint_size: 250*250*250mm\n"),

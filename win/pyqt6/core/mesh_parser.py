@@ -32,9 +32,10 @@ class MeshParser:
         """Разбирает содержимое конфигурации без повторного чтения файла."""
         try:
             data = json.loads(text)
-            return self._parse_json(data)
         except json.JSONDecodeError:
-            pass
+            data = None
+        if isinstance(data, dict):
+            return self._parse_json(data)
         return self.parse_config(text)
 
     def _parse_json(self, data: dict) -> Optional[BedMeshData]:
@@ -56,8 +57,12 @@ class MeshParser:
             return None
 
         points_str = mesh.get("points", "")
-        z_flat = [float(v) for v in points_str.replace(',', ' ').split()]
-        if len(z_flat) != x_c * y_c: return None
+        try:
+            z_flat = [float(v) for v in str(points_str).replace(',', ' ').split()]
+        except (TypeError, ValueError):
+            return None
+        if len(z_flat) != x_c * y_c or not np.isfinite(z_flat).all():
+            return None
 
         return BedMeshData(
             x=np.linspace(x_min, x_max, x_c),
@@ -123,7 +128,9 @@ class MeshParser:
             p = _parse_pair(raw)
             if not p:
                 return None
-            return int(round(p[0])), int(round(p[1]))
+            if not all(value.is_integer() for value in p):
+                return None
+            return int(p[0]), int(p[1])
 
         # Формат A (старый/нестандартный): x_count/y_count + min_x/max_x + min_y/max_y + points
         # Формат B (типичный Klipper): probe_count + mesh_min/mesh_max + points
@@ -204,6 +211,9 @@ class MeshParser:
             if len(flat) != x_c * y_c:
                 return None
             z = np.array(flat, dtype=float).reshape((y_c, x_c))
+
+        if not np.isfinite(z).all():
+            return None
 
         print_size = self.parse_print_size(config_text)
         return BedMeshData(

@@ -30,7 +30,7 @@ class RightPanel(QWidget):
         self.card_range, self.lbl_range = self._create_card("Размах", "0.000", "#ffaa00")
         self.card_mean, self.lbl_mean = self._create_card("Среднее", "0.000", "#ffffff")
         self.card_var, self.lbl_var = self._create_card("Варианс", "0.000", "#ffffff")
-        self.card_rms, self.lbl_rms = self._create_card("RMS", "0.000", "#ffffff")
+        self.card_rms, self.lbl_rms = self._create_card("RMS неровности", "0.000", "#ffffff")
 
         stats_grid.addWidget(self.card_min, 0, 0)
         stats_grid.addWidget(self.card_max, 0, 1)

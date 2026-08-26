@@ -1,5 +1,32 @@
+import os
 import sys
 import logging
+
+
+_QT_DLL_DIRECTORY_HANDLES = []
+
+
+def _prepare_frozen_qt_dll_path() -> None:
+    """Make PyQt6's nested Qt DLL directory visible before importing QtWidgets."""
+    if not getattr(sys, "frozen", False) or not hasattr(sys, "_MEIPASS"):
+        return
+    qt_bin = os.path.join(sys._MEIPASS, "PyQt6", "Qt6", "bin")
+    if not os.path.isdir(qt_bin):
+        return
+    os.environ["PATH"] = qt_bin + os.pathsep + os.environ.get("PATH", "")
+    global _QT_DLL_DIRECTORY_HANDLES
+    try:
+        # Keep the handle alive for the lifetime of the process.  Dropping it
+        # immediately removes the directory from the Windows DLL search path.
+        _QT_DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(sys._MEIPASS))
+        _QT_DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(qt_bin))
+    except (AttributeError, OSError):
+        # PATH is sufficient on older Windows/Python combinations.
+        pass
+
+
+_prepare_frozen_qt_dll_path()
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 

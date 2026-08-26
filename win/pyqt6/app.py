@@ -148,7 +148,7 @@ class BedMeshApp(QMainWindow):
         # После SSH-загрузки пробуем построить карту.
         # Важно: не переключаем вкладки "вслепую", иначе можно перебить переход на вкладку карты.
         try:
-            has_mesh = self._process_file(local_path)
+            has_mesh = self._process_file(local_path, allow_remote_fallback=True)
             if not has_mesh:
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)
         except Exception as e:
@@ -159,7 +159,7 @@ class BedMeshApp(QMainWindow):
         except Exception as e:
             self.logger.exception("persist status refresh failed: %s", e)
 
-    def _process_file(self, filepath):
+    def _process_file(self, filepath, *, allow_remote_fallback: bool = False):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 raw_content = f.read()
@@ -179,7 +179,7 @@ class BedMeshApp(QMainWindow):
             else:
                 # printer.cfg часто содержит только настройки bed_mesh, а сохранённые points лежат в printer_mutable.cfg.
                 mutable_path = "/userdata/app/gk/printer_mutable.cfg"
-                if self._last_ssh_data and os.path.basename(filepath) in ("download_printer.cfg", "temp_download.cfg", "printer.cfg"):
+                if self._last_ssh_data and allow_remote_fallback:
                     ip = self._last_ssh_data.get("ip")
                     port = int(self._last_ssh_data.get("port", 2222))
                     user = self._last_ssh_data.get("user", "root")
@@ -232,9 +232,11 @@ class BedMeshApp(QMainWindow):
         z_flat = data.z.flatten()
         min_val, max_val = float(np.min(z_flat)), float(np.max(z_flat))
         mean_val = float(np.mean(z_flat))
+        residual = z_flat - mean_val
         return {
             "min": min_val, "max": max_val, "range": float(max_val - min_val),
-            "mean": mean_val, "var": float(np.var(z_flat)), "rms": float(np.sqrt(np.mean(z_flat**2))),
+            "mean": mean_val, "var": float(np.var(z_flat)),
+            "rms": float(np.sqrt(np.mean(residual**2))),
             "front_left": float(data.z[0, 0] - mean_val),
             "front_right": float(data.z[0, -1] - mean_val),
             "back_center": float(data.z[-1, data.x_count // 2] - mean_val)

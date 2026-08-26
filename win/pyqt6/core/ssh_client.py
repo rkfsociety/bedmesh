@@ -59,6 +59,11 @@ def _sha256_remote_file_on_sftp(sftp, remote_path: str) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
+def _remote_temp_path(remote_path: str) -> str:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    return f"{remote_path}.{BACKUP_TAG}_upload_{timestamp}"
+
 def _backup_glob(remote_path: str) -> str:
     # Pattern used to detect backups created by this app.
     return f"{remote_path}.{BACKUP_TAG}_*"
@@ -207,6 +212,7 @@ def upload_cfg_with_backup_and_verify(
     """Upload, verify and clean backups using one SSH connection."""
     ssh = None
     sftp = None
+    temp_remote_path = None
     try:
         if not os.path.exists(local_path):
             raise FileNotFoundError(f"Local file not found: {local_path}")
@@ -218,15 +224,22 @@ def upload_cfg_with_backup_and_verify(
         if create_backup and not _create_remote_backup_on_ssh(ssh, remote_path):
             return False, "backup_failed"
 
-        logger.debug("SFTP PUT: %s -> %s", local_path, remote_path)
-        sftp.put(local_path, remote_path)
-        remote_sha = _sha256_remote_file_on_sftp(sftp, remote_path)
+        temp_remote_path = _remote_temp_path(remote_path)
+        logger.debug("SFTP PUT: %s -> temporary %s", local_path, temp_remote_path)
+        sftp.put(local_path, temp_remote_path)
+        remote_sha = _sha256_remote_file_on_sftp(sftp, temp_remote_path)
         if remote_sha != local_sha:
             logger.error(
                 "SSH upload verify mismatch: local=%s remote=%s remote_path=%s",
                 local_sha, remote_sha, remote_path,
             )
             return False, "verify_failed"
+
+        # Rename within the same directory so readers never observe a partial cfg.
+        if hasattr(sftp, "posix_rename"):
+            sftp.posix_rename(temp_remote_path, remote_path)
+        else:
+            sftp.rename(temp_remote_path, remote_path)
 
         _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
         logger.info("SSH upload verify ok: sha256=%s", remote_sha)
@@ -238,6 +251,11 @@ def upload_cfg_with_backup_and_verify(
         )
         return False, "upload_failed"
     finally:
+        if sftp is not None and temp_remote_path:
+            try:
+                sftp.remove(temp_remote_path)
+            except Exception:
+                pass
         if sftp is not None:
             sftp.close()
         if ssh is not None:

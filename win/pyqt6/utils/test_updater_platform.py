@@ -66,6 +66,30 @@ class TestPlatformReleasePick(unittest.TestCase):
             picked = _latest_release_for_platform(tag_suffix="win", asset_ext=".exe")
         self.assertEqual(picked["tag_name"], "v0.170-win")
 
+    def test_skips_similar_win_tag_and_unrelated_exe(self):
+        releases = [
+            {
+                "tag_name": "v0.180-win-hotfix",
+                "draft": False,
+                "prerelease": False,
+                "assets": [{"name": "Bed.Mesh.Visualizer.exe"}],
+            },
+            {
+                "tag_name": "v0.179-win",
+                "draft": False,
+                "prerelease": False,
+                "assets": [
+                    {"name": "helper.exe"},
+                    {"name": "Bed.Mesh.Visualizer.exe"},
+                ],
+            },
+        ]
+        with patch("updater._http_get_json", return_value=releases):
+            picked = _latest_release_for_platform(
+                tag_suffix="win", asset_ext=".exe", asset_name="Bed.Mesh.Visualizer.exe"
+            )
+        self.assertEqual(picked["tag_name"], "v0.179-win")
+
     def test_is_new_version_win_tags(self):
         self.assertTrue(is_new_version("0.169-win", "v0.170-win"))
         self.assertFalse(is_new_version("0.170-win", "v0.170-win"))

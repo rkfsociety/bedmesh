@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,6 +14,7 @@ if str(PYQT_ROOT) not in sys.path:
 from config_editor import (  # noqa: E402
     ConfigEditor,
     KlipperConfigParser,
+    _atomic_write_lines,
     _ace_current_label,
     _ace_preset_matches,
     _parse_probe_count,
@@ -127,6 +129,18 @@ class ZHomingEditorTests(unittest.TestCase):
         self.assertEqual(editor.widgets[("stepper_z", "second_homing_speed")].text(), "3")
         self.assertEqual(editor.widgets[("stepper_z", "homing_retract_dist")].text(), "4")
         editor.deleteLater()
+
+
+class AtomicWriteTests(unittest.TestCase):
+    def test_atomic_write_replaces_file_and_leaves_no_temp_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "printer.cfg")
+            Path(path).write_text("old\n", encoding="utf-8")
+
+            _atomic_write_lines(path, ["new\n", "value: 1\n"])
+
+            self.assertEqual(Path(path).read_text(encoding="utf-8"), "new\nvalue: 1\n")
+            self.assertEqual(list(Path(directory).glob(".bedmesh-*.tmp")), [])
 
 
 if __name__ == "__main__":

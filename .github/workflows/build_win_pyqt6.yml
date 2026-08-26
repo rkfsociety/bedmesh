@@ -124,6 +124,12 @@ jobs:
           pip install -r win/pyqt6/requirements.txt
           pip install requests pyinstaller
 
+      - name: Проверить синтаксис и тесты Windows-версии
+        shell: pwsh
+        run: |
+          python -m compileall -q win/pyqt6
+          python win/pyqt6/run_tests.py
+
       - name: Собрать exe (PyInstaller)
         shell: bash
         run: |
@@ -140,6 +146,14 @@ jobs:
             --hidden-import OpenGL \
             --hidden-import OpenGL.platform.win32 \
             --hidden-import pyqtgraph.opengl \
+            --runtime-hook win/pyqt6/pyi_rth_qt_dlls.py \
+            --exclude-module PySide6 \
+            --exclude-module shiboken6 \
+            --exclude-module PySide2 \
+            --exclude-module PyQt5 \
+            --exclude-module scipy \
+            --exclude-module numba \
+            --exclude-module llvmlite \
             --collect-submodules OpenGL \
             win/pyqt6/main.py
 

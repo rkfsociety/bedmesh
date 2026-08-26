@@ -1,6 +1,7 @@
 import os
 import math
 import re
+import tempfile
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QFileDialog, QScrollArea, QGridLayout,
                              QGroupBox, QLineEdit, QMessageBox, QListWidget, QComboBox, QSizePolicy)
@@ -17,6 +18,24 @@ from core.ssh_client import (
     ensure_remote_backup_exists,
     create_remote_backup_and_cleanup,
 )
+
+
+def _atomic_write_lines(path: str, lines: list[str]) -> None:
+    """Replace a local config atomically, keeping a failed write recoverable."""
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    fd, temp_path = tempfile.mkstemp(prefix=".bedmesh-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            stream.writelines(lines)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
 
 class _SshDownloadWorker(QObject):
     finished = pyqtSignal(bool, str, str)  # ok, local_path, error_text
@@ -427,6 +446,7 @@ class ConfigEditor(QWidget):
 
         self._ssh_thread.started.connect(self._ssh_worker.run)
         self._ssh_worker.finished.connect(self._on_ssh_download_finished)
+        self._ssh_worker.finished.connect(self._ssh_worker.deleteLater)
         self._ssh_worker.finished.connect(self._ssh_thread.quit)
         self._ssh_thread.finished.connect(self._ssh_thread.deleteLater)
         self._ssh_thread.start()
@@ -488,6 +508,7 @@ class ConfigEditor(QWidget):
         self._ssh_backup_worker.moveToThread(self._ssh_backup_thread)
         self._ssh_backup_thread.started.connect(self._ssh_backup_worker.run)
         self._ssh_backup_worker.finished.connect(lambda ok, payload, err: self._on_backup_action_finished(action, ok, payload, err, silent))
+        self._ssh_backup_worker.finished.connect(self._ssh_backup_worker.deleteLater)
         self._ssh_backup_worker.finished.connect(self._ssh_backup_thread.quit)
         self._ssh_backup_thread.finished.connect(self._ssh_backup_thread.deleteLater)
         self._ssh_backup_thread.start()
@@ -886,11 +907,13 @@ class ConfigEditor(QWidget):
 
         self._ssh_upload_thread.started.connect(self._ssh_upload_worker.run)
         self._ssh_upload_worker.finished.connect(self._on_ssh_upload_finished)
+        self._ssh_upload_worker.finished.connect(self._ssh_upload_worker.deleteLater)
         self._ssh_upload_worker.finished.connect(self._ssh_upload_thread.quit)
         self._ssh_upload_thread.finished.connect(self._ssh_upload_thread.deleteLater)
         self._ssh_upload_thread.start()
 
     def _on_ssh_upload_finished(self, ok: bool, error_text: str):
+        retry_started = False
         try:
             if ok:
                 self.logger.info("SSH UI upload success: remote_path=%s", self._ssh_config.get("path") if self._ssh_config else None)
@@ -924,18 +947,21 @@ class ConfigEditor(QWidget):
                 self._ssh_upload_worker.moveToThread(self._ssh_upload_thread)
                 self._ssh_upload_thread.started.connect(self._ssh_upload_worker.run)
                 self._ssh_upload_worker.finished.connect(self._on_ssh_upload_finished)
+                self._ssh_upload_worker.finished.connect(self._ssh_upload_worker.deleteLater)
                 self._ssh_upload_worker.finished.connect(self._ssh_upload_thread.quit)
                 self._ssh_upload_thread.finished.connect(self._ssh_upload_thread.deleteLater)
                 self._ssh_upload_thread.start()
+                retry_started = True
                 return
 
             self.logger.error("SSH UI upload failed: %s", error_text)
             QMessageBox.critical(self, "Ошибка", "Не удалось загрузить файл на принтер.")
             self.status.setText("❌ Ошибка отправки")
         finally:
-            self._ssh_upload_worker = None
-            self._ssh_upload_thread = None
-            self.ssh_operation_finished.emit()
+            if not retry_started:
+                self._ssh_upload_worker = None
+                self._ssh_upload_thread = None
+                self.ssh_operation_finished.emit()
 
     def _save_file_changes(self, silent=False):
         if not self.parser or not self._file_path: 
@@ -998,8 +1024,7 @@ class ConfigEditor(QWidget):
                     _set_key_value("filament_hub", k, str(v).strip())
 
             if changed:
-                with open(self._file_path, 'w', encoding='utf-8') as f:
-                    f.writelines(self.parser.raw_lines)
+                _atomic_write_lines(self._file_path, self.parser.raw_lines)
                 self.parser.load()
                 
             self.btn_save.setEnabled(False)
