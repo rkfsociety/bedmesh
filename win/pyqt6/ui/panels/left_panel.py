@@ -272,15 +272,18 @@ class LeftPanel(QWidget):
             QMessageBox.critical(self, "Ошибка конфига", error)
             return
         total = grid["total_points"]
-        reply = QMessageBox.question(
-            self, "Запустить калибровку?",
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Запустить калибровку?")
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setText(
             f"В конфиге принтера указана сетка {grid['x_count']}×{grid['y_count']} — {total} точек.\n\n"
             "Принтер нагреет стол, очистит сопло и начнёт измерения тензодатчиком. "
-            "После завершения нагрев будет отключён. Продолжить?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            "После завершения нагрев будет отключён. Продолжить?"
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        yes_button = dialog.addButton("Да", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Нет", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() is not yes_button:
             self.btn_calibrate.setEnabled(True)
             self.btn_calibrate.setText("📏 Калибровать стол")
             self.calibration_status_lbl.setText("Статус калибровки: отменена")
