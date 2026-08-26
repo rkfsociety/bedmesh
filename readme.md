@@ -25,7 +25,7 @@
 - Редактор секций конфига с бекапами на принтере
 - Вкладка **Принтер**: постоянный SSH (dropbear) и установка веб-панели gkbridge
 
-Подробности: [webpanel/README.md](webpanel/README.md), [android/README.md](android/README.md).
+Подробности: [архитектура](docs/ARCHITECTURE.md), [webpanel/README.md](webpanel/README.md), [android/README.md](android/README.md).
 
 ## Скачать
 
@@ -37,37 +37,42 @@
 | macOS | `BedMeshVisualizer_Mac.dmg` |
 | Android | `BedMeshVisualizer.apk` |
 
-Приложение само проверяет обновления при запуске и предлагает установить их в один клик.
+Клиенты проверяют обновления по своим платформенным тегам; Windows предлагает
+установить EXE из приложения, а macOS и Android используют опубликованный
+релиз и системный/браузерный установщик.
 
 ## Запуск из исходников
 
 **Windows** (`win/pyqt6`):
 
 ```powershell
+cd win/pyqt6
 py -3 main.py
+cd ../..
 ```
 
 **macOS** (`mac`):
 
 ```bash
+cd mac
 python3 main.py
+cd ..
 ```
 
-Зависимости: `win/pyqt6/requirements.txt` (или корневой `requirements.txt`).
+Зависимости Windows: `win/pyqt6/requirements.txt`. Корневой `requirements.txt`
+относится к историческому Streamlit-скрипту и не нужен для PyQt6-клиента.
 
 Android: см. [android/README.md](android/README.md).
 
-## Ветки и релизы
+## Работа с Git и релизы
 
-| Ветка | Назначение |
-|-------|------------|
-| `main` | общий код, веб-панель (`webpanel/`), документация |
-| `windows` | Windows-сборка и UI |
-| `mac` | macOS-сборка и UI |
-| `android` | Android-приложение |
+Рабочая ветка проекта — `main`. Изменения выполняются непосредственно в
+`main`; новые ветки и PR для этого проекта не используются.
 
-Теги релизов: `vX.YYY-win`, `vX.YYY-mac`, `vX.YYY-android`.  
-GitHub Actions собирает артефакт и прикрепляет его к релизу.
+Теги релизов: `vX.YYY-win`, `vX.YYY-mac`, `vX.YYY-android`. GitHub Actions
+собирает и публикует соответствующий артефакт. Версии находятся в
+`win/pyqt6/utils/version.py`, `mac/utils/version.py`,
+`android/app/build.gradle.kts` и `webpanel/gkbridge.version`.
 
 Правила вкладов: [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -79,3 +84,13 @@ GitHub Actions собирает артефакт и прикрепляет ег�
 Панель самообновляется с GitHub: при новой версии в футере появляется кнопка обновления (переустановка из клиента не обязательна).
 
 Сборка, API и выпуск версий панели: [webpanel/README.md](webpanel/README.md).
+
+## Проверки
+
+```powershell
+python win/pyqt6/run_tests.py
+cd android; .\gradlew.bat :app:testDebugUnitTest; cd ..
+cd webpanel; .\build.ps1; cd ..
+```
+
+Подробное описание потоков данных и сборки: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

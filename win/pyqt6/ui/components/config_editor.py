@@ -17,6 +17,7 @@ from core.ssh_client import (
     delete_remote_backup,
     ensure_remote_backup_exists,
     create_remote_backup_and_cleanup,
+    send_gcode_via_temporary_bridge,
 )
 
 
@@ -87,6 +88,26 @@ class _SshUploadWorker(QObject):
                 create_backup=self.create_backup,
             )
             self.finished.emit(ok, error)
+        except Exception as e:
+            self.finished.emit(False, str(e))
+
+
+class _KlipperRestartWorker(QObject):
+    finished = pyqtSignal(bool, str)  # ok, details
+
+    def __init__(self, ip: str, port: int, user: str, pwd: str):
+        super().__init__()
+        self.ip = ip
+        self.port = port
+        self.user = user
+        self.pwd = pwd
+
+    def run(self):
+        try:
+            ok, details = send_gcode_via_temporary_bridge(
+                self.ip, self.port, self.user, self.pwd, "RESTART"
+            )
+            self.finished.emit(ok, details)
         except Exception as e:
             self.finished.emit(False, str(e))
 
@@ -291,6 +312,8 @@ class ConfigEditor(QWidget):
         self._ssh_worker = None
         self._ssh_upload_thread = None
         self._ssh_upload_worker = None
+        self._restart_thread = None
+        self._restart_worker = None
         self._ssh_backup_thread = None
         self._ssh_backup_worker = None
         self._auto_backup_done = False
@@ -343,13 +366,20 @@ class ConfigEditor(QWidget):
         toolbar = QHBoxLayout()
         self.btn_load = QPushButton(S.get("config.btn_load"))
         self.btn_save = QPushButton(S.get("config.btn_save"))
+        self.btn_restart = QPushButton("🔄 Перезапустить Klipper")
         self.btn_load.setObjectName("secondaryButton")
         self.btn_save.setObjectName("primaryButton")
         self.btn_save.setEnabled(False)
+        self.btn_restart.setObjectName("secondaryButton")
+        self.btn_restart.setEnabled(False)
+        self.btn_restart.setToolTip(
+            "Перечитать сохранённый printer.cfg. Не использовать во время печати."
+        )
         self.btn_save.setStyleSheet("")
         
         toolbar.addWidget(self.btn_load)
         toolbar.addWidget(self.btn_save)
+        toolbar.addWidget(self.btn_restart)
         toolbar.addStretch()
         
         self.status = QLabel(S.get("config.status_ready"))
@@ -382,6 +412,7 @@ class ConfigEditor(QWidget):
 
         self.btn_load.clicked.connect(self.load_file)
         self.btn_save.clicked.connect(self.save_to_printer)
+        self.btn_restart.clicked.connect(self.restart_klipper)
         self.btn_backup_refresh.clicked.connect(self._refresh_backups)
         self.btn_backup_create.clicked.connect(lambda: self._run_backup_action("create"))
         self.btn_backup_restore.clicked.connect(lambda: self._run_backup_action("restore"))
@@ -436,6 +467,8 @@ class ConfigEditor(QWidget):
             "password": pwd,
             "path": remote_path
         }
+        self.btn_save.setEnabled(False)
+        self.btn_restart.setEnabled(False)
 
         self.status.setText(f"⏳ Подключение к {ip}...")
         self.repaint()
@@ -458,8 +491,12 @@ class ConfigEditor(QWidget):
                 self.logger.info("SSH UI download success: local_path=%s", local_path)
                 self.status.setText("⏳ Обработка файла...")
                 self.repaint()
-                self._process_loaded_file(local_path)
+                if not self._process_loaded_file(local_path):
+                    self.btn_save.setEnabled(False)
+                    self.btn_restart.setEnabled(False)
+                    return
                 self.btn_save.setEnabled(True)
+                self.btn_restart.setEnabled(True)
                 self.status.setText(f"✅ Загружено с принтера ({ip})")
                 self.ssh_download_succeeded.emit(local_path)
 
@@ -572,6 +609,7 @@ class ConfigEditor(QWidget):
         self._process_loaded_file(path)
         # Local load doesn't imply we can upload; keep Save disabled until SSH load.
         self.btn_save.setEnabled(False)
+        self.btn_restart.setEnabled(False)
 
     def _process_loaded_file(self, path):
         try:
@@ -582,6 +620,7 @@ class ConfigEditor(QWidget):
             self._ace_pending = {}
             self._build_ui()
             self.btn_save.setEnabled(False)
+            self.btn_restart.setEnabled(False)
             self.status.setText(S.get("config.status_loaded", filename=os.path.basename(path)))
             self.logger.info(
                 "Config processing done: sections=%s file_path=%s",
@@ -591,6 +630,8 @@ class ConfigEditor(QWidget):
         except Exception as e:
             self.logger.exception("Config processing failed: path=%s error=%s", path, e)
             QMessageBox.critical(self, "Ошибка", S.get("config.msg_load_error", error=str(e)))
+            return False
+        return True
 
     def _build_ui(self):
         self.logger.debug(
@@ -899,6 +940,7 @@ class ConfigEditor(QWidget):
             return
 
         self.status.setText("⏳ Сохранение на принтер...")
+        self.btn_restart.setEnabled(False)
         self.repaint()
 
         self._ssh_upload_thread = QThread(self)
@@ -911,6 +953,69 @@ class ConfigEditor(QWidget):
         self._ssh_upload_worker.finished.connect(self._ssh_upload_thread.quit)
         self._ssh_upload_thread.finished.connect(self._ssh_upload_thread.deleteLater)
         self._ssh_upload_thread.start()
+
+    def restart_klipper(self):
+        if not self._ssh_config:
+            QMessageBox.warning(self, "Ошибка", "Сначала загрузите конфиг по SSH.")
+            return
+        if self._ssh_upload_thread and self._ssh_upload_thread.isRunning():
+            QMessageBox.information(
+                self,
+                "Перезапуск",
+                "Сначала дождитесь завершения сохранения конфигурации.",
+            )
+            return
+        if self._restart_thread and self._restart_thread.isRunning():
+            QMessageBox.information(self, "Перезапуск", "Перезапуск уже выполняется.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Перезапустить Klipper?",
+            "Команда RESTART перечитает printer.cfg и временно остановит Klipper.\n\n"
+            "Не запускайте это во время печати. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        cfg = self._ssh_config
+        self.btn_restart.setEnabled(False)
+        self.btn_restart.setText("⏳ Перезапуск...")
+        self.status.setText("⏳ Перезапуск Klipper...")
+        self.repaint()
+
+        self._restart_thread = QThread(self)
+        self._restart_worker = _KlipperRestartWorker(
+            cfg["ip"], cfg["port"], cfg["user"], cfg["password"]
+        )
+        self._restart_worker.moveToThread(self._restart_thread)
+        self._restart_thread.started.connect(self._restart_worker.run)
+        self._restart_worker.finished.connect(self._on_restart_finished)
+        self._restart_worker.finished.connect(self._restart_worker.deleteLater)
+        self._restart_worker.finished.connect(self._restart_thread.quit)
+        self._restart_thread.finished.connect(self._restart_thread.deleteLater)
+        self._restart_thread.start()
+
+    def _on_restart_finished(self, ok: bool, details: str):
+        self.btn_restart.setEnabled(True)
+        self.btn_restart.setText("🔄 Перезапустить Klipper")
+        if ok:
+            self.status.setText("✅ Klipper перезапущен")
+            QMessageBox.information(
+                self, "Перезапуск завершён", "Команда RESTART отправлена. Конфигурация перечитана."
+            )
+        else:
+            self.status.setText("❌ Ошибка перезапуска")
+            self.logger.error("Klipper restart failed: %s", details)
+            QMessageBox.critical(
+                self,
+                "Ошибка перезапуска",
+                "Не удалось отправить команду RESTART. Проверьте SSH и лог приложения.",
+            )
+        self._restart_worker = None
+        self._restart_thread = None
 
     def _on_ssh_upload_finished(self, ok: bool, error_text: str):
         retry_started = False
@@ -961,7 +1066,22 @@ class ConfigEditor(QWidget):
             if not retry_started:
                 self._ssh_upload_worker = None
                 self._ssh_upload_thread = None
+                self.btn_restart.setEnabled(bool(self._ssh_config))
                 self.ssh_operation_finished.emit()
+
+    def closeEvent(self, event):
+        """Wait for active SSH workers before Qt destroys this widget."""
+        threads = (
+            self._ssh_thread,
+            self._ssh_upload_thread,
+            self._ssh_backup_thread,
+            self._restart_thread,
+        )
+        for thread in threads:
+            if thread and thread.isRunning():
+                thread.quit()
+                thread.wait(10000)
+        event.accept()
 
     def _save_file_changes(self, silent=False):
         if not self.parser or not self._file_path: 
