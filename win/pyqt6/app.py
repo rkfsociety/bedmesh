@@ -44,8 +44,11 @@ class _CalibrationWorker(QObject):
                 return
 
             import time
+            first_point_deadline = time.monotonic() + 180
+            idle_timeout = 20
             idle_since = time.monotonic()
-            while time.monotonic() - idle_since < 10:
+            while True:
+                now = time.monotonic()
                 try:
                     line = stdout.readline()
                 except Exception:
@@ -55,7 +58,21 @@ class _CalibrationWorker(QObject):
                     self.snapshot.emit(accumulator.snapshot())
                 else:
                     time.sleep(0.15)
-            self.finished.emit(True, "Калибровка завершена. Нажмите «Загрузить по SSH» для итоговой карты.")
+                if accumulator.points:
+                    if now - idle_since >= idle_timeout:
+                        break
+                elif now >= first_point_deadline:
+                    self.finished.emit(
+                        False,
+                        "Принтер не передал ни одной точки за 3 минуты. "
+                        "Калибровка могла не начаться или журнал недоступен.",
+                    )
+                    return
+            self.finished.emit(
+                True,
+                f"Получено точек: {len(accumulator.points)}. "
+                "Нажмите «Загрузить по SSH» для итоговой карты.",
+            )
         except Exception as error:
             self.finished.emit(False, str(error))
         finally:

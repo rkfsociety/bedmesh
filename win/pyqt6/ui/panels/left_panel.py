@@ -225,7 +225,7 @@ class LeftPanel(QWidget):
             return
         reply = QMessageBox.question(
             self, "Запустить калибровку?",
-            "Принтер нагреет стол и начнёт движения головки со щупом. Продолжить?",
+            "Принтер нагреет стол и начнёт измерения тензодатчиком. Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
