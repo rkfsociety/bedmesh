@@ -30,6 +30,23 @@ class LiveMeshAccumulatorTests(unittest.TestCase):
         self.assertFalse(acc.feed_line("Move Z to 3"))
         self.assertIsNone(acc.snapshot())
 
+    def test_fixed_grid_preserves_physical_orientation_for_snake_order(self):
+        acc = LiveMeshAccumulator(
+            total_points=4,
+            x=np.array([0.0, 10.0]),
+            y=np.array([0.0, 10.0]),
+        )
+        # Firmware order: bottom row left-to-right, next row right-to-left.
+        for line in (
+            "probe at 0,0 is z=1.0",
+            "probe at 10,0 is z=2.0",
+            "probe at 10,10 is z=3.0",
+            "probe at 0,10 is z=4.0",
+        ):
+            acc.feed_line(line)
+        snapshot = acc.snapshot()
+        np.testing.assert_allclose(snapshot.data.z, [[1.0, 2.0], [4.0, 3.0]])
+
 
 if __name__ == "__main__":
     unittest.main()

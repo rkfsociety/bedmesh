@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import traceback
+import json
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QVBoxLayout, QWidget, QMessageBox
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread
 
@@ -25,6 +26,7 @@ from utils import updater
 
 class _CalibrationWorker(QObject):
     snapshot = pyqtSignal(object)
+    status = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
 
     def __init__(self, ssh_data: dict):
@@ -41,9 +43,34 @@ class _CalibrationWorker(QObject):
             user = self.ssh_data.get("user", "root")
             password = self.ssh_data.get("password", "")
             monitor = get_ssh_connection(ip, port, user, password)
+            self.status.emit("Подключено. Читаю параметры сетки...")
+            _, mesh_stdout, _ = monitor.exec_command(
+                "cat /userdata/app/gk/printer_mutable.cfg 2>/dev/null"
+            )
+            try:
+                mesh_cfg = json.loads(mesh_stdout.read().decode("utf-8", errors="replace"))
+                mesh = mesh_cfg.get("bed_mesh default", {})
+                x_count = int(mesh.get("x_count", 0))
+                y_count = int(mesh.get("y_count", 0))
+                x_min, x_max = float(mesh.get("min_x", 0)), float(mesh.get("max_x", 0))
+                y_min, y_max = float(mesh.get("min_y", 0)), float(mesh.get("max_y", 0))
+                if x_count > 0 and y_count > 0 and x_max > x_min and y_max > y_min:
+                    accumulator = LiveMeshAccumulator(
+                        total_points=x_count * y_count,
+                        x=np.linspace(x_min, x_max, x_count),
+                        y=np.linspace(y_min, y_max, y_count),
+                    )
+            except (json.JSONDecodeError, TypeError, ValueError, UnicodeError):
+                self.status.emit("Параметры сетки не прочитаны, определяю её по точкам...")
             _, stdout, _ = monitor.exec_command("tail -n 0 -F /tmp/gklib.log")
             stdout.channel.settimeout(1.0)
             for command in BED_MESH_CALIBRATION_COMMANDS:
+                self.status.emit({
+                    "LEVIQ2_PREHEATING": "Прогрев стола и сопла...",
+                    "LEVIQ2_WIPING": "Очистка сопла...",
+                    "G28 Z": "Хоуминг оси Z...",
+                    "LEVIQ2_PROBE": "Запуск измерений тензодатчиком...",
+                }.get(command, f"Отправка команды {command}..."))
                 ok, details = send_gcode_via_temporary_bridge(ip, port, user, password, command)
                 if not ok:
                     self.finished.emit(
@@ -64,8 +91,25 @@ class _CalibrationWorker(QObject):
                     line = ""
                 if line and accumulator.feed_line(line):
                     idle_since = time.monotonic()
+                    point = accumulator.current
+                    self.status.emit(
+                        f"Измерение точки {len(accumulator.points)}/{accumulator.total_points or '?'}: "
+                        f"X={point[0]:.1f} Y={point[1]:.1f}"
+                    )
                     self.snapshot.emit(accumulator.snapshot())
                 else:
+                    if line:
+                        upper = line.upper()
+                        if "LEVIQ2_PREHEATING" in upper or "CMD_LEVIQ3_PREHEATING" in upper:
+                            self.status.emit("Принтер прогревает стол и сопло...")
+                        elif "LEVIQ2_WIPING" in upper or "WIPING" in upper:
+                            self.status.emit("Принтер очищает сопло...")
+                        elif "CMD_G28" in upper or "G28 Z" in upper:
+                            self.status.emit("Принтер выполняет хоуминг Z...")
+                        elif "LEVIQ2_PROBE" in upper:
+                            self.status.emit("Принтер измеряет стол тензодатчиком...")
+                        elif "SAVE_CONFIG" in upper or "SAVE_CONFIG" in line:
+                            self.status.emit("Принтер сохраняет карту...")
                     time.sleep(0.15)
                 if accumulator.points:
                     if now - idle_since >= idle_timeout:
@@ -227,6 +271,7 @@ class BedMeshApp(QMainWindow):
         self._calibration_worker.moveToThread(self._calibration_thread)
         self._calibration_thread.started.connect(self._calibration_worker.run)
         self._calibration_worker.snapshot.connect(self._on_live_mesh_snapshot)
+        self._calibration_worker.status.connect(self.left_panel.set_calibration_status)
         self._calibration_worker.finished.connect(self._on_calibration_finished)
         self._calibration_worker.finished.connect(self._calibration_thread.quit)
         self._calibration_worker.finished.connect(self._calibration_worker.deleteLater)

@@ -32,8 +32,16 @@ class LiveMeshSnapshot:
 class LiveMeshAccumulator:
     """Хранит последнее значение для каждой координаты, убирая повторы проб."""
 
-    def __init__(self, total_points: int | None = None):
+    def __init__(
+        self,
+        total_points: int | None = None,
+        *,
+        x: np.ndarray | None = None,
+        y: np.ndarray | None = None,
+    ):
         self.total_points = total_points
+        self.x = np.asarray(x, dtype=float) if x is not None else None
+        self.y = np.asarray(y, dtype=float) if y is not None else None
         self.points: dict[tuple[float, float], float] = {}
         self.current: tuple[float, float] | None = None
 
@@ -42,6 +50,13 @@ class LiveMeshAccumulator:
         if not match:
             return False
         point = (float(match.group("x")), float(match.group("y")))
+        # The printer reports decimal coordinates. Snap them to the grid from
+        # printer_mutable.cfg so the live view keeps a fixed 10x10 layout while
+        # the firmware probes in its left-to-right/right-to-left snake order.
+        if self.x is not None and self.y is not None:
+            x_index = int(np.argmin(np.abs(self.x - point[0])))
+            y_index = int(np.argmin(np.abs(self.y - point[1])))
+            point = (float(self.x[x_index]), float(self.y[y_index]))
         self.points[point] = float(match.group("z"))
         self.current = point
         return True
@@ -49,8 +64,8 @@ class LiveMeshAccumulator:
     def snapshot(self) -> LiveMeshSnapshot | None:
         if not self.points:
             return None
-        xs = np.array(sorted({point[0] for point in self.points}), dtype=float)
-        ys = np.array(sorted({point[1] for point in self.points}), dtype=float)
+        xs = self.x if self.x is not None else np.array(sorted({point[0] for point in self.points}), dtype=float)
+        ys = self.y if self.y is not None else np.array(sorted({point[1] for point in self.points}), dtype=float)
         z = np.full((len(ys), len(xs)), np.nan, dtype=float)
         x_index = {value: index for index, value in enumerate(xs)}
         y_index = {value: index for index, value in enumerate(ys)}

@@ -93,6 +93,10 @@ class LeftPanel(QWidget):
         )
         self.btn_calibrate.clicked.connect(self._request_calibration)
         layout.addWidget(self.btn_calibrate)
+        self.calibration_status_lbl = QLabel("Статус калибровки: не запущена")
+        self.calibration_status_lbl.setStyleSheet("font-size: 11px; color: #9fb3cc;")
+        self.calibration_status_lbl.setWordWrap(True)
+        layout.addWidget(self.calibration_status_lbl)
 
         toggle_row = QHBoxLayout()
         self.chk_advanced = ToggleSwitch(checked=False)
@@ -233,11 +237,18 @@ class LeftPanel(QWidget):
             return
         self.btn_calibrate.setEnabled(False)
         self.btn_calibrate.setText("⏳ Снятие карты...")
+        self.calibration_status_lbl.setText("Статус калибровки: подключение к принтеру...")
         self.calibration_requested.emit(self._collect_ssh_data())
+
+    def set_calibration_status(self, text: str):
+        self.calibration_status_lbl.setText(f"Статус калибровки: {text}")
 
     def calibration_finished(self, ok: bool, message: str):
         self.btn_calibrate.setEnabled(True)
         self.btn_calibrate.setText("📏 Калибровать стол")
+        self.calibration_status_lbl.setText(
+            f"Статус калибровки: {'готово' if ok else 'ошибка'}"
+        )
         if ok:
             QMessageBox.information(self, "Калибровка", message)
         else:
