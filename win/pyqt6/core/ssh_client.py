@@ -9,6 +9,7 @@ import hashlib
 import json
 import socket
 import time
+import re
 
 TEMP_FILE_NAME = "temp_download.cfg"
 BACKUP_TAG = "bedmesh_bak"
@@ -30,6 +31,7 @@ BED_MESH_CALIBRATION_COMMANDS = (
     "G28 Z",
     "LEVIQ2_PROBE",
 )
+BED_MESH_COOLDOWN_COMMANDS = ("M104 S0", "M140 S0")
 
 def _sh_quote(s: str) -> str:
     # Safe-ish single-quote for POSIX shells (busybox/ash).
@@ -164,6 +166,45 @@ def get_ssh_connection(ip: str, port: int = 2222, username: str = 'root', passwo
     ssh.connect(hostname=ip, port=port, username=username, password=password, timeout=10)
     logger.info("SSH connected: host=%s port=%s user=%s", ip, port, username)
     return ssh
+
+
+def get_bed_mesh_grid(ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    """Читает фактический размер leviQ-сетки без изменения принтера."""
+    ssh = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        path = "/userdata/app/gk/printer.cfg"
+        status, out, _ = _exec(ssh, f"cat {_sh_quote(path)}")
+        if status != 0:
+            return None
+
+        def value(name: str) -> str | None:
+            match = re.search(rf"(?im)^\s*{name}\s*:\s*([^#\r\n]+)", out)
+            return match.group(1).strip() if match else None
+
+        count = value("probe_count")
+        mesh_min = value("mesh_min")
+        mesh_max = value("mesh_max")
+        if not count or not mesh_min or not mesh_max:
+            return None
+        try:
+            x_count, y_count = (int(v.strip()) for v in count.split(",", 1))
+            min_x, min_y = (float(v.strip()) for v in mesh_min.split(",", 1))
+            max_x, max_y = (float(v.strip()) for v in mesh_max.split(",", 1))
+        except (TypeError, ValueError):
+            return None
+        if x_count <= 0 or y_count <= 0 or max_x <= min_x or max_y <= min_y:
+            return None
+        return {"x_count": x_count, "y_count": y_count,
+                "total_points": x_count * y_count,
+                "min_x": min_x, "max_x": max_x,
+                "min_y": min_y, "max_y": max_y, "source": path}
+    except Exception as error:
+        logger.warning("mesh grid read failed: host=%s error=%s", ip, error)
+        return None
+    finally:
+        if ssh is not None:
+            ssh.close()
 
 
 def send_gcode_via_temporary_bridge(

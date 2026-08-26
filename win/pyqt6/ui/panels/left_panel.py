@@ -7,6 +7,7 @@ from core.ssh_client import (
     install_persistent_ssh, install_web_panel,
     uninstall_persistent_ssh, uninstall_web_panel,
     check_persistent_status,
+    get_bed_mesh_grid,
 )
 
 
@@ -50,6 +51,27 @@ class _PersistWorker(QObject):
                                "" if ok else "Операция не выполнена. Подробности в debug.log")
         except Exception as e:
             self.finished.emit(self.op, False, None, str(e))
+
+
+class _MeshGridWorker(QObject):
+    finished = pyqtSignal(bool, object, str)
+
+    def __init__(self, ssh_data: dict):
+        super().__init__()
+        self.ssh_data = ssh_data
+
+    def run(self):
+        try:
+            grid = get_bed_mesh_grid(
+                self.ssh_data.get("ip", ""), int(self.ssh_data.get("port", 2222)),
+                self.ssh_data.get("user", "root"), self.ssh_data.get("password", ""),
+            )
+            if grid is None:
+                self.finished.emit(False, None, "Не удалось прочитать размер карты из printer_mutable.cfg.")
+            else:
+                self.finished.emit(True, grid, "")
+        except Exception as error:
+            self.finished.emit(False, None, str(error))
 
 
 class LeftPanel(QWidget):
@@ -227,15 +249,42 @@ class LeftPanel(QWidget):
         if not self.input_ip.text().strip():
             QMessageBox.warning(self, "Калибровка", "Укажите IP адрес принтера.")
             return
+        self.btn_calibrate.setEnabled(False)
+        self.btn_calibrate.setText("⏳ Проверка конфига...")
+        self.calibration_status_lbl.setText("Статус калибровки: читаю размер карты с принтера...")
+        self._mesh_grid_thread = QThread(self)
+        self._mesh_grid_worker = _MeshGridWorker(self._collect_ssh_data())
+        self._mesh_grid_worker.moveToThread(self._mesh_grid_thread)
+        self._mesh_grid_thread.started.connect(self._mesh_grid_worker.run)
+        self._mesh_grid_worker.finished.connect(self._on_mesh_grid_checked)
+        self._mesh_grid_worker.finished.connect(self._mesh_grid_thread.quit)
+        self._mesh_grid_worker.finished.connect(self._mesh_grid_worker.deleteLater)
+        self._mesh_grid_thread.finished.connect(self._mesh_grid_thread.deleteLater)
+        self._mesh_grid_thread.start()
+
+    def _on_mesh_grid_checked(self, ok: bool, grid: object, error: str):
+        self._mesh_grid_worker = None
+        self._mesh_grid_thread = None
+        if not ok or not isinstance(grid, dict):
+            self.btn_calibrate.setEnabled(True)
+            self.btn_calibrate.setText("📏 Калибровать стол")
+            self.calibration_status_lbl.setText("Статус калибровки: конфиг не прочитан")
+            QMessageBox.critical(self, "Ошибка конфига", error)
+            return
+        total = grid["total_points"]
         reply = QMessageBox.question(
             self, "Запустить калибровку?",
-            "Принтер нагреет стол и начнёт измерения тензодатчиком. Продолжить?",
+            f"В конфиге принтера указана сетка {grid['x_count']}×{grid['y_count']} — {total} точек.\n\n"
+            "Принтер нагреет стол, очистит сопло и начнёт измерения тензодатчиком. "
+            "После завершения нагрев будет отключён. Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
+            self.btn_calibrate.setEnabled(True)
+            self.btn_calibrate.setText("📏 Калибровать стол")
+            self.calibration_status_lbl.setText("Статус калибровки: отменена")
             return
-        self.btn_calibrate.setEnabled(False)
         self.btn_calibrate.setText("⏳ Снятие карты...")
         self.calibration_status_lbl.setText("Статус калибровки: подключение к принтеру...")
         self.calibration_requested.emit(self._collect_ssh_data())

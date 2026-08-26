@@ -2,7 +2,6 @@ import sys
 import numpy as np
 import os
 import traceback
-import json
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QVBoxLayout, QWidget, QMessageBox
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread
 
@@ -15,6 +14,8 @@ from core.ssh_client import (
     get_ssh_connection,
     send_gcode_via_temporary_bridge,
     BED_MESH_CALIBRATION_COMMANDS,
+    BED_MESH_COOLDOWN_COMMANDS,
+    get_bed_mesh_grid,
 )
 from core.live_mesh import LiveMeshAccumulator
 from utils.logger import get_logger
@@ -42,26 +43,17 @@ class _CalibrationWorker(QObject):
             port = int(self.ssh_data.get("port", 2222))
             user = self.ssh_data.get("user", "root")
             password = self.ssh_data.get("password", "")
-            monitor = get_ssh_connection(ip, port, user, password)
-            self.status.emit("Подключено. Читаю параметры сетки...")
-            _, mesh_stdout, _ = monitor.exec_command(
-                "cat /userdata/app/gk/printer_mutable.cfg 2>/dev/null"
+            self.status.emit("Подключено. Читаю настройки сетки из printer.cfg...")
+            grid = get_bed_mesh_grid(ip, port, user, password)
+            if grid is None:
+                self.finished.emit(False, "Не удалось прочитать [bed_mesh] из printer.cfg.")
+                return
+            accumulator = LiveMeshAccumulator(
+                total_points=grid["total_points"],
+                x=np.linspace(grid["min_x"], grid["max_x"], grid["x_count"]),
+                y=np.linspace(grid["min_y"], grid["max_y"], grid["y_count"]),
             )
-            try:
-                mesh_cfg = json.loads(mesh_stdout.read().decode("utf-8", errors="replace"))
-                mesh = mesh_cfg.get("bed_mesh default", {})
-                x_count = int(mesh.get("x_count", 0))
-                y_count = int(mesh.get("y_count", 0))
-                x_min, x_max = float(mesh.get("min_x", 0)), float(mesh.get("max_x", 0))
-                y_min, y_max = float(mesh.get("min_y", 0)), float(mesh.get("max_y", 0))
-                if x_count > 0 and y_count > 0 and x_max > x_min and y_max > y_min:
-                    accumulator = LiveMeshAccumulator(
-                        total_points=x_count * y_count,
-                        x=np.linspace(x_min, x_max, x_count),
-                        y=np.linspace(y_min, y_max, y_count),
-                    )
-            except (json.JSONDecodeError, TypeError, ValueError, UnicodeError):
-                self.status.emit("Параметры сетки не прочитаны, определяю её по точкам...")
+            monitor = get_ssh_connection(ip, port, user, password)
             _, stdout, _ = monitor.exec_command("tail -n 0 -F /tmp/gklib.log")
             stdout.channel.settimeout(1.0)
             for command in BED_MESH_CALIBRATION_COMMANDS:
@@ -121,6 +113,12 @@ class _CalibrationWorker(QObject):
                         "Калибровка могла не начаться или журнал недоступен.",
                     )
                     return
+            self.status.emit("Карта снята. Отключаю нагрев стола и сопла...")
+            for command in BED_MESH_COOLDOWN_COMMANDS:
+                ok, details = send_gcode_via_temporary_bridge(ip, port, user, password, command)
+                if not ok:
+                    self.status.emit(f"Предупреждение: не удалось отправить {command}")
+            self.status.emit("Нагрев стола и сопла отключён")
             self.finished.emit(
                 True,
                 f"Получено точек: {len(accumulator.points)}. "
