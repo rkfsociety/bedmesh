@@ -55,6 +55,7 @@ class _PersistWorker(QObject):
 class LeftPanel(QWidget):
     # Отправляем словарь с настройками SSH
     ssh_download_requested = pyqtSignal(dict)
+    calibration_requested = pyqtSignal(dict)
     setting_updated = pyqtSignal(str, str)
     advanced_toggled = pyqtSignal(bool)
 
@@ -85,6 +86,13 @@ class LeftPanel(QWidget):
         self.btn_ssh.setObjectName("primaryButton")
         self.btn_ssh.clicked.connect(self._request_ssh_download)
         layout.addWidget(self.btn_ssh)
+
+        self.btn_calibrate = QPushButton("📏 Калибровать стол")
+        self.btn_calibrate.setToolTip(
+            "Запускает G28 и BED_MESH_CALIBRATE по SSH. Веб-панель не требуется."
+        )
+        self.btn_calibrate.clicked.connect(self._request_calibration)
+        layout.addWidget(self.btn_calibrate)
 
         toggle_row = QHBoxLayout()
         self.chk_advanced = ToggleSwitch(checked=False)
@@ -210,6 +218,30 @@ class LeftPanel(QWidget):
         """Сброс состояния кнопки после завершения операции"""
         self.btn_ssh.setEnabled(True)
         self.btn_ssh.setText("🌐 Загрузить по SSH")
+
+    def _request_calibration(self):
+        if not self.input_ip.text().strip():
+            QMessageBox.warning(self, "Калибровка", "Укажите IP адрес принтера.")
+            return
+        reply = QMessageBox.question(
+            self, "Запустить калибровку?",
+            "Принтер нагреет стол и начнёт движения головки со щупом. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.btn_calibrate.setEnabled(False)
+        self.btn_calibrate.setText("⏳ Снятие карты...")
+        self.calibration_requested.emit(self._collect_ssh_data())
+
+    def calibration_finished(self, ok: bool, message: str):
+        self.btn_calibrate.setEnabled(True)
+        self.btn_calibrate.setText("📏 Калибровать стол")
+        if ok:
+            QMessageBox.information(self, "Калибровка", message)
+        else:
+            QMessageBox.critical(self, "Ошибка калибровки", message)
 
     def _toggle_advanced(self, is_checked: bool):
         self.adv_group.setVisible(is_checked)

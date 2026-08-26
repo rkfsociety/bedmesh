@@ -3,18 +3,66 @@ import numpy as np
 import os
 import traceback
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QVBoxLayout, QWidget, QMessageBox
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread
 
 from ui.panels.left_panel import LeftPanel
 from ui.panels.right_panel import RightPanel
 from ui.panels.center_tabs import CenterTabs
 from core.mesh_parser import MeshParser, BedMeshData
-from core.ssh_client import download_cfg_via_ssh
+from core.ssh_client import download_cfg_via_ssh, get_ssh_connection, send_gcode_via_temporary_bridge
+from core.live_mesh import LiveMeshAccumulator
 from utils.logger import get_logger
 from utils.app_config import AppConfig
 from utils.strings import S
 from utils.version import VERSION
 from utils import updater
+
+
+class _CalibrationWorker(QObject):
+    snapshot = pyqtSignal(object)
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, ssh_data: dict):
+        super().__init__()
+        self.ssh_data = ssh_data
+
+    def run(self):
+        monitor = None
+        stdout = None
+        accumulator = LiveMeshAccumulator()
+        try:
+            ip = self.ssh_data.get("ip", "")
+            port = int(self.ssh_data.get("port", 2222))
+            user = self.ssh_data.get("user", "root")
+            password = self.ssh_data.get("password", "")
+            monitor = get_ssh_connection(ip, port, user, password)
+            _, stdout, _ = monitor.exec_command("tail -n 0 -F /tmp/gklib.log")
+            stdout.channel.settimeout(1.0)
+            ok, details = send_gcode_via_temporary_bridge(ip, port, user, password)
+            if not ok:
+                self.finished.emit(False, "Не удалось отправить G-code по SSH.\n" + details)
+                return
+
+            import time
+            idle_since = time.monotonic()
+            while time.monotonic() - idle_since < 10:
+                try:
+                    line = stdout.readline()
+                except Exception:
+                    line = ""
+                if line and accumulator.feed_line(line):
+                    idle_since = time.monotonic()
+                    self.snapshot.emit(accumulator.snapshot())
+                else:
+                    time.sleep(0.15)
+            self.finished.emit(True, "Калибровка завершена. Нажмите «Загрузить по SSH» для итоговой карты.")
+        except Exception as error:
+            self.finished.emit(False, str(error))
+        finally:
+            if stdout is not None:
+                stdout.channel.close()
+            if monitor is not None:
+                monitor.close()
 
 class BedMeshApp(QMainWindow):
     _update_check_done = pyqtSignal(str, object, object)
@@ -78,6 +126,7 @@ class BedMeshApp(QMainWindow):
         # --- Коннекты ---
         # SSH загрузка через ConfigEditor
         self.left_panel.ssh_download_requested.connect(self._handle_ssh_load_via_editor)
+        self.left_panel.calibration_requested.connect(self._start_calibration)
         
         # Сброс кнопки в левой панели после завершения операции в редакторе
         self.center_tabs.config_editor.ssh_operation_finished.connect(self.left_panel.reset_ssh_button)
@@ -143,6 +192,33 @@ class BedMeshApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось инициировать загрузку:\n{str(e)}")
             self.left_panel.reset_ssh_button()
+
+    def _start_calibration(self, ssh_data: dict):
+        if getattr(self, "_calibration_thread", None) and self._calibration_thread.isRunning():
+            return
+        self._calibration_thread = QThread(self)
+        self._calibration_worker = _CalibrationWorker(ssh_data)
+        self._calibration_worker.moveToThread(self._calibration_thread)
+        self._calibration_thread.started.connect(self._calibration_worker.run)
+        self._calibration_worker.snapshot.connect(self._on_live_mesh_snapshot)
+        self._calibration_worker.finished.connect(self._on_calibration_finished)
+        self._calibration_worker.finished.connect(self._calibration_thread.quit)
+        self._calibration_worker.finished.connect(self._calibration_worker.deleteLater)
+        self._calibration_thread.finished.connect(self._calibration_thread.deleteLater)
+        self._calibration_thread.start()
+
+    def _on_live_mesh_snapshot(self, snapshot):
+        if snapshot is None:
+            return
+        self._last_mesh_data = snapshot.data
+        self.center_tabs.update_mesh_views(snapshot.data)
+        self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
+        self.right_panel.update_all(self._calculate_advanced_stats(snapshot.data))
+
+    def _on_calibration_finished(self, ok: bool, message: str):
+        self._calibration_worker = None
+        self._calibration_thread = None
+        self.left_panel.calibration_finished(ok, message)
 
     def _handle_ssh_file_downloaded(self, local_path: str):
         # После SSH-загрузки пробуем построить карту.

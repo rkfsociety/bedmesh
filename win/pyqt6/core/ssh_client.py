@@ -6,6 +6,9 @@ from utils.resources import resource_path, resolve_gkbridge_for_install, camera_
 from utils.app_config import default_download_local_path
 from typing import Optional, Callable
 import hashlib
+import json
+import socket
+import time
 
 TEMP_FILE_NAME = "temp_download.cfg"
 BACKUP_TAG = "bedmesh_bak"
@@ -20,6 +23,8 @@ CAMERA_DST = "/useremain/camera"
 RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 
 logger = get_logger(__name__)
+
+BED_MESH_CALIBRATION_SCRIPT = "G28\nBED_MESH_CALIBRATE\nBED_MESH_PROFILE SAVE=default"
 
 def _sh_quote(s: str) -> str:
     # Safe-ish single-quote for POSIX shells (busybox/ash).
@@ -154,6 +159,70 @@ def get_ssh_connection(ip: str, port: int = 2222, username: str = 'root', passwo
     ssh.connect(hostname=ip, port=port, username=username, password=password, timeout=10)
     logger.info("SSH connected: host=%s port=%s user=%s", ip, port, username)
     return ssh
+
+
+def send_gcode_via_temporary_bridge(
+    ip: str, port: int, username: str, password: str,
+    script: str = BED_MESH_CALIBRATION_SCRIPT,
+) -> tuple[bool, str]:
+    """Отправляет G-code через временный мост, без постоянной установки панели."""
+    remote = f"/tmp/bedmesh-gkbridge-{os.getpid()}"
+    remote_log = remote + ".log"
+    ssh = get_ssh_connection(ip, port, username, password)
+    sftp = None
+    channel = None
+    pid = None
+    local = None
+    temporary = False
+    try:
+        local, temporary = resolve_gkbridge_for_install()
+        sftp = ssh.open_sftp()
+        sftp.put(local, remote)
+        _, out, _ = _exec(ssh, f"chmod 700 {_sh_quote(remote)}; {_sh_quote(remote)} -addr 127.0.0.1:18089 >/tmp/bedmesh-gkbridge.log 2>&1 & echo $!")
+        pid = out.strip().splitlines()[-1].strip()
+        time.sleep(0.25)
+        transport = ssh.get_transport()
+        if transport is None or not transport.is_active():
+            return False, "SSH-соединение закрыто"
+        channel = transport.open_channel("direct-tcpip", ("127.0.0.1", 18089), (ip, port), timeout=5)
+        body = json.dumps({"script": script}, ensure_ascii=False).encode("utf-8")
+        request = (
+            b"POST /gcode HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+        )
+        channel.sendall(request)
+        response = bytearray()
+        channel.settimeout(8)
+        while True:
+            try:
+                chunk = channel.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            response.extend(chunk)
+        text = bytes(response).decode("utf-8", errors="replace")
+        ok = " 200 " in text.splitlines()[0] if text.splitlines() else False
+        return ok, text[-500:]
+    except Exception as error:
+        logger.exception("Temporary gkbridge G-code failed: host=%s error=%s", ip, error)
+        return False, str(error)
+    finally:
+        if channel is not None:
+            channel.close()
+        if pid:
+            try:
+                _exec(ssh, f"kill {_sh_quote(pid)} 2>/dev/null; rm -f {_sh_quote(remote)} {_sh_quote(remote_log)}")
+            except Exception:
+                pass
+        if temporary and local:
+            try:
+                os.remove(local)
+            except OSError:
+                pass
+        if sftp is not None:
+            sftp.close()
+        ssh.close()
 
 def download_cfg_via_ssh(
     ip: str,
