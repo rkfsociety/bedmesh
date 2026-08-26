@@ -205,7 +205,12 @@ def send_gcode_via_temporary_bridge(
                 break
             response.extend(chunk)
         text = bytes(response).decode("utf-8", errors="replace")
-        ok = " 200 " in text.splitlines()[0] if text.splitlines() else False
+        status_line = text.splitlines()[0] if text.splitlines() else ""
+        ok = " 200 " in status_line
+        # У этой прошивки G-code уже уходит в очередь, но ответ Klipper может
+        # не прийти до таймаута gkbridge. Не повторяем команду в этом случае.
+        if " 502 " in status_line and "i/o timeout" in text:
+            ok = True
         return ok, text[-500:]
     except Exception as error:
         logger.exception("Temporary gkbridge G-code failed: host=%s error=%s", ip, error)
