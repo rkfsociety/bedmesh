@@ -2,7 +2,7 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from utils.resources import resource_path, resolve_gkbridge_for_install, camera_dir
+from utils.resources import resource_path, resolve_gkbridge_for_install, gkbridge_binary, camera_dir
 from utils.app_config import default_download_local_path
 from typing import Optional, Callable
 import hashlib
@@ -175,7 +175,10 @@ def send_gcode_via_temporary_bridge(
     local = None
     temporary = False
     try:
-        local, temporary = resolve_gkbridge_for_install()
+        bundled = gkbridge_binary()
+        local, temporary = resolve_gkbridge_for_install(
+            preferred_path=bundled if os.path.exists(bundled) else None,
+        )
         sftp = ssh.open_sftp()
         sftp.put(local, remote)
         _, out, _ = _exec(ssh, f"chmod 700 {_sh_quote(remote)}; {_sh_quote(remote)} -addr 127.0.0.1:18089 >/tmp/bedmesh-gkbridge.log 2>&1 & echo $!")
