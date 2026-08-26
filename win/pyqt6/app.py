@@ -9,7 +9,12 @@ from ui.panels.left_panel import LeftPanel
 from ui.panels.right_panel import RightPanel
 from ui.panels.center_tabs import CenterTabs
 from core.mesh_parser import MeshParser, BedMeshData
-from core.ssh_client import download_cfg_via_ssh, get_ssh_connection, send_gcode_via_temporary_bridge
+from core.ssh_client import (
+    download_cfg_via_ssh,
+    get_ssh_connection,
+    send_gcode_via_temporary_bridge,
+    BED_MESH_CALIBRATION_COMMANDS,
+)
 from core.live_mesh import LiveMeshAccumulator
 from utils.logger import get_logger
 from utils.app_config import AppConfig
@@ -38,10 +43,14 @@ class _CalibrationWorker(QObject):
             monitor = get_ssh_connection(ip, port, user, password)
             _, stdout, _ = monitor.exec_command("tail -n 0 -F /tmp/gklib.log")
             stdout.channel.settimeout(1.0)
-            ok, details = send_gcode_via_temporary_bridge(ip, port, user, password)
-            if not ok:
-                self.finished.emit(False, "Не удалось отправить G-code по SSH.\n" + details)
-                return
+            for command in BED_MESH_CALIBRATION_COMMANDS:
+                ok, details = send_gcode_via_temporary_bridge(ip, port, user, password, command)
+                if not ok:
+                    self.finished.emit(
+                        False,
+                        f"Не удалось отправить штатную команду {command} по SSH.\n{details}",
+                    )
+                    return
 
             import time
             first_point_deadline = time.monotonic() + 180

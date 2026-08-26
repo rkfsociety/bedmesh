@@ -24,7 +24,12 @@ RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 
 logger = get_logger(__name__)
 
-BED_MESH_CALIBRATION_SCRIPT = "G28\nBED_MESH_CALIBRATE\nBED_MESH_PROFILE SAVE=default"
+BED_MESH_CALIBRATION_COMMANDS = (
+    "LEVIQ2_PREHEATING",
+    "LEVIQ2_WIPING",
+    "G28 Z",
+    "LEVIQ2_PROBE",
+)
 
 def _sh_quote(s: str) -> str:
     # Safe-ish single-quote for POSIX shells (busybox/ash).
@@ -163,7 +168,7 @@ def get_ssh_connection(ip: str, port: int = 2222, username: str = 'root', passwo
 
 def send_gcode_via_temporary_bridge(
     ip: str, port: int, username: str, password: str,
-    script: str = BED_MESH_CALIBRATION_SCRIPT,
+    script: str,
 ) -> tuple[bool, str]:
     """Отправляет G-code через временный мост, без постоянной установки панели."""
     remote = f"/tmp/bedmesh-gkbridge-{os.getpid()}"
