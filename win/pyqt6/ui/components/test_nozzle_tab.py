@@ -4,6 +4,7 @@ from nozzle_tab import (
     _read_nozzle_diameter,
     _read_nozzle_material,
     _replace_nozzle_diameter,
+    _verify_remote_nozzle_values,
 )
 
 
@@ -44,6 +45,25 @@ class NozzleConfigTests(unittest.TestCase):
     def test_rejects_config_without_extruder_diameter(self):
         with self.assertRaises(ValueError):
             _replace_nozzle_diameter("[extruder]\nrotation_distance: 6.5\n", "0.60")
+
+    def test_verifies_both_remote_nozzle_configs_before_reboot(self):
+        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\nnozzle_material : hardened_steel\n"
+        nozzle_cfg = '{"material":"hardened_steel","diameter":"1.00","modify":false}'
+
+        self.assertEqual(
+            _verify_remote_nozzle_values(printer_cfg, nozzle_cfg, "1.00", "hardened_steel"),
+            (True, ""),
+        )
+
+    def test_rejects_nozzle_config_mismatch(self):
+        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\nnozzle_material : brass\n"
+        nozzle_cfg = '{"material":"hardened_steel","diameter":"1.00","modify":false}'
+
+        ok, details = _verify_remote_nozzle_values(
+            printer_cfg, nozzle_cfg, "1.00", "hardened_steel"
+        )
+        self.assertFalse(ok)
+        self.assertIn("материал", details)
 
 
 if __name__ == "__main__":

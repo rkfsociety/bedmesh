@@ -427,6 +427,30 @@ def create_remote_backup(ip: str, port: int, username: str, password: str,
             ssh.close()
 
 
+def read_remote_text_via_ssh(
+    ip: str,
+    port: int = 2222,
+    username: str = 'root',
+    password: str = 'rockchip',
+    remote_path: str = '/userdata/app/gk/printer.cfg',
+) -> Optional[str]:
+    """Reads a small text file over SSH without changing the printer."""
+    ssh = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        status, output, error = _exec(ssh, f"cat {_sh_quote(remote_path)}")
+        if status != 0:
+            logger.error("SSH read failed: remote_path=%s stderr=%s", remote_path, error)
+            return None
+        return output
+    except Exception as e:
+        logger.exception("SSH read failed: host=%s port=%s user=%s remote_path=%s error=%s", ip, port, username, remote_path, e)
+        return None
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
 def _create_remote_backup_on_ssh(ssh, remote_path: str) -> Optional[str]:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = f"{remote_path}.{BACKUP_TAG}_{timestamp}"

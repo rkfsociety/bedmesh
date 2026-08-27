@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.ssh_client import (
+    read_remote_text_via_ssh,
     reboot_printer_via_ssh,
     upload_cfg_with_backup_and_verify,
 )
@@ -88,6 +89,33 @@ def _replace_nozzle_diameter(text: str, diameter: str, material: str | None = No
     return "".join(lines)
 
 
+def _verify_remote_nozzle_values(
+    printer_cfg: str,
+    nozzle_cfg: str,
+    diameter: str,
+    material: str,
+) -> tuple[bool, str]:
+    """Checks both remote sources before allowing a reboot."""
+    actual_diameter = _read_nozzle_diameter(printer_cfg)
+    actual_material = _read_nozzle_material(printer_cfg)
+    try:
+        metadata = json.loads(nozzle_cfg)
+    except (TypeError, json.JSONDecodeError):
+        return False, "nozzle.cfg имеет неверный JSON"
+
+    if actual_diameter != diameter:
+        return False, f"printer.cfg: диаметр {actual_diameter!r}, ожидался {diameter!r}"
+    if actual_material != material:
+        return False, f"printer.cfg: материал {actual_material!r}, ожидался {material!r}"
+    if str(metadata.get("diameter", "")) != diameter:
+        return False, f"nozzle.cfg: диаметр {metadata.get('diameter')!r}, ожидался {diameter!r}"
+    if str(metadata.get("material", "")).lower() != material:
+        return False, f"nozzle.cfg: материал {metadata.get('material')!r}, ожидался {material!r}"
+    if metadata.get("modify") is not False:
+        return False, "nozzle.cfg: флаг modify не равен false"
+    return True, ""
+
+
 def _atomic_write(path: str, text: str) -> None:
     directory = os.path.dirname(os.path.abspath(path)) or "."
     fd, temporary = tempfile.mkstemp(prefix=".bedmesh-nozzle-", suffix=".tmp", dir=directory)
@@ -152,6 +180,23 @@ class _NozzleUploadWorker(QObject):
                     os.remove(metadata_path)
                 except OSError:
                     pass
+            if ok:
+                remote_printer_cfg = read_remote_text_via_ssh(
+                    self.ssh_config["ip"], self.ssh_config["port"],
+                    self.ssh_config["user"], self.ssh_config["password"],
+                    self.ssh_config["path"],
+                )
+                remote_nozzle_cfg = read_remote_text_via_ssh(
+                    self.ssh_config["ip"], self.ssh_config["port"],
+                    self.ssh_config["user"], self.ssh_config["password"],
+                    "/userdata/app/gk/config/nozzle.cfg",
+                )
+                if remote_printer_cfg is None or remote_nozzle_cfg is None:
+                    ok, error = False, "не удалось прочитать конфигурации после загрузки"
+                else:
+                    ok, error = _verify_remote_nozzle_values(
+                        remote_printer_cfg, remote_nozzle_cfg, self.diameter, self.material
+                    )
             self.finished.emit(ok, error)
         except Exception as error:
             self.finished.emit(False, str(error))
