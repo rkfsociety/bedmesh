@@ -4,6 +4,7 @@ from nozzle_tab import (
     _read_nozzle_diameter,
     _read_nozzle_material,
     _replace_nozzle_diameter,
+    _format_nozzle_label,
     _verify_remote_nozzle_values,
 )
 
@@ -13,6 +14,10 @@ class NozzleConfigTests(unittest.TestCase):
         from nozzle_tab import NOZZLE_DIAMETERS
 
         self.assertIn("1.00", NOZZLE_DIAMETERS)
+
+    def test_formats_material_and_diameter_for_visible_selection(self):
+        self.assertEqual(_format_nozzle_label("Brass", "1.00"), "Brass-1.00")
+        self.assertEqual(_format_nozzle_label("Hardened Steel", "0.40"), "Hardened Steel-0.40")
 
     def test_reads_only_extruder_nozzle_diameter(self):
         text = "[heater_bed]\nnozzle_diameter: 0.80\n\n[extruder]\nnozzle_diameter : 0.400 # stock\n"

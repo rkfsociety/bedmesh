@@ -26,6 +26,11 @@ NOZZLE_DIAMETERS = ("0.25", "0.40", "0.60", "0.80", "1.00")
 NOZZLE_MATERIALS = (("Brass", "brass"), ("Hardened Steel", "hardened_steel"))
 
 
+def _format_nozzle_label(material: str, diameter: str) -> str:
+    """Returns the same unambiguous label used by the printer UI."""
+    return f"{material}-{diameter}"
+
+
 def _read_nozzle_diameter(text: str) -> str | None:
     in_extruder = False
     for line in text.splitlines():
@@ -255,6 +260,11 @@ class NozzleTab(QWidget):
             self.material.addItem(label, value)
         self.material.setEnabled(False)
         group_layout.addWidget(self.material)
+        self.selection = QLabel("Выбрано: —")
+        self.selection.setStyleSheet("font-weight: 600; color: #fbbf24;")
+        group_layout.addWidget(self.selection)
+        self.diameter.currentTextChanged.connect(self._update_selection_label)
+        self.material.currentTextChanged.connect(self._update_selection_label)
 
         self.btn_apply = QPushButton("✅ Сохранить и перезапустить принтер")
         self.btn_apply.setObjectName("primaryButton")
@@ -295,6 +305,12 @@ class NozzleTab(QWidget):
             "path": ssh_data.get("path", "/userdata/app/gk/printer.cfg"),
         }
         self.btn_apply.setEnabled(False)
+
+    def _update_selection_label(self) -> None:
+        diameter = self.diameter.currentText().strip()
+        material = self.material.currentText().strip()
+        if diameter and material:
+            self.selection.setText(f"Выбрано: {_format_nozzle_label(material, diameter)}")
 
     def load_file(self, path: str) -> None:
         try:
