@@ -48,3 +48,24 @@
 - Итог PID экструдера: `Kp=33.067`, `Ki=5.652`, `Kd=48.361`.
 - В логах есть предупреждение `Can't read autosave from config file - modifications after header`; при этом новые значения фактически присутствуют в `printer_mutable.cfg`, а процессы и RPC работают штатно. Это нужно учитывать при дальнейшем анализе сохранения конфигурации.
 - Ключи поиска в логах: `/tmp/gkui.log`, `/tmp/gklib.log`, `PidCalibrate/Extruder`, `Resonance/SetShaperCalibrate`, `Leviq2/Preheating`, `Leviq2/Wiping`, `Leviq2/Probe`, `Config/PrinterConfSave`, `Printer/ReportUIWorkStatus`.
+
+## Безопасный runtime-срез после восстановления — 2026-08-27, 10:19 UTC
+
+- Проверка выполнялась только чтением по SSH на `192.168.63.179:2222`; перезапусков, остановки процессов и записи на принтер не выполнялось.
+- Система отвечает: Linux Rockchip `5.10.160`, `armv7l`; принтер работает около 17 минут на момент проверки.
+- Все штатные процессы живы: `gklib -a /tmp/unix_uds1 printer.cfg` (PID 249), `gkapi` (PID 356), `K3SysUi` (PID 357), `gkcam` (PID 382); также работают `gkbridge` и SSH dropbear на 2222.
+- Контрольные суммы штатных бинарников совпали с восстановленной копией: `K3SysUi` `1bd84d3856b09a13a634143bb42378e5`, `gklib` `0d769218b5dcd2cded34372ec14fd820`, `gkapi` `efa64b0be1a947e34127379986fc7257`.
+- Текущий RPC-статус `extruder` по-прежнему сообщает `Nozzle_diameter: 0.4` и `Nozzle_material: hardened_steel`; состояние Klipper — `ready`.
+- Текущий `/userdata/app/gk/config/nozzle.cfg` содержит `material:"-"`, `diameter:"-"`, `modify:false`; это согласуется с отсутствием автоматической полной калибровки после восстановления.
+- В `printer.cfg` активен `nozzle_diameter : 0.400`; в `printer_mutable.cfg` сохранены `nozzle_diameter: "0.40"` и `nozzle_material: "hardened_steel"`, а также результаты последней калибровки.
+- `start.sh` и `appCheck.sh` запускают и контролируют процессы, но в просмотренных скриптах нет проверки MD5 или подписи `K3SysUi`.
+- Локальный файл `config/nozzle.cfg` в старом каталоге эксперимента содержит тестовые значения `hardened_steel/1.00`; он не является свежей копией текущего принтера и не должен использоваться как источник состояния.
+
+## Статический разбор штатной логики выбора сопла — 2026-08-27
+
+- В таблице символов штатного `K3SysUi` найдены: `MainWindow::AcSettingNozzelReflash` (формирует 8 записей), `MainWindow::AcSettingNozzleSelect`, `MainWindow::ExtruderDiameter`, `ParaConfig::ConfigNozzleSize`, `ParaConfig::IsNozzleChanged`, `RpcApi::CmdSetPrintExtruDiameter` и `RpcParser::ParserResponeSetNozzleDiameter`.
+- `AcSettingNozzelReflash` явно задаёт размер списка `8`; обработчик выбора принимает индексы `0..7` и сопоставляет их с таблицей значений диаметра.
+- `AcSettingNozzleSelect` после выбора вызывает `RpcApi::CmdSetPrintExtruDiameter` с выбранным `double` и текстовым `QString`; это штатный путь изменения диаметра, а не простая перерисовка подписи.
+- `ParserResponeSetNozzleDiameter` разбирает ответ RPC, обновляет глобальный `NozzleDiameter` и передаёт значение в `MainWindow::ExtruderDiameter`; поэтому корректное отображение требует согласованного изменения RPC/состояния, а не только добавления строки.
+- В извлечённых символах нет отдельного штатного метода изменения `Nozzle_material`; материал, вероятно, выбирается парой в UI и/или сохраняется через конфигурационный контроллер. Это нужно подтвердить чтением RPC-обмена, не вызывая изменяющие методы.
+- Вывод для следующего этапа: исследовать формат параметров `Printer/SetExtruDiameter`, вызовы конфигурационного контроллера и встроенные Qt-ресурсы; прямое внедрение машинного кода в `K3SysUi` остаётся остановленным из-за повторяющихся зависаний при запуске.
