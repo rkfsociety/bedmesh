@@ -16,6 +16,7 @@ from core.ssh_client import (
     BED_MESH_CALIBRATION_COMMANDS,
     BED_MESH_COOLDOWN_COMMANDS,
     get_bed_mesh_grid,
+    read_remote_text_via_ssh,
 )
 from core.live_mesh import LiveMeshAccumulator
 from utils.logger import get_logger
@@ -295,6 +296,16 @@ class BedMeshApp(QMainWindow):
         # Важно: не переключаем вкладки "вслепую", иначе можно перебить переход на вкладку карты.
         try:
             self.center_tabs.nozzle_tab.load_file(local_path)
+            if self._last_ssh_data:
+                nozzle_metadata = read_remote_text_via_ssh(
+                    self._last_ssh_data.get("ip", ""),
+                    int(self._last_ssh_data.get("port", 2222)),
+                    self._last_ssh_data.get("user", "root"),
+                    self._last_ssh_data.get("password", ""),
+                    "/userdata/app/gk/config/nozzle.cfg",
+                )
+                if nozzle_metadata:
+                    self.center_tabs.nozzle_tab.load_metadata(nozzle_metadata)
             has_mesh = self._process_file(local_path, allow_remote_fallback=True)
             if not has_mesh:
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)

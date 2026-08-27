@@ -31,6 +31,19 @@ def _format_nozzle_label(material: str, diameter: str) -> str:
     return f"{material}-{diameter}"
 
 
+def _read_nozzle_metadata(text: str) -> tuple[str | None, str | None]:
+    try:
+        metadata = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return None, None
+    material = metadata.get("material")
+    diameter = metadata.get("diameter")
+    return (
+        str(material).strip().lower() if material else None,
+        str(diameter).strip() if diameter else None,
+    )
+
+
 def _read_nozzle_diameter(text: str) -> str | None:
     in_extruder = False
     for line in text.splitlines():
@@ -342,6 +355,25 @@ class NozzleTab(QWidget):
             self.material.setEnabled(False)
             self.btn_apply.setEnabled(False)
             self.status.setText(f"❌ Не удалось прочитать диаметр: {error}")
+
+    def load_metadata(self, text: str) -> None:
+        """Applies the printer's nozzle.cfg material to the visible selection."""
+        material, metadata_diameter = _read_nozzle_metadata(text)
+        if not material:
+            return
+        material_index = self.material.findData(material)
+        if material_index < 0:
+            self.material.addItem(material, material)
+            material_index = self.material.findData(material)
+        self.material.setCurrentIndex(material_index)
+        self._loaded_material = material
+        diameter_note = ""
+        if metadata_diameter and metadata_diameter != self._loaded_diameter:
+            diameter_note = f"; предупреждение: nozzle.cfg содержит {metadata_diameter} мм"
+        self.status.setText(
+            f"Текущие значения: {self._loaded_diameter} мм, {self.material.currentText()}"
+            f"{diameter_note}"
+        )
 
     def apply(self) -> None:
         if not self._ssh_config or not self._file_path:
