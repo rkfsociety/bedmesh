@@ -168,6 +168,30 @@ def get_ssh_connection(ip: str, port: int = 2222, username: str = 'root', passwo
     return ssh
 
 
+def reboot_printer_via_ssh(
+    ip: str, port: int, username: str, password: str,
+) -> tuple[bool, str]:
+    """Запрашивает полный перезапуск Linux-принтера через SSH."""
+    ssh = None
+    command = "nohup sh -c 'sleep 1; reboot' >/dev/null 2>&1 </dev/null &"
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        _, stdout, stderr = ssh.exec_command(command)
+        status = stdout.channel.recv_exit_status()
+        details = stderr.read().decode(errors="ignore").strip()
+        if status != 0:
+            logger.error("Printer reboot command failed: status=%s stderr=%s", status, details)
+            return False, details or f"SSH command exited with status {status}"
+        logger.info("Printer reboot requested: host=%s", ip)
+        return True, "reboot requested"
+    except Exception as error:
+        logger.exception("Printer reboot request failed: host=%s error=%s", ip, error)
+        return False, str(error)
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
 def get_bed_mesh_grid(ip: str, port: int, username: str, password: str) -> Optional[dict]:
     """Читает фактический размер leviQ-сетки без изменения принтера."""
     ssh = None

@@ -17,7 +17,7 @@ from core.ssh_client import (
     delete_remote_backup,
     ensure_remote_backup_exists,
     create_remote_backup_and_cleanup,
-    send_gcode_via_temporary_bridge,
+    reboot_printer_via_ssh,
 )
 
 
@@ -92,7 +92,7 @@ class _SshUploadWorker(QObject):
             self.finished.emit(False, str(e))
 
 
-class _KlipperRestartWorker(QObject):
+class _PrinterRebootWorker(QObject):
     finished = pyqtSignal(bool, str)  # ok, details
 
     def __init__(self, ip: str, port: int, user: str, pwd: str):
@@ -104,8 +104,8 @@ class _KlipperRestartWorker(QObject):
 
     def run(self):
         try:
-            ok, details = send_gcode_via_temporary_bridge(
-                self.ip, self.port, self.user, self.pwd, "RESTART"
+            ok, details = reboot_printer_via_ssh(
+                self.ip, self.port, self.user, self.pwd
             )
             self.finished.emit(ok, details)
         except Exception as e:
@@ -366,14 +366,14 @@ class ConfigEditor(QWidget):
         toolbar = QHBoxLayout()
         self.btn_load = QPushButton(S.get("config.btn_load"))
         self.btn_save = QPushButton(S.get("config.btn_save"))
-        self.btn_restart = QPushButton("🔄 Перезапустить Klipper")
+        self.btn_restart = QPushButton("🔄 Перезагрузить принтер")
         self.btn_load.setObjectName("secondaryButton")
         self.btn_save.setObjectName("primaryButton")
         self.btn_save.setEnabled(False)
         self.btn_restart.setObjectName("secondaryButton")
         self.btn_restart.setEnabled(False)
         self.btn_restart.setToolTip(
-            "Перечитать сохранённый printer.cfg. Не использовать во время печати."
+            "Полностью перезагрузить принтер. Не использовать во время печати."
         )
         self.btn_save.setStyleSheet("")
         
@@ -961,7 +961,7 @@ class ConfigEditor(QWidget):
         if self._ssh_upload_thread and self._ssh_upload_thread.isRunning():
             QMessageBox.information(
                 self,
-                "Перезапуск",
+                "Перезагрузка принтера",
                 "Сначала дождитесь завершения сохранения конфигурации.",
             )
             return
@@ -971,8 +971,8 @@ class ConfigEditor(QWidget):
 
         reply = QMessageBox.question(
             self,
-            "Перезапустить Klipper?",
-            "Команда RESTART перечитает printer.cfg и временно остановит Klipper.\n\n"
+            "Перезагрузить принтер?",
+            "Принтер будет полностью перезагружен, включая Klipper и веб-панель.\n\n"
             "Не запускайте это во время печати. Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -982,12 +982,12 @@ class ConfigEditor(QWidget):
 
         cfg = self._ssh_config
         self.btn_restart.setEnabled(False)
-        self.btn_restart.setText("⏳ Перезапуск...")
-        self.status.setText("⏳ Перезапуск Klipper...")
+        self.btn_restart.setText("⏳ Перезагрузка...")
+        self.status.setText("⏳ Перезагрузка принтера...")
         self.repaint()
 
         self._restart_thread = QThread(self)
-        self._restart_worker = _KlipperRestartWorker(
+        self._restart_worker = _PrinterRebootWorker(
             cfg["ip"], cfg["port"], cfg["user"], cfg["password"]
         )
         self._restart_worker.moveToThread(self._restart_thread)
@@ -1000,19 +1000,22 @@ class ConfigEditor(QWidget):
 
     def _on_restart_finished(self, ok: bool, details: str):
         self.btn_restart.setEnabled(True)
-        self.btn_restart.setText("🔄 Перезапустить Klipper")
+        self.btn_restart.setText("🔄 Перезагрузить принтер")
         if ok:
-            self.status.setText("✅ Klipper перезапущен")
+            self.status.setText("✅ Перезагрузка принтера запущена")
             QMessageBox.information(
-                self, "Перезапуск завершён", "Команда RESTART отправлена. Конфигурация перечитана."
+                self,
+                "Перезагрузка запущена",
+                "Команда на полную перезагрузку принтера отправлена. "
+                "SSH и веб-панель временно станут недоступны.",
             )
         else:
-            self.status.setText("❌ Ошибка перезапуска")
-            self.logger.error("Klipper restart failed: %s", details)
+            self.status.setText("❌ Ошибка перезагрузки")
+            self.logger.error("Printer reboot failed: %s", details)
             QMessageBox.critical(
                 self,
-                "Ошибка перезапуска",
-                "Не удалось отправить команду RESTART. Проверьте SSH и лог приложения.",
+                "Ошибка перезагрузки",
+                "Не удалось отправить команду перезагрузки. Проверьте SSH и лог приложения.",
             )
         self._restart_worker = None
         self._restart_thread = None
