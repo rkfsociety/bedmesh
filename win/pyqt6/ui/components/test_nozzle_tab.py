@@ -22,6 +22,14 @@ class NozzleConfigTests(unittest.TestCase):
         self.assertNotIn("0.400", updated)
         self.assertIn("[heater_bed]\r\n", updated)
 
+    def test_adds_nozzle_material_when_missing(self):
+        text = "[extruder]\nnozzle_diameter : 0.400\nfilament_diameter : 1.750\n"
+
+        updated = _replace_nozzle_diameter(text, "0.40", "hardened_steel")
+
+        self.assertIn("nozzle_material : hardened_steel\n", updated)
+        self.assertLess(updated.index("nozzle_diameter"), updated.index("nozzle_material"))
+
     def test_rejects_config_without_extruder_diameter(self):
         with self.assertRaises(ValueError):
             _replace_nozzle_diameter("[extruder]\nrotation_distance: 6.5\n", "0.60")

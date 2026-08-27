@@ -42,20 +42,36 @@ def _read_nozzle_diameter(text: str) -> str | None:
     return None
 
 
-def _replace_nozzle_diameter(text: str, diameter: str) -> str:
+def _replace_nozzle_diameter(text: str, diameter: str, material: str | None = None) -> str:
     lines = text.splitlines(keepends=True)
     in_extruder = False
+    diameter_index = None
+    material_index = None
     for index, line in enumerate(lines):
         section = re.match(r"^\s*\[([^]]+)\]\s*$", line.rstrip("\r\n"))
         if section:
             in_extruder = section.group(1).strip().lower() == "extruder"
             continue
-        if in_extruder and re.match(r"^\s*nozzle_diameter\s*:", line, re.IGNORECASE):
+        if not in_extruder:
+            continue
+        if re.match(r"^\s*nozzle_diameter\s*:", line, re.IGNORECASE):
             newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
             prefix = line[: len(line) - len(line.lstrip())]
             lines[index] = f"{prefix}nozzle_diameter : {diameter}{newline}"
-            return "".join(lines)
-    raise ValueError("В секции [extruder] не найден параметр nozzle_diameter")
+            diameter_index = index
+        elif material is not None and re.match(r"^\s*nozzle_material\s*:", line, re.IGNORECASE):
+            newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            prefix = line[: len(line) - len(line.lstrip())]
+            lines[index] = f"{prefix}nozzle_material : {material}{newline}"
+            material_index = index
+    if diameter_index is None:
+        raise ValueError("В секции [extruder] не найден параметр nozzle_diameter")
+    if material is not None and material_index is None:
+        line = lines[diameter_index]
+        newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+        prefix = line[: len(line) - len(line.lstrip())]
+        lines.insert(diameter_index + 1, f"{prefix}nozzle_material : {material}{newline}")
+    return "".join(lines)
 
 
 def _atomic_write(path: str, text: str) -> None:
@@ -276,7 +292,7 @@ class NozzleTab(QWidget):
 
         try:
             text = open(self._file_path, "r", encoding="utf-8").read()
-            _atomic_write(self._file_path, _replace_nozzle_diameter(text, diameter))
+            _atomic_write(self._file_path, _replace_nozzle_diameter(text, diameter, material))
         except Exception as error:
             QMessageBox.critical(self, "Сопло", f"Не удалось изменить локальный конфиг:\n{error}")
             return
