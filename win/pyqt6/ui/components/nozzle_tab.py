@@ -22,7 +22,11 @@ from core.ssh_client import (
 from utils.logger import get_logger
 
 
-NOZZLE_DIAMETERS = ("0.25", "0.40", "0.60", "0.80", "1.00")
+# The backend accepts positive diameters; the extra values are available for
+# compatible physical nozzles and matching slicer profiles.
+NOZZLE_DIAMETERS = (
+    "0.20", "0.25", "0.30", "0.40", "0.50", "0.60", "0.80", "1.00", "1.20",
+)
 NOZZLE_MATERIALS = (("Brass", "brass"), ("Hardened Steel", "hardened_steel"))
 
 
@@ -320,6 +324,10 @@ class NozzleTab(QWidget):
         group_layout.addWidget(QLabel(
             "Выберите фактически установленный диаметр. Будет изменён только "
             "параметр nozzle_diameter в секции [extruder]."
+        ))
+        group_layout.addWidget(QLabel(
+            "0.20 / 0.30 / 0.50 / 1.20 — экспериментальные значения: "
+            "используйте их только при наличии подходящего сопла и профиля слайсера."
         ))
         self.diameter = QComboBox()
         self.diameter.addItems(NOZZLE_DIAMETERS)

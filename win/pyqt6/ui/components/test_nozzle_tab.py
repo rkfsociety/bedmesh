@@ -18,6 +18,14 @@ class NozzleConfigTests(unittest.TestCase):
 
         self.assertIn("1.00", NOZZLE_DIAMETERS)
 
+    def test_extended_nozzle_diameters_are_available(self):
+        from nozzle_tab import NOZZLE_DIAMETERS
+
+        self.assertEqual(
+            NOZZLE_DIAMETERS,
+            ("0.20", "0.25", "0.30", "0.40", "0.50", "0.60", "0.80", "1.00", "1.20"),
+        )
+
     def test_formats_material_and_diameter_for_visible_selection(self):
         self.assertEqual(_format_nozzle_label("Brass", "1.00"), "Brass-1.00")
         self.assertEqual(_format_nozzle_label("Hardened Steel", "0.40"), "Hardened Steel-0.40")
