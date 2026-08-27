@@ -76,6 +76,27 @@ def low_vfp_equivalent(code: bytes) -> bytes:
     return code
 
 
+def read_word(candidate: bytes, va: int) -> int:
+    offset = va - BASE
+    return struct.unpack_from("<I", candidate, offset)[0]
+
+
+def validate_static_contract(candidate: bytes) -> None:
+    expected = {
+        0x14CA38: branch_word(0x14CA38, 0x67C87C),
+        0x14CF0C: branch_word(0x14CF0C, 0x67C930),
+        0x14D210: 0xE3A03008,  # mov r3, #8: исходный массив не расширяется
+        0x14D5AC: branch_word(0x14D5AC, 0x67C784),
+        0x67C85C: branch_word(0x67C85C, 0x67CA00),
+        0x67CA4C: 0xE3A03008,  # индекс Brass-1.0 = 8
+        0x67CA80: 0xE3A03009,  # индекс Hardened Steel-1.0 = 9
+    }
+    for address, word in expected.items():
+        actual = read_word(candidate, address)
+        if actual != word:
+            raise AssertionError(f"статический контракт {address:#x}: {actual:#x}, ожидался {word:#x}")
+
+
 def run_case(candidate: bytes, material: str, diameter: float) -> int:
     uc = Uc(UC_ARCH_ARM, UC_MODE_ARM, UC_CPU_ARM_CORTEX_A9)
     for address, size in ((0x3C000, 0x1000), (0x14D000, 0x1000),
@@ -142,6 +163,7 @@ def main() -> int:
     parser.add_argument("candidate", type=Path)
     args = parser.parse_args()
     candidate = load_candidate(args.candidate)
+    validate_static_contract(candidate)
     diameters = (0.2, 0.25, 0.4, 0.6, 0.8, 1.0)
     cases = 0
     for material, expected_new in (("brass", 8), ("hardened_steel", 9)):
