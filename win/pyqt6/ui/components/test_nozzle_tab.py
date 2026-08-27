@@ -6,6 +6,8 @@ from nozzle_tab import (
     _replace_nozzle_diameter,
     _format_nozzle_label,
     _read_nozzle_metadata,
+    _read_mutable_nozzle_values,
+    _replace_mutable_nozzle,
     _verify_remote_nozzle_values,
 )
 
@@ -25,6 +27,9 @@ class NozzleConfigTests(unittest.TestCase):
             _read_nozzle_metadata('{"material":"hardened_steel","diameter":"1.00"}'),
             ("hardened_steel", "1.00"),
         )
+
+    def test_ignores_stock_placeholder_metadata(self):
+        self.assertEqual(_read_nozzle_metadata('{"material":"-","diameter":"-"}'), (None, None))
 
     def test_reads_only_extruder_nozzle_diameter(self):
         text = "[heater_bed]\nnozzle_diameter: 0.80\n\n[extruder]\nnozzle_diameter : 0.400 # stock\n"
@@ -46,13 +51,23 @@ class NozzleConfigTests(unittest.TestCase):
         self.assertNotIn("0.400", updated)
         self.assertIn("[heater_bed]\r\n", updated)
 
-    def test_adds_nozzle_material_when_missing(self):
+    def test_diameter_update_does_not_add_unknown_klipper_option(self):
         text = "[extruder]\nnozzle_diameter : 0.400\nfilament_diameter : 1.750\n"
 
-        updated = _replace_nozzle_diameter(text, "0.40", "hardened_steel")
+        updated = _replace_nozzle_diameter(text, "0.40")
 
-        self.assertIn("nozzle_material : hardened_steel\n", updated)
-        self.assertLess(updated.index("nozzle_diameter"), updated.index("nozzle_material"))
+        self.assertNotIn("nozzle_material", updated)
+        self.assertIn("nozzle_diameter : 0.40\n", updated)
+
+    def test_updates_mutable_extruder_nozzle_fields(self):
+        text = '{"extruder":{"nozzle_diameter":"0.40","nozzle_material":"brass"},"probe":{"z_offset":"0"}}'
+
+        updated = _replace_mutable_nozzle(text, "1.00", "hardened_steel")
+
+        self.assertEqual(
+            _read_mutable_nozzle_values(updated),
+            ("1.00", "hardened_steel"),
+        )
 
     def test_rejects_config_without_extruder_diameter(self):
         with self.assertRaises(ValueError):
@@ -63,16 +78,23 @@ class NozzleConfigTests(unittest.TestCase):
         nozzle_cfg = '{"material":"hardened_steel","diameter":"1.00","modify":false}'
 
         self.assertEqual(
-            _verify_remote_nozzle_values(printer_cfg, nozzle_cfg, "1.00", "hardened_steel"),
+            _verify_remote_nozzle_values(
+                printer_cfg,
+                '{"extruder":{"nozzle_diameter":"1.00","nozzle_material":"hardened_steel"}}',
+                nozzle_cfg,
+                "1.00",
+                "hardened_steel",
+            ),
             (True, ""),
         )
 
     def test_rejects_nozzle_config_mismatch(self):
-        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\nnozzle_material : brass\n"
+        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\n"
+        mutable_cfg = '{"extruder":{"nozzle_diameter":"1.00","nozzle_material":"brass"}}'
         nozzle_cfg = '{"material":"hardened_steel","diameter":"1.00","modify":false}'
 
         ok, details = _verify_remote_nozzle_values(
-            printer_cfg, nozzle_cfg, "1.00", "hardened_steel"
+            printer_cfg, mutable_cfg, nozzle_cfg, "1.00", "hardened_steel"
         )
         self.assertFalse(ok)
         self.assertIn("материал", details)

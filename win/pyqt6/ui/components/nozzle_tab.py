@@ -39,8 +39,8 @@ def _read_nozzle_metadata(text: str) -> tuple[str | None, str | None]:
     material = metadata.get("material")
     diameter = metadata.get("diameter")
     return (
-        str(material).strip().lower() if material else None,
-        str(diameter).strip() if diameter else None,
+        str(material).strip().lower() if material and str(material).strip() != "-" else None,
+        str(diameter).strip() if diameter and str(diameter).strip() != "-" else None,
     )
 
 
@@ -75,11 +75,46 @@ def _read_nozzle_material(text: str) -> str | None:
     return None
 
 
-def _replace_nozzle_diameter(text: str, diameter: str, material: str | None = None) -> str:
+def _read_mutable_nozzle_values(text: str) -> tuple[str | None, str | None]:
+    """Reads the persistent nozzle state from printer_mutable.cfg JSON."""
+    try:
+        config = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return None, None
+    extruder = config.get("extruder")
+    if not isinstance(extruder, dict):
+        return None, None
+    diameter = extruder.get("nozzle_diameter")
+    material = extruder.get("nozzle_material")
+    try:
+        normalized_diameter = f"{float(diameter):.2f}" if diameter not in (None, "") else None
+    except (TypeError, ValueError):
+        normalized_diameter = None
+    return (
+        normalized_diameter,
+        str(material).strip().lower() if material not in (None, "") else None,
+    )
+
+
+def _replace_mutable_nozzle(text: str, diameter: str, material: str) -> str:
+    """Updates only the persistent extruder nozzle fields in mutable JSON."""
+    try:
+        config = json.loads(text)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ValueError("printer_mutable.cfg имеет неверный JSON") from error
+    extruder = config.get("extruder")
+    if not isinstance(extruder, dict):
+        raise ValueError("В printer_mutable.cfg отсутствует объект extruder")
+    extruder["nozzle_diameter"] = diameter
+    extruder["nozzle_material"] = material
+    return json.dumps(config, ensure_ascii=False, indent="\t") + "\n"
+
+
+def _replace_nozzle_diameter(text: str, diameter: str) -> str:
+    """Changes only Klipper's numeric diameter; material is stored in mutable JSON."""
     lines = text.splitlines(keepends=True)
     in_extruder = False
     diameter_index = None
-    material_index = None
     for index, line in enumerate(lines):
         section = re.match(r"^\s*\[([^]]+)\]\s*$", line.rstrip("\r\n"))
         if section:
@@ -92,30 +127,21 @@ def _replace_nozzle_diameter(text: str, diameter: str, material: str | None = No
             prefix = line[: len(line) - len(line.lstrip())]
             lines[index] = f"{prefix}nozzle_diameter : {diameter}{newline}"
             diameter_index = index
-        elif material is not None and re.match(r"^\s*nozzle_material\s*:", line, re.IGNORECASE):
-            newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
-            prefix = line[: len(line) - len(line.lstrip())]
-            lines[index] = f"{prefix}nozzle_material : {material}{newline}"
-            material_index = index
     if diameter_index is None:
         raise ValueError("В секции [extruder] не найден параметр nozzle_diameter")
-    if material is not None and material_index is None:
-        line = lines[diameter_index]
-        newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
-        prefix = line[: len(line) - len(line.lstrip())]
-        lines.insert(diameter_index + 1, f"{prefix}nozzle_material : {material}{newline}")
     return "".join(lines)
 
 
 def _verify_remote_nozzle_values(
     printer_cfg: str,
+    mutable_cfg: str,
     nozzle_cfg: str,
     diameter: str,
     material: str,
 ) -> tuple[bool, str]:
-    """Checks both remote sources before allowing a reboot."""
+    """Checks all persistent sources before allowing a reboot."""
     actual_diameter = _read_nozzle_diameter(printer_cfg)
-    actual_material = _read_nozzle_material(printer_cfg)
+    mutable_diameter, actual_material = _read_mutable_nozzle_values(mutable_cfg)
     try:
         metadata = json.loads(nozzle_cfg)
     except (TypeError, json.JSONDecodeError):
@@ -123,8 +149,10 @@ def _verify_remote_nozzle_values(
 
     if actual_diameter != diameter:
         return False, f"printer.cfg: диаметр {actual_diameter!r}, ожидался {diameter!r}"
+    if mutable_diameter != diameter:
+        return False, f"printer_mutable.cfg: диаметр {mutable_diameter!r}, ожидался {diameter!r}"
     if actual_material != material:
-        return False, f"printer.cfg: материал {actual_material!r}, ожидался {material!r}"
+        return False, f"printer_mutable.cfg: материал {actual_material!r}, ожидался {material!r}"
     if str(metadata.get("diameter", "")) != diameter:
         return False, f"nozzle.cfg: диаметр {metadata.get('diameter')!r}, ожидался {diameter!r}"
     if str(metadata.get("material", "")).lower() != material:
@@ -162,7 +190,22 @@ class _NozzleUploadWorker(QObject):
         self.material = material
 
     def run(self):
+        temporary_paths: list[str] = []
         try:
+            mutable_text = read_remote_text_via_ssh(
+                self.ssh_config["ip"], self.ssh_config["port"],
+                self.ssh_config["user"], self.ssh_config["password"],
+                "/userdata/app/gk/printer_mutable.cfg",
+            )
+            if mutable_text is None:
+                self.finished.emit(False, "не удалось прочитать printer_mutable.cfg")
+                return
+            mutable_path = None
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", suffix=".json", delete=False) as stream:
+                mutable_path = stream.name
+                temporary_paths.append(mutable_path)
+                stream.write(_replace_mutable_nozzle(mutable_text, self.diameter, self.material))
+
             ok, error = upload_cfg_with_backup_and_verify(
                 self.local_path,
                 self.ssh_config["ip"],
@@ -174,30 +217,33 @@ class _NozzleUploadWorker(QObject):
             if not ok:
                 self.finished.emit(False, error)
                 return
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as stream:
+            ok, error = upload_cfg_with_backup_and_verify(
+                mutable_path,
+                self.ssh_config["ip"], self.ssh_config["port"],
+                self.ssh_config["user"], self.ssh_config["password"],
+                "/userdata/app/gk/printer_mutable.cfg",
+            )
+            if not ok:
+                self.finished.emit(False, error)
+                return
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", suffix=".json", delete=False) as stream:
+                metadata_path = stream.name
+                temporary_paths.append(metadata_path)
                 json.dump(
                     # The printer's stock startup flow treats modify=true as a
                     # request to run the full nozzle calibration after reboot.
-                    # The app only changes the nozzle metadata, so keep this
-                    # disabled; the requested full reboot must not trigger calibration.
+                    # Keep this disabled: the requested full reboot must not
+                    # trigger the stock full nozzle calibration chain.
                     {"material": self.material, "diameter": self.diameter, "modify": False},
                     stream,
+                    ensure_ascii=False,
                 )
-                metadata_path = stream.name
-            try:
-                ok, error = upload_cfg_with_backup_and_verify(
-                    metadata_path,
-                    self.ssh_config["ip"],
-                    self.ssh_config["port"],
-                    self.ssh_config["user"],
-                    self.ssh_config["password"],
-                    "/userdata/app/gk/config/nozzle.cfg",
-                )
-            finally:
-                try:
-                    os.remove(metadata_path)
-                except OSError:
-                    pass
+            ok, error = upload_cfg_with_backup_and_verify(
+                metadata_path,
+                self.ssh_config["ip"], self.ssh_config["port"],
+                self.ssh_config["user"], self.ssh_config["password"],
+                "/userdata/app/gk/config/nozzle.cfg",
+            )
             if ok:
                 remote_printer_cfg = read_remote_text_via_ssh(
                     self.ssh_config["ip"], self.ssh_config["port"],
@@ -209,15 +255,27 @@ class _NozzleUploadWorker(QObject):
                     self.ssh_config["user"], self.ssh_config["password"],
                     "/userdata/app/gk/config/nozzle.cfg",
                 )
-                if remote_printer_cfg is None or remote_nozzle_cfg is None:
+                remote_mutable_cfg = read_remote_text_via_ssh(
+                    self.ssh_config["ip"], self.ssh_config["port"],
+                    self.ssh_config["user"], self.ssh_config["password"],
+                    "/userdata/app/gk/printer_mutable.cfg",
+                )
+                if remote_printer_cfg is None or remote_mutable_cfg is None or remote_nozzle_cfg is None:
                     ok, error = False, "не удалось прочитать конфигурации после загрузки"
                 else:
                     ok, error = _verify_remote_nozzle_values(
-                        remote_printer_cfg, remote_nozzle_cfg, self.diameter, self.material
+                        remote_printer_cfg, remote_mutable_cfg, remote_nozzle_cfg,
+                        self.diameter, self.material,
                     )
             self.finished.emit(ok, error)
         except Exception as error:
             self.finished.emit(False, str(error))
+        finally:
+            for path in temporary_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 class _NozzlePrinterRebootWorker(QObject):
@@ -375,6 +433,29 @@ class NozzleTab(QWidget):
             f"{diameter_note}"
         )
 
+    def load_mutable(self, text: str) -> None:
+        """Uses printer_mutable.cfg as the source of the saved material/diameter."""
+        diameter, material = _read_mutable_nozzle_values(text)
+        if material:
+            material_index = self.material.findData(material)
+            if material_index < 0:
+                self.material.addItem(material, material)
+                material_index = self.material.findData(material)
+            self.material.setCurrentIndex(material_index)
+            self._loaded_material = material
+        if diameter:
+            index = self.diameter.findText(diameter)
+            if index < 0:
+                self.diameter.addItem(diameter)
+                index = self.diameter.findText(diameter)
+            self.diameter.setCurrentIndex(index)
+            self._loaded_diameter = diameter
+        if diameter or material:
+            self.status.setText(
+                f"Текущие сохранённые значения: {diameter or self._loaded_diameter or '—'} мм, "
+                f"{self.material.currentText()}"
+            )
+
     def apply(self) -> None:
         if not self._ssh_config or not self._file_path:
             QMessageBox.warning(self, "Сопло", "Сначала загрузите printer.cfg по SSH.")
@@ -406,7 +487,7 @@ class NozzleTab(QWidget):
 
         try:
             text = open(self._file_path, "r", encoding="utf-8").read()
-            _atomic_write(self._file_path, _replace_nozzle_diameter(text, diameter, material))
+            _atomic_write(self._file_path, _replace_nozzle_diameter(text, diameter))
         except Exception as error:
             QMessageBox.critical(self, "Сопло", f"Не удалось изменить локальный конфиг:\n{error}")
             return

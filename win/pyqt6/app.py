@@ -306,6 +306,15 @@ class BedMeshApp(QMainWindow):
                 )
                 if nozzle_metadata:
                     self.center_tabs.nozzle_tab.load_metadata(nozzle_metadata)
+                mutable_config = read_remote_text_via_ssh(
+                    self._last_ssh_data.get("ip", ""),
+                    int(self._last_ssh_data.get("port", 2222)),
+                    self._last_ssh_data.get("user", "root"),
+                    self._last_ssh_data.get("password", ""),
+                    "/userdata/app/gk/printer_mutable.cfg",
+                )
+                if mutable_config:
+                    self.center_tabs.nozzle_tab.load_mutable(mutable_config)
             has_mesh = self._process_file(local_path, allow_remote_fallback=True)
             if not has_mesh:
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)
