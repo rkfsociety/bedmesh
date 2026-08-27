@@ -6,6 +6,7 @@ import tempfile
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QGroupBox,
     QLabel,
     QMessageBox,
@@ -142,6 +143,7 @@ def _verify_remote_nozzle_values(
     nozzle_cfg: str,
     diameter: str,
     material: str,
+    run_full_calibration: bool = False,
 ) -> tuple[bool, str]:
     """Checks all persistent sources before allowing a reboot."""
     actual_diameter = _read_nozzle_diameter(printer_cfg)
@@ -161,8 +163,9 @@ def _verify_remote_nozzle_values(
         return False, f"nozzle.cfg: диаметр {metadata.get('diameter')!r}, ожидался {diameter!r}"
     if str(metadata.get("material", "")).lower() != material:
         return False, f"nozzle.cfg: материал {metadata.get('material')!r}, ожидался {material!r}"
-    if metadata.get("modify") is not False:
-        return False, "nozzle.cfg: флаг modify не равен false"
+    expected_modify = bool(run_full_calibration)
+    if metadata.get("modify") is not expected_modify:
+        return False, f"nozzle.cfg: флаг modify не равен {str(expected_modify).lower()}"
     return True, ""
 
 
@@ -186,12 +189,20 @@ def _atomic_write(path: str, text: str) -> None:
 class _NozzleUploadWorker(QObject):
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, local_path: str, ssh_config: dict, diameter: str, material: str):
+    def __init__(
+        self,
+        local_path: str,
+        ssh_config: dict,
+        diameter: str,
+        material: str,
+        run_full_calibration: bool,
+    ):
         super().__init__()
         self.local_path = local_path
         self.ssh_config = ssh_config
         self.diameter = diameter
         self.material = material
+        self.run_full_calibration = run_full_calibration
 
     def run(self):
         temporary_paths: list[str] = []
@@ -234,11 +245,13 @@ class _NozzleUploadWorker(QObject):
                 metadata_path = stream.name
                 temporary_paths.append(metadata_path)
                 json.dump(
-                    # The printer's stock startup flow treats modify=true as a
-                    # request to run the full nozzle calibration after reboot.
-                    # Keep this disabled: the requested full reboot must not
-                    # trigger the stock full nozzle calibration chain.
-                    {"material": self.material, "diameter": self.diameter, "modify": False},
+                    # The stock startup flow treats modify=true as a request
+                    # to run the full nozzle calibration after reboot.
+                    {
+                        "material": self.material,
+                        "diameter": self.diameter,
+                        "modify": self.run_full_calibration,
+                    },
                     stream,
                     ensure_ascii=False,
                 )
@@ -269,7 +282,7 @@ class _NozzleUploadWorker(QObject):
                 else:
                     ok, error = _verify_remote_nozzle_values(
                         remote_printer_cfg, remote_mutable_cfg, remote_nozzle_cfg,
-                        self.diameter, self.material,
+                        self.diameter, self.material, self.run_full_calibration,
                     )
             self.finished.emit(ok, error)
         except Exception as error:
@@ -345,12 +358,25 @@ class NozzleTab(QWidget):
         self.diameter.currentTextChanged.connect(self._update_selection_label)
         self.material.currentTextChanged.connect(self._update_selection_label)
 
+        self.full_calibration = QCheckBox(
+            "Запустить полную калибровку после перезапуска"
+        )
+        self.full_calibration.setChecked(False)
+        self.full_calibration.setToolTip(
+            "Включает штатную последовательность PID, шейперов и калибровки стола."
+        )
+        group_layout.addWidget(self.full_calibration)
+        group_layout.addWidget(QLabel(
+            "Выбор применяется только к следующему изменению сопла. "
+            "Полный перезапуск выполняется всегда."
+        ))
+
         self.btn_apply = QPushButton("✅ Сохранить и перезапустить принтер")
         self.btn_apply.setObjectName("primaryButton")
         self.btn_apply.setEnabled(False)
         self.btn_apply.setToolTip(
             "Создаст бекап printer.cfg и выполнит полный перезапуск принтера. "
-            "Полная калибровка из приложения не запускается."
+            "Полная калибровка запускается только при включённом переключателе."
         )
         self.btn_apply.clicked.connect(self.apply)
         group_layout.addWidget(self.btn_apply)
@@ -363,8 +389,8 @@ class NozzleTab(QWidget):
 
         note = QLabel(
             "После применения выполняется полный перезапуск Linux-принтера. "
-            "Флаг modify остаётся выключенным, поэтому автоматическая цепочка "
-            "PID → шейперы → стол не вызывается."
+            "Если переключатель включён, штатный флаг modify запускает цепочку "
+            "PID → шейперы → стол после загрузки."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: #888; background: #101a2b; padding: 8px;")
@@ -486,7 +512,12 @@ class NozzleTab(QWidget):
             "Применить диаметр сопла?",
             f"Будет установлено сопло: {diameter} мм, {self.material.currentText()}.\n\n"
             "Будет создан бекап и выполнен полный перезапуск принтера. "
-            "Полная калибровка стола не запускается. Продолжить?",
+            + (
+                "После загрузки запустится полная калибровка: PID, шейперы и стол."
+                if self.full_calibration.isChecked()
+                else "Полная калибровка после загрузки запускаться не будет."
+            )
+            + " Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -506,7 +537,11 @@ class NozzleTab(QWidget):
         self.status.setText("⏳ Сохраняю printer.cfg и создаю бекап...")
         self._upload_thread = QThread(self)
         self._upload_worker = _NozzleUploadWorker(
-            self._file_path, self._ssh_config, diameter, material
+            self._file_path,
+            self._ssh_config,
+            diameter,
+            material,
+            self.full_calibration.isChecked(),
         )
         self._upload_worker.moveToThread(self._upload_thread)
         self._upload_thread.started.connect(self._upload_worker.run)
@@ -555,7 +590,12 @@ class NozzleTab(QWidget):
             QMessageBox.information(
                 self,
                 "Сопло",
-                "Диаметр сохранён. Выполнен полный перезапуск принтера без полной калибровки.",
+                "Диаметр сохранён. Выполнен полный перезапуск принтера. "
+                + (
+                    "После загрузки запущена полная калибровка."
+                    if self.full_calibration.isChecked()
+                    else "Полная калибровка не запускалась."
+                ),
             )
         else:
             self.status.setText("❌ Конфиг сохранён, но принтер не перезапущен")

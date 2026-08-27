@@ -96,6 +96,34 @@ class NozzleConfigTests(unittest.TestCase):
             (True, ""),
         )
 
+    def test_verifies_calibration_flag_when_enabled(self):
+        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\n"
+        mutable_cfg = '{"extruder":{"nozzle_diameter":"1.00","nozzle_material":"brass"}}'
+        nozzle_cfg = '{"material":"brass","diameter":"1.00","modify":true}'
+
+        self.assertEqual(
+            _verify_remote_nozzle_values(
+                printer_cfg,
+                mutable_cfg,
+                nozzle_cfg,
+                "1.00",
+                "brass",
+                True,
+            ),
+            (True, ""),
+        )
+
+    def test_rejects_unrequested_calibration_flag(self):
+        printer_cfg = "[extruder]\nnozzle_diameter : 1.00\n"
+        mutable_cfg = '{"extruder":{"nozzle_diameter":"1.00","nozzle_material":"brass"}}'
+        nozzle_cfg = '{"material":"brass","diameter":"1.00","modify":true}'
+
+        ok, details = _verify_remote_nozzle_values(
+            printer_cfg, mutable_cfg, nozzle_cfg, "1.00", "brass", False
+        )
+        self.assertFalse(ok)
+        self.assertIn("modify", details)
+
     def test_rejects_nozzle_config_mismatch(self):
         printer_cfg = "[extruder]\nnozzle_diameter : 1.00\n"
         mutable_cfg = '{"extruder":{"nozzle_diameter":"1.00","nozzle_material":"brass"}}'
