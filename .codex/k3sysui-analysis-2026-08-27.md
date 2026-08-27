@@ -33,3 +33,18 @@
 - После Y UI снова вызвал `Config/PrinterConfSave` с `SAVE_CONFIG`.
 - На момент среза `nozzle.cfg` оставался `{material: "-", diameter: "-", modify: false}`, `printer.cfg` содержал `nozzle_diameter : 0.400`, а `printer_mutable.cfg` содержал `nozzle_diameter: "0.40"` и `nozzle_material: "hardened_steel"`.
 - Ключевой вывод: отображение сопла и запуск калибровки связаны с RPC-статусом `extruder` и контроллером конфигурации; `nozzle.cfg` является отдельным флагом состояния и не единственным источником данных.
+
+## Посткалибровочный итог — 2026-08-27
+
+- Срез снят только чтением после полного завершения; перезапусков и записей на принтер не выполнялось.
+- Штатные процессы после завершения живы: `gklib -a /tmp/unix_uds1 printer.cfg`, `gkapi`, `K3SysUi`, `gkcam`.
+- Штатный UI не изменён: `/userdata/app/gk/K3SysUi` MD5 `1bd84d3856b09a13a634143bb42378e5`.
+- UI завершил цепочку с `Printer/ReportUIWorkStatus busy=0`.
+- Полная последовательность подтверждена: `PID_CALIBRATE` экструдера → `SAVE_CONFIG` → `G28 W` + `SHAPER_CALIBRATE AXIS=x` → `SHAPER_CALIBRATE AXIS=y` → `SAVE_CONFIG` → `LEVIQ2_PREHEATING` → `LEVIQ2_WIPING` → `LEVIQ2_PROBE` → `SAVE_CONFIG` → отключение нагрева стола/сопла → `busy=0`.
+- Итог шейперов: X `3hump_ei`, `66.4`; Y `2hump_ei`, `59.0`.
+- Итог bed mesh: сетка `5×5`, `min_x=5`, `max_x=245`, `min_y=5`, `max_y=245`, `mesh_x_pps=2`, `mesh_y_pps=2`, алгоритм `lagrange`, `tension=0.2`.
+- Итоговые точки bed mesh сохранены в `printer_mutable.cfg`: `0.565500, 0.232500, 0.276667, 0.247000, 0.489500 / 0.332667, 0.042667, 0.042000, 0.107000, 0.484667 / 0.149500, 0.013167, -0.007000, 0.127333, 0.444333 / -0.081667, -0.014167, 0.179167, 0.214000, 0.362000 / -0.191500, 0.211333, 0.523833, 0.513667, 0.587000`.
+- Итог сопла не изменился: `nozzle_diameter=0.40`, `nozzle_material=hardened_steel`; `nozzle.cfg` по-прежнему содержит `material: "-"`, `diameter: "-"`, `modify:false`.
+- Итог PID экструдера: `Kp=33.067`, `Ki=5.652`, `Kd=48.361`.
+- В логах есть предупреждение `Can't read autosave from config file - modifications after header`; при этом новые значения фактически присутствуют в `printer_mutable.cfg`, а процессы и RPC работают штатно. Это нужно учитывать при дальнейшем анализе сохранения конфигурации.
+- Ключи поиска в логах: `/tmp/gkui.log`, `/tmp/gklib.log`, `PidCalibrate/Extruder`, `Resonance/SetShaperCalibrate`, `Leviq2/Preheating`, `Leviq2/Wiping`, `Leviq2/Probe`, `Config/PrinterConfSave`, `Printer/ReportUIWorkStatus`.
