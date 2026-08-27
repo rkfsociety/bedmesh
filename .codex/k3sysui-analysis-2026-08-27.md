@@ -188,6 +188,14 @@
 - При загрузке конфигурации материал и диаметр берутся из `printer_mutable.cfg`, а не угадываются по отсутствующему ключу в `printer.cfg`. Добавлены unit-тесты для stock-формата без `nozzle_material` и для обновления mutable JSON.
 - Это исправляет путь сохранения и снижает риск ошибки конфигурации; live-применение на принтере в этом цикле не выполнялось.
 
+## Первый успешный live-тест Windows-вкладки — 2026-08-27
+
+- После выбора `0.60 / Hardened Steel` через собранную Windows-версию на принтере read-only-проверкой подтверждены все три persistent-источника: `printer.cfg` содержит `nozzle_diameter : 0.60`, `printer_mutable.cfg` — `nozzle_diameter: "0.60"` и `nozzle_material: "hardened_steel"`, `config/nozzle.cfg` — `{"material":"hardened_steel","diameter":"0.60","modify":false}`.
+- Полный перезапуск действительно произошёл: uptime был около 51–66 секунд, а процессы `gklib`, `gkapi`, `K3SysUi`, `gkcam` имели времена старта уже после загрузки Linux.
+- После перезапуска состояние Klipper — `ready`, RPC `extruder` сообщает `Nozzle_diameter: 0.6` и `Nozzle_material: "hardened_steel"`.
+- В текущих `/tmp/gkui.log` и `/tmp/gklib.log` после загрузки не обнаружены `PID_CALIBRATE`, `SHAPER_CALIBRATE`, `LEVIQ2_PREHEATING`, `LEVIQ2_PROBE` или `ReportUIWorkStatus`; полной перекалибровки после смены не было.
+- Итог: Windows-вкладка реально меняет диаметр и материал, изменения переживают полный reboot, а флаг `modify:false` предотвращает штатную полную калибровку. Отдельный тест печати G-code с этим профилем ещё не выполнялся.
+
 ## Уточнение RPC и таблиц K3SysUi — 2026-08-27
 
 - В таблице символов локального штатного `K3SysUi` подтверждены исходный модуль `AcNozzelSize.cpp`, `MainWindow::AcSettingNozzleSelect` (VA `0x14ce50`, размер `0x26c`), `ParaConfig::ConfigNozzleSize` (VA `0x52b0c`, размер `0x208`) и `RpcApi::CmdSetPrintExtruDiameter` (VA `0x220d40`, размер `0x36c`).
