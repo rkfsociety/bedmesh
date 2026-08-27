@@ -100,7 +100,11 @@ class _NozzleUploadWorker(QObject):
                 return
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as stream:
                 json.dump(
-                    {"material": self.material, "diameter": self.diameter, "modify": True},
+                    # The printer's stock startup flow treats modify=true as a
+                    # request to run the full nozzle calibration after reboot.
+                    # The app only changes the nozzle metadata, so keep this
+                    # disabled and restart Klipper without rebooting the host.
+                    {"material": self.material, "diameter": self.diameter, "modify": False},
                     stream,
                 )
                 metadata_path = stream.name
