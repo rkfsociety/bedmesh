@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.ssh_client import (
-    send_gcode_via_temporary_bridge,
+    reboot_printer_via_ssh,
     upload_cfg_with_backup_and_verify,
 )
 from utils.logger import get_logger
@@ -103,7 +103,7 @@ class _NozzleUploadWorker(QObject):
                     # The printer's stock startup flow treats modify=true as a
                     # request to run the full nozzle calibration after reboot.
                     # The app only changes the nozzle metadata, so keep this
-                    # disabled and restart Klipper without rebooting the host.
+                    # disabled; the requested full reboot must not trigger calibration.
                     {"material": self.material, "diameter": self.diameter, "modify": False},
                     stream,
                 )
@@ -127,7 +127,7 @@ class _NozzleUploadWorker(QObject):
             self.finished.emit(False, str(error))
 
 
-class _NozzleKlipperRestartWorker(QObject):
+class _NozzlePrinterRebootWorker(QObject):
     finished = pyqtSignal(bool, str)
 
     def __init__(self, ssh_config: dict):
@@ -136,12 +136,11 @@ class _NozzleKlipperRestartWorker(QObject):
 
     def run(self):
         try:
-            ok, details = send_gcode_via_temporary_bridge(
+            ok, details = reboot_printer_via_ssh(
                 self.ssh_config["ip"],
                 self.ssh_config["port"],
                 self.ssh_config["user"],
                 self.ssh_config["password"],
-                "RESTART",
             )
             self.finished.emit(ok, details)
         except Exception as error:
@@ -182,12 +181,12 @@ class NozzleTab(QWidget):
         self.material.setEnabled(False)
         group_layout.addWidget(self.material)
 
-        self.btn_apply = QPushButton("✅ Сохранить и перезапустить Klipper")
+        self.btn_apply = QPushButton("✅ Сохранить и перезапустить принтер")
         self.btn_apply.setObjectName("primaryButton")
         self.btn_apply.setEnabled(False)
         self.btn_apply.setToolTip(
-            "Создаст бекап printer.cfg и перезапустит только Klipper. "
-            "Полная калибровка стола не запускается."
+            "Создаст бекап printer.cfg и выполнит полный перезапуск принтера. "
+            "Полная калибровка из приложения не запускается."
         )
         self.btn_apply.clicked.connect(self.apply)
         group_layout.addWidget(self.btn_apply)
@@ -199,8 +198,9 @@ class NozzleTab(QWidget):
         layout.addWidget(self.status)
 
         note = QLabel(
-            "После применения выполняется только Klipper RESTART. "
-            "BED_MESH_CALIBRATE и полная калибровка принтера из этой вкладки не вызываются."
+            "После применения выполняется полный перезапуск Linux-принтера. "
+            "Флаг modify остаётся выключенным, поэтому автоматическая цепочка "
+            "PID → шейперы → стол не вызывается."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: #888; background: #101a2b; padding: 8px;")
@@ -266,7 +266,7 @@ class NozzleTab(QWidget):
             self,
             "Применить диаметр сопла?",
             f"Будет установлено сопло: {diameter} мм, {self.material.currentText()}.\n\n"
-            "Будет создан бекап и перезапущен только Klipper. "
+            "Будет создан бекап и выполнен полный перезапуск принтера. "
             "Полная калибровка стола не запускается. Продолжить?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -309,9 +309,9 @@ class NozzleTab(QWidget):
             QMessageBox.critical(self, "Сопло", "Не удалось сохранить printer.cfg. Проверьте бекап и SSH.")
             return
 
-        self.status.setText("⏳ Перезапускаю только Klipper...")
+        self.status.setText("⏳ Выполняю полный перезапуск принтера...")
         self._restart_thread = QThread(self)
-        self._restart_worker = _NozzleKlipperRestartWorker(self._ssh_config)
+        self._restart_worker = _NozzlePrinterRebootWorker(self._ssh_config)
         self._restart_worker.moveToThread(self._restart_thread)
         self._restart_thread.started.connect(self._restart_worker.run)
         self._restart_worker.finished.connect(self._on_restart_finished)
@@ -331,14 +331,14 @@ class NozzleTab(QWidget):
             self._loaded_material = self.material.currentData()
             self.status.setText(
                 f"✅ Сопло {self._loaded_diameter} мм, {self.material.currentText()} применено. "
-                "Перезапущен только Klipper."
+                "Выполнен полный перезапуск принтера."
             )
             QMessageBox.information(
                 self,
                 "Сопло",
-                "Диаметр сохранён. Перезапущен только Klipper, без полной калибровки принтера.",
+                "Диаметр сохранён. Выполнен полный перезапуск принтера без полной калибровки.",
             )
         else:
-            self.status.setText("❌ Конфиг сохранён, но Klipper не перезапущен")
-            self.logger.error("Nozzle Klipper restart failed: %s", details)
-            QMessageBox.critical(self, "Сопло", "Конфиг сохранён, но Klipper не удалось перезапустить.")
+            self.status.setText("❌ Конфиг сохранён, но принтер не перезапущен")
+            self.logger.error("Nozzle printer reboot failed: %s", details)
+            QMessageBox.critical(self, "Сопло", "Конфиг сохранён, но принтер не удалось перезапустить.")
