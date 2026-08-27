@@ -19,3 +19,17 @@
 - Штатный UI получает фактические данные сопла через подписку `extruder`: `Nozzle_diameter: 0.4`, `Nozzle_material: hardened_steel`.
 - На момент наблюдения `/userdata/app/gk/config/nozzle.cfg` содержал `material: "-"`, `diameter: "-"`, `modify: false`, тогда как `printer_mutable.cfg` содержал `nozzle_diameter: "0.40"` и `nozzle_material: "hardened_steel"`.
 - Вывод: для будущего безопасного расширения нужно исследовать RPC/контроллер конфигурации и штатный ресурс UI; изменение только `nozzle.cfg` не является источником отображаемого состояния сопла.
+
+## Runtime-срез полной калибровки после восстановления — 2026-08-27
+
+- Снятие данных выполнялось только чтением по SSH, без перезапуска и без записи на принтер.
+- После восстановления штатный `K3SysUi` имел MD5 `1bd84d3856b09a13a634143bb42378e5`; штатные процессы `gklib`, `gkapi`, `K3SysUi`, `gkcam` были запущены.
+- Источники логов: `/tmp/gkui.log` и `/tmp/gklib.log`.
+- При старте UI отправил `Query/Subscribe` для объекта `extruder`; RPC-статус вернул `Nozzle_diameter: 0.4` и `Nozzle_material: hardened_steel`.
+- Полная цепочка, подтверждённая логами: `Printer/ReportUIWorkStatus busy=1` → `PidCalibrate/Extruder target=230` → G-code `PID_CALIBRATE HEATER=extruder TARGET=230 WRITE_FILE=0` → 12 пиков → `SAVE_CONFIG`.
+- PID экструдера записан как `Kp=33.067`, `Ki=5.652`, `Kd=48.361`.
+- Затем UI отправил `Resonance/SetShaperCalibrate` со скриптом `G28 W` и `SHAPER_CALIBRATE AXIS=x`; результат X: `3hump_ei`, `66.4`.
+- Вторым запросом UI отправил `SHAPER_CALIBRATE AXIS=y`; результат Y: `2hump_ei`, `59.0`.
+- После Y UI снова вызвал `Config/PrinterConfSave` с `SAVE_CONFIG`.
+- На момент среза `nozzle.cfg` оставался `{material: "-", diameter: "-", modify: false}`, `printer.cfg` содержал `nozzle_diameter : 0.400`, а `printer_mutable.cfg` содержал `nozzle_diameter: "0.40"` и `nozzle_material: "hardened_steel"`.
+- Ключевой вывод: отображение сопла и запуск калибровки связаны с RPC-статусом `extruder` и контроллером конфигурации; `nozzle.cfg` является отдельным флагом состояния и не единственным источником данных.
