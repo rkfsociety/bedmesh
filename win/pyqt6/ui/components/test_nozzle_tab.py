@@ -7,6 +7,11 @@ from nozzle_tab import (
 
 
 class NozzleConfigTests(unittest.TestCase):
+    def test_one_millimeter_diameter_is_available(self):
+        from nozzle_tab import NOZZLE_DIAMETERS
+
+        self.assertIn("1.00", NOZZLE_DIAMETERS)
+
     def test_reads_only_extruder_nozzle_diameter(self):
         text = "[heater_bed]\nnozzle_diameter: 0.80\n\n[extruder]\nnozzle_diameter : 0.400 # stock\n"
 

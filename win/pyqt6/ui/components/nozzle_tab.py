@@ -21,7 +21,7 @@ from core.ssh_client import (
 from utils.logger import get_logger
 
 
-NOZZLE_DIAMETERS = ("0.25", "0.40", "0.60", "0.80")
+NOZZLE_DIAMETERS = ("0.25", "0.40", "0.60", "0.80", "1.00")
 NOZZLE_MATERIALS = (("Brass", "brass"), ("Hardened Steel", "hardened_steel"))
 
 
