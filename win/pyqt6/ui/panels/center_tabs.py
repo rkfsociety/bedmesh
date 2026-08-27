@@ -6,6 +6,7 @@ from PyQt6.QtCore import pyqtSignal
 from ui.components.mesh_view import MeshView
 from ui.components.mesh_3d_view import Mesh3DView
 from ui.components.config_editor import ConfigEditor
+from ui.components.nozzle_tab import NozzleTab
 from utils.strings import S
 
 
@@ -66,6 +67,9 @@ class CenterTabs(QWidget):
         self.config_editor = ConfigEditor()
         c_layout.addWidget(self.config_editor)
         self.tabs.addTab(self.config_tab, S.get("config.tab_title"))
+
+        self.nozzle_tab = NozzleTab()
+        self.tabs.addTab(self.nozzle_tab, "🧩 Сопло")
 
         self.raw_tab = QWidget()
         r_layout = QVBoxLayout(self.raw_tab)
@@ -140,7 +144,7 @@ class CenterTabs(QWidget):
 
         if not visible:
             cur = self.tabs.currentWidget()
-            if cur in (self.config_tab, self.raw_tab):
+            if cur in (self.config_tab, self.nozzle_tab, self.raw_tab):
                 self.tabs.setCurrentWidget(self.mesh_tab)
             idx_raw = _tab_index(self.raw_tab)
             if idx_raw >= 0:
@@ -148,12 +152,17 @@ class CenterTabs(QWidget):
             idx_cfg = _tab_index(self.config_tab)
             if idx_cfg >= 0:
                 self.tabs.removeTab(idx_cfg)
+            idx_nozzle = _tab_index(self.nozzle_tab)
+            if idx_nozzle >= 0:
+                self.tabs.removeTab(idx_nozzle)
             return
 
         if _tab_index(self.config_tab) < 0:
             self.tabs.insertTab(1, self.config_tab, S.get("config.tab_title"))
+        if _tab_index(self.nozzle_tab) < 0:
+            self.tabs.insertTab(2, self.nozzle_tab, "🧩 Сопло")
         if _tab_index(self.raw_tab) < 0:
-            self.tabs.insertTab(2, self.raw_tab, S.get("raw.tab_title"))
+            self.tabs.insertTab(3, self.raw_tab, S.get("raw.tab_title"))
 
     def _on_copy_mesh(self):
         if self._view_mode != "2d":

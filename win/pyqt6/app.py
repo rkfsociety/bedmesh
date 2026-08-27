@@ -253,6 +253,7 @@ class BedMeshApp(QMainWindow):
         """Передает управление загрузкой по SSH в ConfigEditor"""
         try:
             self._last_ssh_data = ssh_data
+            self.center_tabs.nozzle_tab.set_ssh_config(ssh_data)
             # Не переключаем вкладки при старте SSH-загрузки, чтобы избежать "мигания":
             # по завершении загрузки `_process_file` сам переключит на карту, если mesh найден,
             # а иначе останемся на RAW (см. `_handle_ssh_file_downloaded`).
@@ -293,6 +294,7 @@ class BedMeshApp(QMainWindow):
         # После SSH-загрузки пробуем построить карту.
         # Важно: не переключаем вкладки "вслепую", иначе можно перебить переход на вкладку карты.
         try:
+            self.center_tabs.nozzle_tab.load_file(local_path)
             has_mesh = self._process_file(local_path, allow_remote_fallback=True)
             if not has_mesh:
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.raw_tab)

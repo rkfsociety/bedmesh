@@ -1,0 +1,340 @@
+import json
+import os
+import re
+import tempfile
+
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from core.ssh_client import (
+    send_gcode_via_temporary_bridge,
+    upload_cfg_with_backup_and_verify,
+)
+from utils.logger import get_logger
+
+
+NOZZLE_DIAMETERS = ("0.25", "0.40", "0.60", "0.80")
+NOZZLE_MATERIALS = (("Brass", "brass"), ("Hardened Steel", "hardened_steel"))
+
+
+def _read_nozzle_diameter(text: str) -> str | None:
+    in_extruder = False
+    for line in text.splitlines():
+        section = re.match(r"^\s*\[([^]]+)\]\s*$", line)
+        if section:
+            in_extruder = section.group(1).strip().lower() == "extruder"
+            continue
+        if in_extruder:
+            match = re.match(r"^\s*nozzle_diameter\s*:\s*([^#\s]+)", line, re.IGNORECASE)
+            if match:
+                try:
+                    return f"{float(match.group(1)):.2f}"
+                except ValueError:
+                    return match.group(1).strip()
+    return None
+
+
+def _replace_nozzle_diameter(text: str, diameter: str) -> str:
+    lines = text.splitlines(keepends=True)
+    in_extruder = False
+    for index, line in enumerate(lines):
+        section = re.match(r"^\s*\[([^]]+)\]\s*$", line.rstrip("\r\n"))
+        if section:
+            in_extruder = section.group(1).strip().lower() == "extruder"
+            continue
+        if in_extruder and re.match(r"^\s*nozzle_diameter\s*:", line, re.IGNORECASE):
+            newline = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            prefix = line[: len(line) - len(line.lstrip())]
+            lines[index] = f"{prefix}nozzle_diameter : {diameter}{newline}"
+            return "".join(lines)
+    raise ValueError("В секции [extruder] не найден параметр nozzle_diameter")
+
+
+def _atomic_write(path: str, text: str) -> None:
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    fd, temporary = tempfile.mkstemp(prefix=".bedmesh-nozzle-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        raise
+
+
+class _NozzleUploadWorker(QObject):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, local_path: str, ssh_config: dict, diameter: str, material: str):
+        super().__init__()
+        self.local_path = local_path
+        self.ssh_config = ssh_config
+        self.diameter = diameter
+        self.material = material
+
+    def run(self):
+        try:
+            ok, error = upload_cfg_with_backup_and_verify(
+                self.local_path,
+                self.ssh_config["ip"],
+                self.ssh_config["port"],
+                self.ssh_config["user"],
+                self.ssh_config["password"],
+                self.ssh_config["path"],
+            )
+            if not ok:
+                self.finished.emit(False, error)
+                return
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as stream:
+                json.dump(
+                    {"material": self.material, "diameter": self.diameter, "modify": True},
+                    stream,
+                )
+                metadata_path = stream.name
+            try:
+                ok, error = upload_cfg_with_backup_and_verify(
+                    metadata_path,
+                    self.ssh_config["ip"],
+                    self.ssh_config["port"],
+                    self.ssh_config["user"],
+                    self.ssh_config["password"],
+                    "/userdata/app/gk/config/nozzle.cfg",
+                )
+            finally:
+                try:
+                    os.remove(metadata_path)
+                except OSError:
+                    pass
+            self.finished.emit(ok, error)
+        except Exception as error:
+            self.finished.emit(False, str(error))
+
+
+class _NozzleKlipperRestartWorker(QObject):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, ssh_config: dict):
+        super().__init__()
+        self.ssh_config = ssh_config
+
+    def run(self):
+        try:
+            ok, details = send_gcode_via_temporary_bridge(
+                self.ssh_config["ip"],
+                self.ssh_config["port"],
+                self.ssh_config["user"],
+                self.ssh_config["password"],
+                "RESTART",
+            )
+            self.finished.emit(ok, details)
+        except Exception as error:
+            self.finished.emit(False, str(error))
+
+
+class NozzleTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.logger = get_logger(__name__)
+        self._ssh_config: dict | None = None
+        self._file_path: str | None = None
+        self._upload_thread = None
+        self._upload_worker = None
+        self._restart_thread = None
+        self._restart_worker = None
+        self._loaded_diameter: str | None = None
+        self._loaded_material = "brass"
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        group = QGroupBox("🧩 Диаметр сопла")
+        group_layout = QVBoxLayout(group)
+        group_layout.addWidget(QLabel(
+            "Выберите фактически установленный диаметр. Будет изменён только "
+            "параметр nozzle_diameter в секции [extruder]."
+        ))
+        self.diameter = QComboBox()
+        self.diameter.addItems(NOZZLE_DIAMETERS)
+        self.diameter.setEnabled(False)
+        group_layout.addWidget(self.diameter)
+        group_layout.addWidget(QLabel("Тип сопла"))
+        self.material = QComboBox()
+        for label, value in NOZZLE_MATERIALS:
+            self.material.addItem(label, value)
+        self.material.setEnabled(False)
+        group_layout.addWidget(self.material)
+
+        self.btn_apply = QPushButton("✅ Сохранить и перезапустить Klipper")
+        self.btn_apply.setObjectName("primaryButton")
+        self.btn_apply.setEnabled(False)
+        self.btn_apply.setToolTip(
+            "Создаст бекап printer.cfg и перезапустит только Klipper. "
+            "Полная калибровка стола не запускается."
+        )
+        self.btn_apply.clicked.connect(self.apply)
+        group_layout.addWidget(self.btn_apply)
+        layout.addWidget(group)
+
+        self.status = QLabel("Сначала загрузите printer.cfg по SSH.")
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet("color: #9fb3cc;")
+        layout.addWidget(self.status)
+
+        note = QLabel(
+            "После применения выполняется только Klipper RESTART. "
+            "BED_MESH_CALIBRATE и полная калибровка принтера из этой вкладки не вызываются."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #888; background: #101a2b; padding: 8px;")
+        layout.addWidget(note)
+        layout.addStretch()
+
+    def set_ssh_config(self, ssh_data: dict) -> None:
+        try:
+            port = int(ssh_data.get("port", 2222))
+        except (TypeError, ValueError):
+            port = 2222
+        self._ssh_config = {
+            "ip": ssh_data.get("ip", ""),
+            "port": port,
+            "user": ssh_data.get("user", "root"),
+            "password": ssh_data.get("password", ""),
+            "path": ssh_data.get("path", "/userdata/app/gk/printer.cfg"),
+        }
+        self.btn_apply.setEnabled(False)
+
+    def load_file(self, path: str) -> None:
+        try:
+            text = open(path, "r", encoding="utf-8").read()
+            diameter = _read_nozzle_diameter(text)
+            if diameter is None:
+                raise ValueError("В загруженном printer.cfg не найден nozzle_diameter")
+            self._file_path = path
+            self._loaded_diameter = diameter
+            index = self.diameter.findText(diameter)
+            if index < 0:
+                self.diameter.addItem(diameter)
+                index = self.diameter.findText(diameter)
+            self.diameter.setCurrentIndex(index)
+            self.diameter.setEnabled(True)
+            self.material.setEnabled(True)
+            self.btn_apply.setEnabled(bool(self._ssh_config))
+            self.status.setText(f"Текущие значения: {diameter} мм, {self.material.currentText()}")
+        except Exception as error:
+            self._file_path = None
+            self.diameter.setEnabled(False)
+            self.material.setEnabled(False)
+            self.btn_apply.setEnabled(False)
+            self.status.setText(f"❌ Не удалось прочитать диаметр: {error}")
+
+    def apply(self) -> None:
+        if not self._ssh_config or not self._file_path:
+            QMessageBox.warning(self, "Сопло", "Сначала загрузите printer.cfg по SSH.")
+            return
+        diameter = self.diameter.currentText().strip()
+        material = self.material.currentData()
+        if diameter not in NOZZLE_DIAMETERS:
+            QMessageBox.warning(self, "Сопло", "Выберите диаметр из списка.")
+            return
+        if diameter == self._loaded_diameter and material == self._loaded_material:
+            QMessageBox.information(self, "Сопло", "Эти параметры уже установлены.")
+            return
+        if self._upload_thread and self._upload_thread.isRunning():
+            return
+        if self._restart_thread and self._restart_thread.isRunning():
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Применить диаметр сопла?",
+            f"Будет установлено сопло: {diameter} мм, {self.material.currentText()}.\n\n"
+            "Будет создан бекап и перезапущен только Klipper. "
+            "Полная калибровка стола не запускается. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            text = open(self._file_path, "r", encoding="utf-8").read()
+            _atomic_write(self._file_path, _replace_nozzle_diameter(text, diameter))
+        except Exception as error:
+            QMessageBox.critical(self, "Сопло", f"Не удалось изменить локальный конфиг:\n{error}")
+            return
+
+        self.btn_apply.setEnabled(False)
+        self.diameter.setEnabled(False)
+        self.material.setEnabled(False)
+        self.status.setText("⏳ Сохраняю printer.cfg и создаю бекап...")
+        self._upload_thread = QThread(self)
+        self._upload_worker = _NozzleUploadWorker(
+            self._file_path, self._ssh_config, diameter, material
+        )
+        self._upload_worker.moveToThread(self._upload_thread)
+        self._upload_thread.started.connect(self._upload_worker.run)
+        self._upload_worker.finished.connect(self._on_upload_finished)
+        self._upload_worker.finished.connect(self._upload_worker.deleteLater)
+        self._upload_worker.finished.connect(self._upload_thread.quit)
+        self._upload_thread.finished.connect(self._upload_thread.deleteLater)
+        self._upload_thread.start()
+
+    def _on_upload_finished(self, ok: bool, details: str) -> None:
+        self._upload_worker = None
+        self._upload_thread = None
+        if not ok:
+            self.diameter.setEnabled(True)
+            self.material.setEnabled(True)
+            self.btn_apply.setEnabled(True)
+            self.status.setText("❌ Ошибка сохранения printer.cfg")
+            self.logger.error("Nozzle config upload failed: %s", details)
+            QMessageBox.critical(self, "Сопло", "Не удалось сохранить printer.cfg. Проверьте бекап и SSH.")
+            return
+
+        self.status.setText("⏳ Перезапускаю только Klipper...")
+        self._restart_thread = QThread(self)
+        self._restart_worker = _NozzleKlipperRestartWorker(self._ssh_config)
+        self._restart_worker.moveToThread(self._restart_thread)
+        self._restart_thread.started.connect(self._restart_worker.run)
+        self._restart_worker.finished.connect(self._on_restart_finished)
+        self._restart_worker.finished.connect(self._restart_worker.deleteLater)
+        self._restart_worker.finished.connect(self._restart_thread.quit)
+        self._restart_thread.finished.connect(self._restart_thread.deleteLater)
+        self._restart_thread.start()
+
+    def _on_restart_finished(self, ok: bool, details: str) -> None:
+        self._restart_worker = None
+        self._restart_thread = None
+        self.diameter.setEnabled(True)
+        self.material.setEnabled(True)
+        self.btn_apply.setEnabled(True)
+        if ok:
+            self._loaded_diameter = self.diameter.currentText().strip()
+            self._loaded_material = self.material.currentData()
+            self.status.setText(
+                f"✅ Сопло {self._loaded_diameter} мм, {self.material.currentText()} применено. "
+                "Перезапущен только Klipper."
+            )
+            QMessageBox.information(
+                self,
+                "Сопло",
+                "Диаметр сохранён. Перезапущен только Klipper, без полной калибровки принтера.",
+            )
+        else:
+            self.status.setText("❌ Конфиг сохранён, но Klipper не перезапущен")
+            self.logger.error("Nozzle Klipper restart failed: %s", details)
+            QMessageBox.critical(self, "Сопло", "Конфиг сохранён, но Klipper не удалось перезапустить.")
