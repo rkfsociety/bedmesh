@@ -42,6 +42,20 @@ def _read_nozzle_diameter(text: str) -> str | None:
     return None
 
 
+def _read_nozzle_material(text: str) -> str | None:
+    in_extruder = False
+    for line in text.splitlines():
+        section = re.match(r"^\s*\[([^]]+)\]\s*$", line)
+        if section:
+            in_extruder = section.group(1).strip().lower() == "extruder"
+            continue
+        if in_extruder:
+            match = re.match(r"^\s*nozzle_material\s*:\s*([^#\s]+)", line, re.IGNORECASE)
+            if match:
+                return match.group(1).strip().lower()
+    return None
+
+
 def _replace_nozzle_diameter(text: str, diameter: str, material: str | None = None) -> str:
     lines = text.splitlines(keepends=True)
     in_extruder = False
@@ -241,15 +255,22 @@ class NozzleTab(QWidget):
         try:
             text = open(path, "r", encoding="utf-8").read()
             diameter = _read_nozzle_diameter(text)
+            material = _read_nozzle_material(text) or "brass"
             if diameter is None:
                 raise ValueError("В загруженном printer.cfg не найден nozzle_diameter")
             self._file_path = path
             self._loaded_diameter = diameter
+            self._loaded_material = material
             index = self.diameter.findText(diameter)
             if index < 0:
                 self.diameter.addItem(diameter)
                 index = self.diameter.findText(diameter)
             self.diameter.setCurrentIndex(index)
+            material_index = self.material.findData(material)
+            if material_index < 0:
+                self.material.addItem(material, material)
+                material_index = self.material.findData(material)
+            self.material.setCurrentIndex(material_index)
             self.diameter.setEnabled(True)
             self.material.setEnabled(True)
             self.btn_apply.setEnabled(bool(self._ssh_config))

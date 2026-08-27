@@ -2,6 +2,7 @@ import unittest
 
 from nozzle_tab import (
     _read_nozzle_diameter,
+    _read_nozzle_material,
     _replace_nozzle_diameter,
 )
 
@@ -16,6 +17,11 @@ class NozzleConfigTests(unittest.TestCase):
         text = "[heater_bed]\nnozzle_diameter: 0.80\n\n[extruder]\nnozzle_diameter : 0.400 # stock\n"
 
         self.assertEqual(_read_nozzle_diameter(text), "0.40")
+
+    def test_reads_material_from_extruder(self):
+        text = "[heater_bed]\nnozzle_material: brass\n\n[extruder]\nnozzle_material : hardened_steel\n"
+
+        self.assertEqual(_read_nozzle_material(text), "hardened_steel")
 
     def test_replaces_value_and_preserves_other_config(self):
         text = "[extruder]\r\nrotation_distance: 6.5\r\nnozzle_diameter : 0.400 # stock\r\n\r\n[heater_bed]\r\n"
