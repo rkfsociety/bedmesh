@@ -39,3 +39,4 @@
 - В набор входят текущий и резервный `K3SysUi`, `start.sh`, `run.sh`, `printer.cfg`, `printer_mutable.cfg`, `nozzle.cfg`, `boot.sh`, а также `gkapi`, `gklib`, `gkcam`.
 - MD5 текущего и резервного `K3SysUi`: `1bd84d3856b09a13a634143bb42378e5`; он совпадает с ранее сохранённым локальным оригиналом.
 - Секретные конфигурации устройства и облачные ключи в снимок намеренно не включались.
+- Чтоб не потерялось. Пароль от SWU архива: U2FsdGVkX1+lG6cHmshPLI/LaQr9cZCjA8HZt6Y8qmbB7riY
