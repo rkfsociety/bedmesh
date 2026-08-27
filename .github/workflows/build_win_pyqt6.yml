@@ -154,7 +154,6 @@ jobs:
             --exclude-module scipy \
             --exclude-module numba \
             --exclude-module llvmlite \
-            --collect-submodules OpenGL \
             win/pyqt6/main.py
 
       - name: Подготовить SHA-256 EXE
