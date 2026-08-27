@@ -39,4 +39,3 @@
 - В набор входят текущий и резервный `K3SysUi`, `start.sh`, `run.sh`, `printer.cfg`, `printer_mutable.cfg`, `nozzle.cfg`, `boot.sh`, а также `gkapi`, `gklib`, `gkcam`.
 - MD5 текущего и резервного `K3SysUi`: `1bd84d3856b09a13a634143bb42378e5`; он совпадает с ранее сохранённым локальным оригиналом.
 - Секретные конфигурации устройства и облачные ключи в снимок намеренно не включались.
-- Для расшифровки штатного SWU Kobra S1 нужен S1-specific пароль из канонической таблицы Rinkhals: https://rinkhals-community.github.io/Rinkhals/printers/recover-boot-issues/ . Сам пароль в репозитории и памяти не хранить.
