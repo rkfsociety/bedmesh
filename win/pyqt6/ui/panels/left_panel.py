@@ -1,7 +1,9 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
-                             QLineEdit, QHBoxLayout, QGroupBox, QMessageBox)
-from PyQt6.QtCore import pyqtSignal, QObject, QThread, QTimer
+                             QLineEdit, QHBoxLayout, QGroupBox, QMessageBox,
+                             QApplication)
+from PyQt6.QtCore import pyqtSignal, QObject, QThread, QTimer, Qt
+from PyQt6.QtGui import QPixmap
 from ui.components.toggle_switch import ToggleSwitch
 from core.ssh_client import (
     install_persistent_ssh, install_web_panel,
@@ -9,6 +11,7 @@ from core.ssh_client import (
     check_persistent_status,
     get_bed_mesh_grid,
 )
+from utils.resources import resource_path
 
 
 class _PersistWorker(QObject):
@@ -206,6 +209,50 @@ class LeftPanel(QWidget):
         self.btn_log = QPushButton("📋 Открыть лог")
         self.btn_log.clicked.connect(self._open_log)
         layout.addWidget(self.btn_log)
+
+        donation_group = QGroupBox("ПОДДЕРЖАТЬ ПРОЕКТ")
+        donation_layout = QVBoxLayout(donation_group)
+        donation_layout.setContentsMargins(5, 12, 5, 6)
+        donation_layout.setSpacing(5)
+
+        qr_label = QLabel()
+        qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        qr_pixmap = QPixmap(resource_path("resources/donation-qr.png"))
+        if not qr_pixmap.isNull():
+            # На исходной карточке QR занимает центральную квадратную область.
+            qr_pixmap = qr_pixmap.copy(210, 285, 550, 550)
+            qr_label.setPixmap(
+                qr_pixmap.scaled(
+                    150,
+                    150,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        else:
+            qr_label.setText("QR-КОД НЕДОСТУПЕН")
+        donation_layout.addWidget(qr_label)
+
+        network_label = QLabel("USDT • СЕТЬ TON")
+        network_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        network_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #b9c9e0;")
+        donation_layout.addWidget(network_label)
+
+        wallet_label = QLabel(
+            "UQDnW88gMYJgD3J3sjuoFYctgKhn6ArisE8mnMCQfnYQ9UBx"
+        )
+        wallet_label.setWordWrap(True)
+        wallet_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        wallet_label.setStyleSheet("font-size: 9px; color: #9fb3cc;")
+        donation_layout.addWidget(wallet_label)
+
+        copy_wallet_btn = QPushButton("КОПИРОВАТЬ АДРЕС")
+        copy_wallet_btn.setToolTip("Скопировать адрес кошелька USDT в сети TON")
+        copy_wallet_btn.clicked.connect(
+            lambda: QApplication.clipboard().setText(wallet_label.text())
+        )
+        donation_layout.addWidget(copy_wallet_btn)
+        layout.addWidget(donation_group)
         
         layout.addStretch()
 

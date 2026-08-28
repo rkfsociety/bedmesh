@@ -143,6 +143,7 @@ jobs:
             --add-data "webpanel/gkbridge;resources" \
             --add-data "webpanel/camera;resources/camera" \
             --add-data "win/pyqt6/resources/boot.sh;resources" \
+            --add-data "win/pyqt6/resources/donation-qr.png;resources" \
             --hidden-import OpenGL \
             --hidden-import OpenGL.platform.win32 \
             --hidden-import pyqtgraph.opengl \
