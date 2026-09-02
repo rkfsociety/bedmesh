@@ -1,8 +1,10 @@
 import unittest
+import json
 
 import numpy as np
 
-from live_mesh import LiveMeshAccumulator
+from live_mesh import LiveMeshAccumulator, update_bed_mesh_json
+from mesh_parser import BedMeshData
 
 
 class LiveMeshAccumulatorTests(unittest.TestCase):
@@ -46,6 +48,38 @@ class LiveMeshAccumulatorTests(unittest.TestCase):
             acc.feed_line(line)
         snapshot = acc.snapshot()
         np.testing.assert_allclose(snapshot.data.z, [[1.0, 2.0], [4.0, 3.0]])
+
+    def test_update_bed_mesh_json_replaces_points_and_grid(self):
+        data = BedMeshData(
+            x=np.array([0.0, 250.0]),
+            y=np.array([0.0, 250.0]),
+            z=np.array([[1.25, -0.5], [0.125, 2.0]]),
+            x_count=2,
+            y_count=2,
+            min_x=0.0,
+            max_x=250.0,
+            min_y=0.0,
+            max_y=250.0,
+        )
+        result = json.loads(
+            update_bed_mesh_json(
+                json.dumps({"bed_mesh default": {"algo": "bicubic"}, "other": {"v": 1}}),
+                data,
+            )
+        )
+        mesh = result["bed_mesh default"]
+        self.assertEqual(mesh["x_count"], "2")
+        self.assertEqual(mesh["y_count"], "2")
+        self.assertEqual(mesh["points"], "1.250000, -0.500000\n0.125000, 2.000000")
+        self.assertEqual(result["other"], {"v": 1})
+
+    def test_update_bed_mesh_json_rejects_invalid_shape(self):
+        data = BedMeshData(
+            x=np.array([0.0]), y=np.array([0.0]), z=np.array([[1.0]]),
+            x_count=2, y_count=2, min_x=0.0, max_x=1.0, min_y=0.0, max_y=1.0,
+        )
+        with self.assertRaises(ValueError):
+            update_bed_mesh_json('{"bed_mesh default": {}}', data)
 
 
 if __name__ == "__main__":

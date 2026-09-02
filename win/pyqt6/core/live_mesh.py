@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -86,3 +87,35 @@ class LiveMeshAccumulator:
         )
         total = self.total_points or len(xs) * len(ys)
         return LiveMeshSnapshot(data, len(self.points), total, self.current)
+
+
+def update_bed_mesh_json(config_text: str, data: BedMeshData) -> str:
+    """Replace the saved bed mesh in a mutable Klipper JSON config."""
+    try:
+        config = json.loads(config_text)
+    except json.JSONDecodeError as error:
+        raise ValueError("printer_mutable.cfg содержит некорректный JSON") from error
+
+    if not isinstance(config, dict) or not isinstance(config.get("bed_mesh default"), dict):
+        raise ValueError("В printer_mutable.cfg не найден объект bed_mesh default")
+
+    z = np.asarray(data.z, dtype=float)
+    expected_shape = (data.y_count, data.x_count)
+    if z.shape != expected_shape or not np.isfinite(z).all():
+        raise ValueError("Live-карта имеет некорректный размер или значения")
+
+    mesh = config["bed_mesh default"]
+    mesh.update(
+        {
+            "min_x": f"{data.min_x:g}",
+            "max_x": f"{data.max_x:g}",
+            "min_y": f"{data.min_y:g}",
+            "max_y": f"{data.max_y:g}",
+            "x_count": str(data.x_count),
+            "y_count": str(data.y_count),
+            "points": "\n".join(
+                ", ".join(f"{value:.6f}" for value in row) for row in z
+            ),
+        }
+    )
+    return json.dumps(config, ensure_ascii=False, indent=2) + "\n"
