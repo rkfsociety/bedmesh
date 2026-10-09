@@ -17,6 +17,7 @@ from core.ssh_client import (
     BED_MESH_COOLDOWN_COMMANDS,
     get_bed_mesh_grid,
     read_remote_text_via_ssh,
+    save_live_mesh_to_mutable,
 )
 from core.live_mesh import LiveMeshAccumulator
 from utils.logger import get_logger
@@ -120,10 +121,27 @@ class _CalibrationWorker(QObject):
                 if not ok:
                     self.status.emit(f"Предупреждение: не удалось отправить {command}")
             self.status.emit("Нагрев стола и сопла отключён")
+            snapshot = accumulator.snapshot()
+            if snapshot is None or snapshot.measured_points != snapshot.total_points:
+                self.finished.emit(
+                    False,
+                    f"Получено только {snapshot.measured_points if snapshot else 0} "
+                    f"из {snapshot.total_points if snapshot else grid['total_points']} точек. "
+                    "Неполная карта не сохранена.",
+                )
+                return
+
+            self.status.emit("Сохраняю карту на принтер...")
+            saved, details = save_live_mesh_to_mutable(
+                snapshot.data, ip, port, user, password
+            )
+            if not saved:
+                self.finished.emit(False, f"Карта снята, но не сохранена: {details}")
+                return
             self.finished.emit(
                 True,
-                f"Получено точек: {len(accumulator.points)}. "
-                "Нажмите «Загрузить по SSH» для итоговой карты.",
+                f"Получено и сохранено точек: {snapshot.measured_points}. "
+                "Новая карта записана в printer_mutable.cfg.",
             )
         except Exception as error:
             self.finished.emit(False, str(error))

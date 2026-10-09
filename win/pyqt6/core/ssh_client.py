@@ -408,6 +408,67 @@ def upload_cfg_with_backup_and_verify(
         if ssh is not None:
             ssh.close()
 
+
+def save_live_mesh_to_mutable(
+    data,
+    ip: str,
+    port: int = 2222,
+    username: str = "root",
+    password: str = "rockchip",
+    remote_path: str = "/userdata/app/gk/printer_mutable.cfg",
+    max_backups: int = 5,
+) -> tuple[bool, str]:
+    """Persist a complete live mesh in printer_mutable.cfg atomically."""
+    from core.live_mesh import update_bed_mesh_json
+
+    ssh = None
+    sftp = None
+    temp_remote_path = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+        with sftp.open(remote_path, "rb") as remote_file:
+            current_text = remote_file.read().decode("utf-8")
+        updated_text = update_bed_mesh_json(current_text, data)
+        payload = updated_text.encode("utf-8")
+        local_sha = hashlib.sha256(payload).hexdigest()
+
+        if not _create_remote_backup_on_ssh(ssh, remote_path):
+            return False, "Не удалось создать резервную копию printer_mutable.cfg"
+
+        temp_remote_path = _remote_temp_path(remote_path)
+        with sftp.open(temp_remote_path, "wb") as temp_file:
+            temp_file.write(payload)
+        temp_sha = _sha256_remote_file_on_sftp(sftp, temp_remote_path)
+        if temp_sha != local_sha:
+            return False, "Проверка временного файла карты не пройдена"
+
+        if hasattr(sftp, "posix_rename"):
+            sftp.posix_rename(temp_remote_path, remote_path)
+        else:
+            sftp.rename(temp_remote_path, remote_path)
+        temp_remote_path = None
+
+        saved_sha = _sha256_remote_file_on_sftp(sftp, remote_path)
+        if saved_sha != local_sha:
+            return False, "Проверка сохранённой карты не пройдена"
+        _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
+        logger.info("Live mesh saved and verified: remote_path=%s sha256=%s", remote_path, saved_sha)
+        return True, ""
+    except Exception as error:
+        logger.exception("Live mesh save failed: host=%s remote_path=%s error=%s", ip, remote_path, error)
+        return False, str(error)
+    finally:
+        if sftp is not None and temp_remote_path:
+            try:
+                sftp.remove(temp_remote_path)
+            except Exception:
+                pass
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()
+
 def create_remote_backup(ip: str, port: int, username: str, password: str,
                          remote_path: str = '/userdata/app/gk/printer.cfg') -> Optional[str]:
     """
