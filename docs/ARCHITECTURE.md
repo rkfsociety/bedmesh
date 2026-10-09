@@ -115,10 +115,12 @@ PyInstaller onefile и SHA-256 на Python 3.10; `build_mac.yml` публику�
 `build_android.yml` публикует release APK. Версии задаются отдельно:
 Windows — `win/pyqt6/utils/version.py`, macOS — `mac/utils/version.py`,
 Android — `android/app/build.gradle.kts`, панель — `webpanel/gkbridge.version`.
-Updater’ы выбирают релизы по платформенному суффиксу тега.
+Updater’ы выбирают релизы по платформенному суффиксу тега; gkbridge использует
+отдельный суффикс `-gkbridge` и публикует бинарник armv7 с SHA-256.
 Платформы используют один общий номер версии. После успешной публикации общий
 скрипт `.github/scripts/prune-platform-releases.js` удаляет более старые
-стабильные GitHub Releases того же суффикса; Git-теги сохраняются.
+стабильные GitHub Releases того же суффикса (`win`, `mac`, `android`,
+`gkbridge`); Git-теги сохраняются.
 
 ## Связанные документы
 

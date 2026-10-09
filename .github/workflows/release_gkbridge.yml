@@ -1,0 +1,129 @@
+name: Релиз веб-панели gkbridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/scripts/prune-platform-releases.js"
+      - ".github/workflows/release_gkbridge.yml"
+      - "webpanel/**"
+    tags:
+      - "v*-gkbridge"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Определить версию и состояние релиза gkbridge
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      should_release: ${{ steps.release.outputs.should_release }}
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Создать tag и проверить состояние релиза
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(tr -d '\r\n' < webpanel/gkbridge.version)"
+          if [[ ! "${version}" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+            echo "Некорректная версия gkbridge: ${version}" >&2
+            exit 1
+          fi
+          release_tag="v${version}-gkbridge"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "${release_tag}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} не совпадает с версией ${release_tag}" >&2
+              exit 1
+            fi
+          elif ! git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+            git tag "${release_tag}" "${GITHUB_SHA}"
+            git push origin "${release_tag}"
+            echo "Создан tag ${release_tag} для ${GITHUB_SHA}"
+          else
+            echo "Tag ${release_tag} уже существует"
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}" 2>/dev/null || true)"
+          has_asset="false"
+          if [[ -n "${release_json}" ]] && jq -e '.draft == false and ([.assets[]?.name] | index("gkbridge")) != null and ([.assets[]?.name] | index("gkbridge.sha256")) != null' <<<"${release_json}" >/dev/null; then
+            has_asset="true"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          if [[ "${has_asset}" == "true" ]]; then
+            echo "should_release=false" >> "${GITHUB_OUTPUT}"
+            echo "Релиз ${release_tag} уже опубликован"
+          else
+            echo "should_release=true" >> "${GITHUB_OUTPUT}"
+            echo "Релиз ${release_tag} требует сборки/публикации"
+          fi
+
+  build-release:
+    name: Собрать и опубликовать gkbridge armv7
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v7
+
+      - name: Настроить Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: webpanel/go.mod
+
+      - name: Проверить Go-модуль
+        working-directory: webpanel
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Собрать бинарник для принтера
+        working-directory: webpanel
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: "7"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/gkbridge .
+          cd dist
+          sha256sum gkbridge > gkbridge.sha256
+
+      - name: Опубликовать релиз на GitHub
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            webpanel/dist/gkbridge
+            webpanel/dist/gkbridge.sha256
+          tag_name: ${{ needs.prepare-release.outputs.release_tag }}
+          name: "${{ needs.prepare-release.outputs.release_tag }}"
+          overwrite_files: true
+          body: |
+            ## Веб-панель gkbridge ${{ needs.prepare-release.outputs.release_tag }}
+
+            Сборка для принтера: Linux ARMv7.
+
+            Установщики и самообновление панели скачивают бинарник из этого релиза.
+
+            Контрольная сумма SHA-256 находится в `gkbridge.sha256`.
+
+      - name: Оставить только последний релиз gkbridge
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prune = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/prune-platform-releases.js`);
+            await prune({ github, context, core, platform: 'gkbridge' });

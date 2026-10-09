@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import urllib.request
@@ -9,8 +10,10 @@ try:
 except Exception:
     requests = None
 
-# Свежий бинарник панели на main (как Android SshInstaller).
-GKBRIDGE_URL = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge"
+# Версия берётся из main, бинарник — из соответствующего gkbridge GitHub Release.
+GKBRIDGE_VERSION_URL = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge.version"
+GKBRIDGE_RELEASE_URL = "https://github.com/rkfsociety/bedmesh/releases/download/v{}-gkbridge/gkbridge"
+GKBRIDGE_LEGACY_URL = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge"
 _MIN_GKBRIDGE_BYTES = 1024 * 1024
 
 
@@ -32,7 +35,7 @@ def gkbridge_binary() -> str:
     """
     Путь к бинарнику веб-панели gkbridge.
     Исходник живёт в корневой папке репозитория `webpanel/`, в сборку он попадает
-    в `_MEIPASS/resources/gkbridge` (см. .spec / CI), поэтому пути расходятся.
+    в `_MEIPASS/resources/gkbridge` (см. CI), поэтому пути расходятся.
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, "resources", "gkbridge")
@@ -57,29 +60,59 @@ def download_gkbridge_from_github(
             except Exception:
                 pass
 
+    def _download(url: str) -> None:
+        if requests is not None:
+            response = requests.get(url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            with open(path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=256 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        else:
+            request = urllib.request.Request(
+                url,
+                headers={"User-Agent": "rkfsociety-bedmesh-mac"},
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response, open(path, "wb") as f:
+                while True:
+                    chunk = response.read(256 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        if os.path.getsize(path) < _MIN_GKBRIDGE_BYTES:
+            raise RuntimeError(f"gkbridge слишком маленький: {os.path.getsize(path)} байт")
+
     fd, path = tempfile.mkstemp(prefix="gkbridge_", suffix=".bin")
     os.close(fd)
     try:
         _p("Скачивание gkbridge с GitHub…")
         if requests is not None:
-            r = requests.get(GKBRIDGE_URL, stream=True, timeout=timeout)
-            r.raise_for_status()
-            with open(path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=256 * 1024):
-                    if chunk:
-                        f.write(chunk)
+            version_response = requests.get(GKBRIDGE_VERSION_URL, timeout=timeout)
+            version_response.raise_for_status()
+            version = version_response.text.strip()
         else:
-            req = urllib.request.Request(
-                GKBRIDGE_URL,
+            version_request = urllib.request.Request(
+                GKBRIDGE_VERSION_URL,
                 headers={"User-Agent": "rkfsociety-bedmesh-mac"},
                 method="GET",
             )
-            with urllib.request.urlopen(req, timeout=timeout) as resp, open(path, "wb") as f:
-                while True:
-                    chunk = resp.read(256 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
+            with urllib.request.urlopen(version_request, timeout=timeout) as response:
+                version = response.read(64).decode("ascii").strip()
+        if not re.fullmatch(r"\d+(?:\.\d+){2}", version):
+            raise RuntimeError(f"Некорректная версия gkbridge: {version!r}")
+        download_url = GKBRIDGE_RELEASE_URL.format(version)
+        try:
+            _download(download_url)
+        except Exception as release_error:
+            _p(f"Релиз gkbridge пока недоступен ({release_error}); пробуем резервный бинарник…")
+            try:
+                _download(GKBRIDGE_LEGACY_URL)
+            except Exception as fallback_error:
+                raise RuntimeError(
+                    "Не удалось скачать gkbridge из релиза или резервного источника: "
+                    f"{fallback_error}"
+                ) from release_error
 
         size = os.path.getsize(path)
         if size < _MIN_GKBRIDGE_BYTES:

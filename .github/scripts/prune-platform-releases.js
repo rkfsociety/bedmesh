@@ -1,4 +1,4 @@
-const PLATFORM_TAGS = new Set(["win", "mac", "android"]);
+const PLATFORM_TAGS = new Set(["win", "mac", "android", "gkbridge"]);
 
 function compareVersions(left, right) {
   const a = left.split(".").map(Number);
@@ -23,7 +23,7 @@ module.exports = async function prunePlatformReleases({ github, context, core, p
     per_page: 100,
   });
   const candidates = releases.flatMap((release) => {
-    const match = /^v(\d+(?:\.\d+)+)-(win|mac|android)$/.exec(release.tag_name);
+    const match = /^v(\d+(?:\.\d+)+)-(win|mac|android|gkbridge)$/.exec(release.tag_name);
     if (!match || match[2] !== platform || release.draft || release.prerelease) return [];
     return [{ release, version: match[1] }];
   });

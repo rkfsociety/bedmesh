@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -40,8 +41,9 @@ var versionRaw []byte
 // version — собственная версия веб-панели (из файла gkbridge.version).
 func version() string { return strings.TrimSpace(string(versionRaw)) }
 
-// repoRawBase — где лежат свежий бинарник и файл версии (raw GitHub).
+// repoRawBase — источник текущей версии; сам бинарник публикуется в GitHub Release.
 const repoRawBase = "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel"
+const repoReleaseBase = "https://github.com/rkfsociety/bedmesh/releases/download"
 
 const etx = 0x03 // терминатор кадра Klipper API
 
@@ -66,18 +68,39 @@ func fetchLatestVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(b)), nil
+	latest := strings.TrimSpace(string(b))
+	if !gkbridgeVersionPattern.MatchString(latest) {
+		return "", fmt.Errorf("invalid gkbridge version %q", latest)
+	}
+	return latest, nil
 }
+
+func gkbridgeReleaseURL(version string) (string, error) {
+	if !gkbridgeVersionPattern.MatchString(version) {
+		return "", fmt.Errorf("invalid gkbridge version %q", version)
+	}
+	return fmt.Sprintf("%s/v%s-gkbridge/gkbridge", repoReleaseBase, version), nil
+}
+
+var gkbridgeVersionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+){2}$`)
 
 // applyUpdate скачивает свежий бинарник, заменяет текущий и перезапускает процесс.
 func applyUpdate() error {
+	latest, err := fetchLatestVersion()
+	if err != nil {
+		return fmt.Errorf("check latest version: %w", err)
+	}
+	assetURL, err := gkbridgeReleaseURL(latest)
+	if err != nil {
+		return err
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("executable: %w", err)
 	}
 	exe, _ = filepath.EvalSymlinks(exe)
 
-	resp, err := httpClient.Get(repoRawBase + "/gkbridge")
+	resp, err := httpClient.Get(assetURL)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}

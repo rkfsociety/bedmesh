@@ -101,6 +101,7 @@ jobs:
             --name "BedMeshVisualizer_Mac" \
             --add-data "mac/ui/locale:ui/locale" \
             --add-data "icon.png:." \
+            --add-data "webpanel/gkbridge:resources" \
             --add-data "webpanel/camera:resources/camera" \
             --hidden-import=paramiko \
             --hidden-import=requests \

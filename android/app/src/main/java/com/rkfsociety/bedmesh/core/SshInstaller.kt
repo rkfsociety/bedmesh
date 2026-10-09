@@ -14,7 +14,11 @@ private const val SSH_PKG_DST = "/useremain/ssh"
 private const val GKBRIDGE_REMOTE = "/useremain/gkbridge"
 private const val CAMERA_REMOTE = "/useremain/camera"
 private const val RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
-private const val GKBRIDGE_URL =
+private const val GKBRIDGE_VERSION_URL =
+    "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge.version"
+private const val GKBRIDGE_RELEASE_URL =
+    "https://github.com/rkfsociety/bedmesh/releases/download/v%s-gkbridge/gkbridge"
+private const val GKBRIDGE_LEGACY_URL =
     "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge"
 private val CAMERA_FILES = listOf(
     "cam-on.sh",
@@ -84,7 +88,7 @@ object SshInstaller {
         progress: (String) -> Unit,
     ) {
         progress("Скачивание gkbridge с GitHub…")
-        val gkbridgeFile = downloadGkbridge(context)
+        val gkbridgeFile = downloadGkbridge(context, progress)
 
         withSshTransport(cfg) { ssh ->
             val sftp = ssh.newSFTPClient()
@@ -116,19 +120,41 @@ object SshInstaller {
         }
     }
 
-    internal fun downloadGkbridge(context: Context): File {
+    internal fun downloadGkbridge(context: Context, progress: ((String) -> Unit)? = null): File {
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
             .build()
-        val req = Request.Builder().url(GKBRIDGE_URL).build()
-        val out = File(context.cacheDir, "gkbridge_download")
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) error("HTTP ${resp.code}")
-            val body = resp.body ?: error("Пустой ответ")
-            out.outputStream().use { body.byteStream().copyTo(it) }
+        val versionRequest = Request.Builder().url(GKBRIDGE_VERSION_URL).build()
+        val version = client.newCall(versionRequest).execute().use { resp ->
+            if (!resp.isSuccessful) error("Не удалось получить версию gkbridge: HTTP ${resp.code}")
+            resp.body?.string()?.trim() ?: error("Пустая версия gkbridge")
         }
-        if (out.length() < 1024 * 1024) error("gkbridge слишком маленький: ${out.length()} байт")
+        require(Regex("^[0-9]+(\\.[0-9]+){2}$").matches(version)) {
+            "Некорректная версия gkbridge: $version"
+        }
+        val out = File(context.cacheDir, "gkbridge_download")
+        fun download(url: String) {
+            val request = Request.Builder().url(url).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) error("HTTP ${response.code}")
+                val body = response.body ?: error("Пустой ответ")
+                out.outputStream().use { body.byteStream().copyTo(it) }
+            }
+            if (out.length() < 1024 * 1024) error("gkbridge слишком маленький: ${out.length()} байт")
+        }
+        try {
+            download(GKBRIDGE_RELEASE_URL.format(version))
+        } catch (releaseError: Exception) {
+            out.delete()
+            progress?.invoke("Релиз gkbridge пока недоступен, пробуем резервный бинарник…")
+            try {
+                download(GKBRIDGE_LEGACY_URL)
+            } catch (fallbackError: Exception) {
+                fallbackError.addSuppressed(releaseError)
+                throw fallbackError
+            }
+        }
         return out
     }
 
