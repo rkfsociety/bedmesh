@@ -7,6 +7,7 @@ from core.ssh_client import (
     install_persistent_ssh, install_web_panel,
     uninstall_persistent_ssh, uninstall_web_panel,
     check_persistent_status,
+    get_bed_mesh_grid,
 )
 
 
@@ -52,9 +53,31 @@ class _PersistWorker(QObject):
             self.finished.emit(self.op, False, None, str(e))
 
 
+class _MeshGridWorker(QObject):
+    finished = pyqtSignal(bool, object, str)
+
+    def __init__(self, ssh_data: dict):
+        super().__init__()
+        self.ssh_data = ssh_data
+
+    def run(self):
+        try:
+            grid = get_bed_mesh_grid(
+                self.ssh_data.get("ip", ""), int(self.ssh_data.get("port", 2222)),
+                self.ssh_data.get("user", "root"), self.ssh_data.get("password", ""),
+            )
+            if grid is None:
+                self.finished.emit(False, None, "Не удалось прочитать размер сетки из printer.cfg.")
+            else:
+                self.finished.emit(True, grid, "")
+        except Exception as error:
+            self.finished.emit(False, None, str(error))
+
+
 class LeftPanel(QWidget):
     # Отправляем словарь с настройками SSH
     ssh_download_requested = pyqtSignal(dict)
+    calibration_requested = pyqtSignal(dict)
     setting_updated = pyqtSignal(str, str)
     advanced_toggled = pyqtSignal(bool)
 
@@ -83,6 +106,19 @@ class LeftPanel(QWidget):
         self.btn_ssh = QPushButton("🌐 Загрузить по SSH")
         self.btn_ssh.clicked.connect(self._request_ssh_download)
         layout.addWidget(self.btn_ssh)
+
+        self.btn_calibrate = QPushButton("📏 Калибровать стол")
+        self.btn_calibrate.setToolTip(
+            "Запускает штатную калибровку с нагревом и очисткой сопла, показывает точки в реальном времени "
+            "и сохраняет только полную карту."
+        )
+        self.btn_calibrate.clicked.connect(self._request_calibration)
+        layout.addWidget(self.btn_calibrate)
+        self.calibration_status_lbl = QLabel("Статус калибровки: не запущена")
+        self.calibration_status_lbl.setWordWrap(True)
+        layout.addWidget(self.calibration_status_lbl)
+        self._mesh_grid_thread = None
+        self._mesh_grid_worker = None
 
         toggle_row = QHBoxLayout()
         self.chk_advanced = ToggleSwitch(checked=False)
@@ -208,6 +244,62 @@ class LeftPanel(QWidget):
         """Сброс состояния кнопки после завершения операции"""
         self.btn_ssh.setEnabled(True)
         self.btn_ssh.setText("🌐 Загрузить по SSH")
+
+    def _request_calibration(self):
+        if not self.input_ip.text().strip():
+            QMessageBox.warning(self, "Калибровка", "Укажите IP адрес принтера.")
+            return
+        if self._mesh_grid_thread and self._mesh_grid_thread.isRunning():
+            return
+        self.btn_calibrate.setEnabled(False)
+        self.btn_calibrate.setText("⏳ Проверка конфига...")
+        self.calibration_status_lbl.setText("Статус калибровки: читаю размер сетки из printer.cfg...")
+        self._mesh_grid_thread = QThread(self)
+        self._mesh_grid_worker = _MeshGridWorker(self._collect_ssh_data())
+        self._mesh_grid_worker.moveToThread(self._mesh_grid_thread)
+        self._mesh_grid_thread.started.connect(self._mesh_grid_worker.run)
+        self._mesh_grid_worker.finished.connect(self._on_mesh_grid_checked)
+        self._mesh_grid_worker.finished.connect(self._mesh_grid_thread.quit)
+        self._mesh_grid_worker.finished.connect(self._mesh_grid_worker.deleteLater)
+        self._mesh_grid_thread.finished.connect(self._mesh_grid_thread.deleteLater)
+        self._mesh_grid_thread.start()
+
+    def _on_mesh_grid_checked(self, ok: bool, grid: object, error: str):
+        self._mesh_grid_worker = None
+        self._mesh_grid_thread = None
+        if not ok or not isinstance(grid, dict):
+            self._finish_calibration_ui("конфиг не прочитан")
+            QMessageBox.critical(self, "Ошибка конфига", error)
+            return
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Запустить калибровку?")
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setText(
+            f"В конфиге указана сетка {grid['x_count']}×{grid['y_count']} — {grid['total_points']} точек.\n\n"
+            "Принтер нагреет стол, очистит сопло и выполнит измерения тензодатчиком. "
+            "После завершения нагрев будет отключён. Продолжить?"
+        )
+        yes_button = dialog.addButton("Да", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Нет", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() is not yes_button:
+            self._finish_calibration_ui("отменена")
+            return
+        self.btn_calibrate.setText("⏳ Снятие карты...")
+        self.calibration_status_lbl.setText("Статус калибровки: подключение к принтеру...")
+        self.calibration_requested.emit(self._collect_ssh_data())
+
+    def set_calibration_status(self, text: str):
+        self.calibration_status_lbl.setText(f"Статус калибровки: {text}")
+
+    def calibration_finished(self, ok: bool, message: str):
+        self._finish_calibration_ui("готово" if ok else "ошибка")
+        (QMessageBox.information if ok else QMessageBox.critical)(self, "Калибровка", message)
+
+    def _finish_calibration_ui(self, status: str):
+        self.btn_calibrate.setEnabled(True)
+        self.btn_calibrate.setText("📏 Калибровать стол")
+        self.calibration_status_lbl.setText(f"Статус калибровки: {status}")
 
     def _toggle_advanced(self, is_checked: bool):
         self.adv_group.setVisible(is_checked)

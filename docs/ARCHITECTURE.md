@@ -9,7 +9,7 @@
 | Компонент | Технологии | Точка входа | Назначение |
 |---|---|---|---|
 | Windows | Python, PyQt6, pyqtgraph/OpenGL, Paramiko | `win/pyqt6/main.py` | Desktop-клиент, live-калибровка, SSH/SFTP, cfg и обновления |
-| macOS | Python, PyQt6, pyqtgraph/OpenGL, Paramiko | `mac/main.py` | Desktop-клиент с картой, cfg, SSH/SFTP и обновлениями |
+| macOS | Python, PyQt6, pyqtgraph/OpenGL, Paramiko | `mac/main.py` | Desktop-клиент, live-калибровка, сопло, cfg, SSH/SFTP и обновления |
 | Android | Kotlin, Jetpack Compose, SSHJ | `android/.../MainActivity.kt` | SSH, карта, cfg, бекапы и установка сервисов |
 | Веб-панель | Go, vanilla JS, `go:embed` | `webpanel/gkbridge.go` | HTTP-панель статуса, управления, камеры и mesh |
 
@@ -33,15 +33,19 @@ PyInstaller-слой. Актуальные desktop entrypoint’ы находя�
 ## Клиенты и хранение
 
 Windows и macOS имеют вкладки карты, редактора конфигурации и RAW-данных,
-SSH-панель и правую панель анализа. Windows дополнительно поддерживает
-load-cell калибровку, live mesh и вкладку «Сопло». Вкладка Windows меняет
+SSH-панель и правую панель анализа. Оба клиента поддерживают load-cell
+калибровку с live mesh, вкладку «Сопло» и команду полной перезагрузки принтера
+из редактора. Вкладка «Сопло» меняет
 `nozzle_diameter` в `[extruder]` файла `printer.cfg`, а диаметр и материал — в
 JSON-объекте `extruder` файла `printer_mutable.cfg`; `/userdata/app/gk/config/nozzle.cfg`
 содержит метаданные выбора и флаг `modify` для штатной калибровки. Перед
 перезапуском приложение проверяет загруженные значения; полный перезапуск
 выполняется всегда, а цепочка PID → шейперы → стол запускается только при
-включённой опции полной калибровки. Приложение также устанавливает постоянный
-SSH, `gkbridge` и камеру через `/useremain/boot.sh`.
+включённой опции полной калибровки. Live-карта читается из `/tmp/gklib.log`,
+показывается по мере измерения и записывается только при получении полной сетки,
+с резервной копией и проверкой SHA-256. Ace Pro поддерживает пресеты до 500%.
+Приложение также устанавливает постоянный SSH, `gkbridge` и камеру через
+`/useremain/boot.sh`.
 
 Android имеет вкладки SSH, Карта, Config, Принтер и RAW. Настройки хранятся
 в SharedPreferences, загрузки — в cache приложения. Удалённые бекапы имеют

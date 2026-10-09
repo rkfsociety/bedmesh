@@ -2,10 +2,14 @@ import paramiko
 import os
 import datetime
 from utils.logger import get_logger
-from utils.resources import resource_path, resolve_gkbridge_for_install, camera_dir
+from utils.resources import resource_path, resolve_gkbridge_for_install, gkbridge_binary, camera_dir
 from utils.app_config import default_download_local_path
 from typing import Optional, Callable
 import hashlib
+import json
+import re
+import socket
+import time
 
 TEMP_FILE_NAME = "temp_download.cfg"
 BACKUP_TAG = "bedmesh_bak"
@@ -21,6 +25,14 @@ RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 
 logger = get_logger(__name__)
 
+BED_MESH_CALIBRATION_COMMANDS = (
+    "LEVIQ2_PREHEATING",
+    "LEVIQ2_WIPING",
+    "G28 Z",
+    "LEVIQ2_PROBE",
+)
+BED_MESH_COOLDOWN_COMMANDS = ("M104 S0", "M140 S0")
+
 def _sh_quote(s: str) -> str:
     # Safe-ish single-quote for POSIX shells (busybox/ash).
     return "'" + str(s).replace("'", "'\"'\"'") + "'"
@@ -31,6 +43,11 @@ def sha256_local_file(path: str) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _remote_temp_path(remote_path: str) -> str:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    return f"{remote_path}.{BACKUP_TAG}_upload_{timestamp}"
 
 def sha256_remote_file_via_sftp(ip: str, port: int, username: str, password: str, remote_path: str) -> Optional[str]:
     ssh = None
@@ -149,6 +166,137 @@ def get_ssh_connection(ip: str, port: int = 2222, username: str = 'root', passwo
     ssh.connect(hostname=ip, port=port, username=username, password=password, timeout=10)
     logger.info("SSH connected: host=%s port=%s user=%s", ip, port, username)
     return ssh
+
+
+def reboot_printer_via_ssh(
+    ip: str, port: int, username: str, password: str,
+) -> tuple[bool, str]:
+    """Запрашивает полный перезапуск Linux-принтера через SSH."""
+    ssh = None
+    command = "nohup sh -c 'sleep 1; reboot' >/dev/null 2>&1 </dev/null &"
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        _, stdout, stderr = ssh.exec_command(command)
+        status = stdout.channel.recv_exit_status()
+        details = stderr.read().decode(errors="ignore").strip()
+        if status != 0:
+            logger.error("Printer reboot command failed: status=%s stderr=%s", status, details)
+            return False, details or f"SSH command exited with status {status}"
+        logger.info("Printer reboot requested: host=%s", ip)
+        return True, "reboot requested"
+    except Exception as error:
+        logger.exception("Printer reboot request failed: host=%s error=%s", ip, error)
+        return False, str(error)
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def get_bed_mesh_grid(ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    """Читает размер leviQ-сетки из printer.cfg без изменения принтера."""
+    ssh = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        path = "/userdata/app/gk/printer.cfg"
+        status, output, _ = _exec(ssh, f"cat {_sh_quote(path)}")
+        if status != 0:
+            return None
+
+        def value(name: str) -> str | None:
+            match = re.search(rf"(?im)^\s*{name}\s*:\s*([^#\r\n]+)", output)
+            return match.group(1).strip() if match else None
+
+        count, mesh_min, mesh_max = value("probe_count"), value("mesh_min"), value("mesh_max")
+        if not count or not mesh_min or not mesh_max:
+            return None
+        try:
+            x_count, y_count = (int(part.strip()) for part in count.split(",", 1))
+            min_x, min_y = (float(part.strip()) for part in mesh_min.split(",", 1))
+            max_x, max_y = (float(part.strip()) for part in mesh_max.split(",", 1))
+        except (TypeError, ValueError):
+            return None
+        if x_count <= 0 or y_count <= 0 or max_x <= min_x or max_y <= min_y:
+            return None
+        return {
+            "x_count": x_count, "y_count": y_count,
+            "total_points": x_count * y_count,
+            "min_x": min_x, "max_x": max_x,
+            "min_y": min_y, "max_y": max_y, "source": path,
+        }
+    except Exception as error:
+        logger.warning("mesh grid read failed: host=%s error=%s", ip, error)
+        return None
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def send_gcode_via_temporary_bridge(
+    ip: str, port: int, username: str, password: str, script: str,
+) -> tuple[bool, str]:
+    """Отправляет G-code через временный gkbridge без постоянной установки панели."""
+    remote = f"/tmp/bedmesh-gkbridge-{os.getpid()}"
+    remote_log = remote + ".log"
+    ssh = get_ssh_connection(ip, port, username, password)
+    sftp = channel = None
+    pid = local = None
+    temporary = False
+    try:
+        bundled = gkbridge_binary()
+        local, temporary = resolve_gkbridge_for_install(
+            preferred_path=bundled if os.path.exists(bundled) else None,
+        )
+        sftp = ssh.open_sftp()
+        sftp.put(local, remote)
+        _, output, _ = _exec(
+            ssh,
+            f"chmod 700 {_sh_quote(remote)}; {_sh_quote(remote)} -addr 127.0.0.1:18089 >/tmp/bedmesh-gkbridge.log 2>&1 & echo $!",
+        )
+        pid = output.strip().splitlines()[-1].strip()
+        time.sleep(0.25)
+        transport = ssh.get_transport()
+        if transport is None or not transport.is_active():
+            return False, "SSH-соединение закрыто"
+        channel = transport.open_channel("direct-tcpip", ("127.0.0.1", 18089), (ip, port), timeout=5)
+        body = json.dumps({"script": script}, ensure_ascii=False).encode("utf-8")
+        request = (
+            b"POST /gcode HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\n"
+            + f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+        )
+        channel.sendall(request)
+        response = bytearray()
+        channel.settimeout(8)
+        while True:
+            try:
+                chunk = channel.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            response.extend(chunk)
+        text = bytes(response).decode("utf-8", errors="replace")
+        status_line = text.splitlines()[0] if text.splitlines() else ""
+        ok = " 200 " in status_line or (" 502 " in status_line and "i/o timeout" in text)
+        return ok, text[-500:]
+    except Exception as error:
+        logger.exception("Temporary gkbridge G-code failed: host=%s error=%s", ip, error)
+        return False, str(error)
+    finally:
+        if channel is not None:
+            channel.close()
+        if pid:
+            try:
+                _exec(ssh, f"kill {_sh_quote(pid)} 2>/dev/null; rm -f {_sh_quote(remote)} {_sh_quote(remote_log)}")
+            except Exception:
+                pass
+        if temporary and local:
+            try:
+                os.remove(local)
+            except OSError:
+                pass
+        if sftp is not None:
+            sftp.close()
+        ssh.close()
 
 def download_cfg_via_ssh(
     ip: str,
@@ -766,3 +914,85 @@ def install_web_panel(ip: str, port: int, username: str, password: str,
                 os.remove(downloaded_tmp)
             except OSError:
                 pass
+
+
+def read_remote_text_via_ssh(
+    ip: str,
+    port: int = 2222,
+    username: str = "root",
+    password: str = "rockchip",
+    remote_path: str = "/userdata/app/gk/printer.cfg",
+) -> Optional[str]:
+    """Reads a small text file over SSH without changing the printer."""
+    ssh = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        status, output, error = _exec(ssh, f"cat {_sh_quote(remote_path)}")
+        if status != 0:
+            logger.error("SSH read failed: remote_path=%s stderr=%s", remote_path, error)
+            return None
+        return output
+    except Exception as error:
+        logger.exception("SSH read failed: host=%s remote_path=%s error=%s", ip, remote_path, error)
+        return None
+    finally:
+        if ssh is not None:
+            ssh.close()
+
+
+def save_live_mesh_to_mutable(
+    data,
+    ip: str,
+    port: int = 2222,
+    username: str = "root",
+    password: str = "rockchip",
+    remote_path: str = "/userdata/app/gk/printer_mutable.cfg",
+    max_backups: int = 5,
+) -> tuple[bool, str]:
+    """Persist a complete live mesh atomically after backup and SHA-256 checks."""
+    from core.live_mesh import update_bed_mesh_json
+
+    ssh = sftp = None
+    temp_remote_path = None
+    try:
+        ssh = get_ssh_connection(ip, port, username, password)
+        sftp = ssh.open_sftp()
+        with sftp.open(remote_path, "rb") as remote_file:
+            current_text = remote_file.read().decode("utf-8")
+        payload = update_bed_mesh_json(current_text, data).encode("utf-8")
+        local_sha = hashlib.sha256(payload).hexdigest()
+
+        if not _create_remote_backup_on_ssh(ssh, remote_path):
+            return False, "Не удалось создать резервную копию printer_mutable.cfg"
+
+        temp_remote_path = _remote_temp_path(remote_path)
+        with sftp.open(temp_remote_path, "wb") as temp_file:
+            temp_file.write(payload)
+        if _sha256_remote_file_on_sftp(sftp, temp_remote_path) != local_sha:
+            return False, "Проверка временного файла карты не пройдена"
+
+        if hasattr(sftp, "posix_rename"):
+            sftp.posix_rename(temp_remote_path, remote_path)
+        else:
+            sftp.rename(temp_remote_path, remote_path)
+        temp_remote_path = None
+
+        saved_sha = _sha256_remote_file_on_sftp(sftp, remote_path)
+        if saved_sha != local_sha:
+            return False, "Проверка сохранённой карты не пройдена"
+        _cleanup_remote_backups_on_sftp(sftp, remote_path, max_backups)
+        logger.info("Live mesh saved and verified: remote_path=%s sha256=%s", remote_path, saved_sha)
+        return True, ""
+    except Exception as error:
+        logger.exception("Live mesh save failed: host=%s remote_path=%s error=%s", ip, remote_path, error)
+        return False, str(error)
+    finally:
+        if sftp is not None and temp_remote_path:
+            try:
+                sftp.remove(temp_remote_path)
+            except Exception:
+                pass
+        if sftp is not None:
+            sftp.close()
+        if ssh is not None:
+            ssh.close()

@@ -1,1 +1,1 @@
-VERSION = "0.177-mac"
+VERSION = "0.178-mac"

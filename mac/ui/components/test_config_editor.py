@@ -25,7 +25,7 @@ STANDARD = {
     "unwind_length_after_triggered": "1300",
 }
 OPTIMIZED = {"unwind_length_after_triggered": "1220"}
-PRESETS = (100, 150, 200, 250, 300)
+PRESETS = (100, 150, 200, 250, 300, 400, 500)
 
 
 def section(values: dict[str, str]) -> dict[str, tuple[str, int]]:
@@ -48,6 +48,18 @@ class AcePresetTests(unittest.TestCase):
             _ace_current_label(current, STANDARD, OPTIMIZED, PRESETS),
             (300, None),
         )
+
+    def test_current_400_and_500_percent_presets_are_selected(self):
+        for percent in (400, 500):
+            current = section({
+                "v1_unwind_speed": str(20 * percent / 100),
+                "v2_unwind_speed": str(20 * percent / 100),
+                "v1_feed_speed": str(30 * percent / 100),
+                "v2_feed_speed": str(30 * percent / 100),
+                "unwind_speed_old_ace": str(15 * percent / 100),
+                "unwind_length_after_triggered": "1220",
+            })
+            self.assertEqual(_ace_current_label(current, STANDARD, OPTIMIZED, PRESETS), (percent, None))
 
     def test_non_preset_values_are_shown_as_current(self):
         current = section({

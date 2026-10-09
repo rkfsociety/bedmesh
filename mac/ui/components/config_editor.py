@@ -16,6 +16,7 @@ from core.ssh_client import (
     delete_remote_backup,
     ensure_remote_backup_exists,
     create_remote_backup_and_cleanup,
+    reboot_printer_via_ssh,
 )
 
 class _SshDownloadWorker(QObject):
@@ -125,6 +126,21 @@ class _SshBackupWorker(QObject):
             self.finished.emit(False, None, f"unknown_action:{self.action}")
         except Exception as e:
             self.finished.emit(False, None, str(e))
+
+
+class _PrinterRebootWorker(QObject):
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, ip: str, port: int, user: str, password: str):
+        super().__init__()
+        self.ip, self.port, self.user, self.password = ip, port, user, password
+
+    def run(self):
+        try:
+            ok, details = reboot_printer_via_ssh(self.ip, self.port, self.user, self.password)
+            self.finished.emit(ok, details)
+        except Exception as error:
+            self.finished.emit(False, str(error))
 
 class KlipperConfigParser:
     def __init__(self, filepath):
@@ -274,6 +290,8 @@ class ConfigEditor(QWidget):
         self._ssh_upload_worker = None
         self._ssh_backup_thread = None
         self._ssh_backup_worker = None
+        self._restart_thread = None
+        self._restart_worker = None
         self._auto_backup_done = False
         self._algorithm_constraint_updating = False
         self._setup_ui()
@@ -322,11 +340,15 @@ class ConfigEditor(QWidget):
         toolbar = QHBoxLayout()
         self.btn_load = QPushButton(S.get("config.btn_load"))
         self.btn_save = QPushButton(S.get("config.btn_save"))
+        self.btn_restart = QPushButton("🔄 Перезагрузить принтер")
         self.btn_save.setEnabled(False)
+        self.btn_restart.setEnabled(False)
+        self.btn_restart.setToolTip("Полностью перезагрузить принтер. Не использовать во время печати.")
         self.btn_save.setStyleSheet("background-color: #2d5a2d; color: white;")
 
         toolbar.addWidget(self.btn_load)
         toolbar.addWidget(self.btn_save)
+        toolbar.addWidget(self.btn_restart)
         toolbar.addStretch()
 
         self.status = QLabel(S.get("config.status_ready"))
@@ -359,6 +381,7 @@ class ConfigEditor(QWidget):
 
         self.btn_load.clicked.connect(self.load_file)
         self.btn_save.clicked.connect(self.save_to_printer)
+        self.btn_restart.clicked.connect(self.restart_printer)
         self.btn_backup_refresh.clicked.connect(self._refresh_backups)
         self.btn_backup_create.clicked.connect(lambda: self._run_backup_action("create"))
         self.btn_backup_restore.clicked.connect(lambda: self._run_backup_action("restore"))
@@ -436,6 +459,7 @@ class ConfigEditor(QWidget):
                 self.repaint()
                 self._process_loaded_file(local_path)
                 self.btn_save.setEnabled(True)
+                self.btn_restart.setEnabled(True)
                 self.status.setText(f"✅ Загружено с принтера ({ip})")
                 self.ssh_download_succeeded.emit(local_path)
 
@@ -448,6 +472,7 @@ class ConfigEditor(QWidget):
                 else:
                     self._refresh_backups()
             else:
+                self.btn_restart.setEnabled(False)
                 self.logger.error("SSH UI download failed: %s", error_text)
                 QMessageBox.critical(self, "Ошибка SSH", "Не удалось скачать файл.\nПроверьте настройки подключения.\nПодробности в debug.log")
                 self.status.setText("❌ Ошибка загрузки")
@@ -680,7 +705,7 @@ class ConfigEditor(QWidget):
                 preset_layout.setContentsMargins(0, 0, 0, 0)
                 cb_preset = QComboBox()
                 cb_preset.setStyleSheet("background: #2b2b2b; color: #d4d4d4; border: 1px solid #444; padding: 4px;")
-                preset_percents = (100, 150, 200, 250, 300)
+                preset_percents = (100, 150, 200, 250, 300, 400, 500)
                 for percent in preset_percents:
                     cb_preset.addItem(f"{percent}%", percent)
                 current_percent, current_label = _ace_current_label(
@@ -859,6 +884,7 @@ class ConfigEditor(QWidget):
             return
 
         self.status.setText("⏳ Сохранение на принтер...")
+        self.btn_restart.setEnabled(False)
         self.repaint()
 
         self._ssh_upload_thread = QThread(self)
@@ -916,7 +942,62 @@ class ConfigEditor(QWidget):
         finally:
             self._ssh_upload_worker = None
             self._ssh_upload_thread = None
+            self.btn_restart.setEnabled(bool(self._ssh_config))
             self.ssh_operation_finished.emit()
+
+    def restart_printer(self):
+        if not self._ssh_config:
+            QMessageBox.warning(self, "Ошибка", "Сначала загрузите конфиг по SSH.")
+            return
+        if self._ssh_upload_thread and self._ssh_upload_thread.isRunning():
+            QMessageBox.information(self, "Перезагрузка принтера", "Сначала дождитесь завершения сохранения конфигурации.")
+            return
+        if self._restart_thread and self._restart_thread.isRunning():
+            QMessageBox.information(self, "Перезагрузка принтера", "Перезагрузка уже выполняется.")
+            return
+        reply = QMessageBox.question(
+            self,
+            "Перезагрузить принтер?",
+            "Принтер будет полностью перезагружен, включая Klipper и веб-панель.\n\n"
+            "Не запускайте это во время печати. Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        cfg = self._ssh_config
+        self.btn_restart.setEnabled(False)
+        self.btn_restart.setText("⏳ Перезагрузка...")
+        self.status.setText("⏳ Перезагрузка принтера...")
+        self._restart_thread = QThread(self)
+        self._restart_worker = _PrinterRebootWorker(cfg["ip"], cfg["port"], cfg["user"], cfg["password"])
+        self._restart_worker.moveToThread(self._restart_thread)
+        self._restart_thread.started.connect(self._restart_worker.run)
+        self._restart_worker.finished.connect(self._on_restart_finished)
+        self._restart_worker.finished.connect(self._restart_worker.deleteLater)
+        self._restart_worker.finished.connect(self._restart_thread.quit)
+        self._restart_thread.finished.connect(self._restart_thread.deleteLater)
+        self._restart_thread.start()
+
+    def _on_restart_finished(self, ok: bool, details: str):
+        self.btn_restart.setEnabled(bool(self._ssh_config))
+        self.btn_restart.setText("🔄 Перезагрузить принтер")
+        if ok:
+            self.status.setText("✅ Перезагрузка принтера запущена")
+            QMessageBox.information(
+                self, "Перезагрузка запущена",
+                "Команда на полную перезагрузку отправлена. SSH и веб-панель временно станут недоступны.",
+            )
+        else:
+            self.status.setText("❌ Ошибка перезагрузки")
+            self.logger.error("Printer reboot failed: %s", details)
+            QMessageBox.critical(
+                self, "Ошибка перезагрузки",
+                "Не удалось отправить команду перезагрузки. Проверьте SSH и лог приложения.",
+            )
+        self._restart_worker = None
+        self._restart_thread = None
 
     def _save_file_changes(self, silent=False):
         if not self.parser or not self._file_path:
