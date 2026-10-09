@@ -72,6 +72,14 @@ APK: `app/build/outputs/apk/release/app-release.apk`.
 
 Сборка release подписывается автоматически, если `keystore.properties` на месте (см. `app/build.gradle.kts`).
 
+Для AAB RuStore с отдельным upload key можно передать альтернативный файл свойств подписи, не меняя стандартный ключ release-APK:
+
+```powershell
+.\gradlew.bat :app:bundleRelease -PreleaseSigningProperties="C:\path\to\rustore-upload.properties"
+```
+
+Если параметр не передан, используется обычный `keystore.properties`.
+
 **Безопасность:** файлы ключа публичны в этом репозитории намеренно (стабильная подпись обновлений). Не копируйте этот keystore в другие проекты и не считайте его «приватным секретом команды» — любой клон может им подписать APK.
 
 ## Связанные части репозитория

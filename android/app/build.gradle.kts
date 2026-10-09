@@ -7,7 +7,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24"
 }
 
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystorePropertiesFile = providers.gradleProperty("releaseSigningProperties")
+    .orNull
+    ?.let(rootProject::file)
+    ?: rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
 val releaseSigningEnabled = keystorePropertiesFile.exists()
 if (releaseSigningEnabled) {
