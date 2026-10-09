@@ -93,6 +93,8 @@ jobs:
 
       - name: Настроить Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Права на gradlew
         working-directory: android
