@@ -22,8 +22,8 @@ android {
         applicationId = "com.rkfsociety.bedmesh"
         minSdk = 24
         targetSdk = 35
-        versionCode = 178
-        versionName = "0.178-android"
+        versionCode = 181
+        versionName = "0.181-android"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -67,6 +67,8 @@ android {
         compose = true
         buildConfig = true
     }
+
+    sourceSets.getByName("main").assets.srcDir("../../webpanel/camera")
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"

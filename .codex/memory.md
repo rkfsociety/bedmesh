@@ -8,6 +8,8 @@
 - macOS live-калибровка, вкладка сопла и SSH-команды находятся в `mac/app.py`,
   `mac/core/live_mesh.py`, `mac/core/ssh_client.py` и `mac/ui/components/nozzle_tab.py`;
   обзор платформенного паритета поддерживается в `docs/ARCHITECTURE.md`.
+- Общая политика релизов описана в `docs/ARCHITECTURE.md`; скрипт очистки GitHub
+  Releases по платформенному суффиксу — `.github/scripts/prune-platform-releases.js`.
 - Подтверждённые границы хранения и применения настроек сопла Windows собраны в
   [nozzle-ui-notes.md](nozzle-ui-notes.md), по реализации и профильным тестам.
 - Анализ штатного K3SysUi — исторический; его ограничения описаны в

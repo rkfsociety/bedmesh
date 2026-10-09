@@ -12,9 +12,18 @@ private const val BOOT_REMOTE = "/useremain/boot.sh"
 private const val SSH_PKG_SRC = "/tmp/ssh"
 private const val SSH_PKG_DST = "/useremain/ssh"
 private const val GKBRIDGE_REMOTE = "/useremain/gkbridge"
+private const val CAMERA_REMOTE = "/useremain/camera"
 private const val RUN_HOOK_LINE = "[ -f /useremain/boot.sh ] && sh /useremain/boot.sh"
 private const val GKBRIDGE_URL =
     "https://raw.githubusercontent.com/rkfsociety/bedmesh/main/webpanel/gkbridge"
+private val CAMERA_FILES = listOf(
+    "cam-on.sh",
+    "cam-off.sh",
+    "input_uvc.so",
+    "libjpeg.so.8.2.2",
+    "mjpg_streamer",
+    "output_http.so",
+)
 
 object SshInstaller {
 
@@ -45,6 +54,9 @@ object SshInstaller {
 
                 progress("Загрузка boot.sh…")
                 uploadBootSh(context, ssh, sftp)
+
+                progress("Установка файлов камеры…")
+                uploadCameraFiles(context, ssh, sftp)
 
                 progress("Прописывание автозапуска в run.sh…")
                 insertRunHook(ssh, sftp)
@@ -118,6 +130,46 @@ object SshInstaller {
         }
         if (out.length() < 1024 * 1024) error("gkbridge слишком маленький: ${out.length()} байт")
         return out
+    }
+
+    private fun uploadCameraFiles(
+        context: Context,
+        ssh: net.schmizz.sshj.SSHClient,
+        sftp: SFTPClient,
+    ) {
+        ssh.startSession().use { session ->
+            val command = session.exec("mkdir -p '$CAMERA_REMOTE'")
+            command.join()
+            if (command.exitStatus != 0) error("Не удалось создать каталог камеры $CAMERA_REMOTE")
+        }
+
+        for (name in CAMERA_FILES) {
+            val bytes = context.assets.open(name).use { it.readBytes() }
+            val content = if (name.endsWith(".sh")) {
+                bytes.toString(Charsets.UTF_8).replace("\r\n", "\n").replace("\r", "\n")
+                    .toByteArray(Charsets.UTF_8)
+            } else {
+                bytes
+            }
+            val remotePath = "$CAMERA_REMOTE/$name"
+            sftp.open(
+                remotePath,
+                setOf(
+                    net.schmizz.sshj.sftp.OpenMode.WRITE,
+                    net.schmizz.sshj.sftp.OpenMode.CREAT,
+                    net.schmizz.sshj.sftp.OpenMode.TRUNC,
+                ),
+            ).use { file -> file.write(0L, content, 0, content.size) }
+        }
+
+        ssh.startSession().use { session ->
+            val command = session.exec(
+                "set -e; cd '$CAMERA_REMOTE'; chmod +x mjpg_streamer cam-on.sh cam-off.sh " +
+                    "2>/dev/null; ln -sf libjpeg.so.8.2.2 libjpeg.so.8",
+            )
+            command.join()
+            if (command.exitStatus != 0) error("Не удалось настроить запуск камеры")
+        }
     }
 
     private fun uploadBootSh(context: Context, ssh: net.schmizz.sshj.SSHClient, sftp: SFTPClient) {

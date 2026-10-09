@@ -202,3 +202,10 @@ jobs:
                 await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: a.id });
               }
             }
+
+      - name: Оставить только последний релиз Android
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prune = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/prune-platform-releases.js`);
+            await prune({ github, context, core, platform: 'android' });

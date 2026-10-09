@@ -101,6 +101,7 @@ jobs:
             --name "BedMeshVisualizer_Mac" \
             --add-data "mac/ui/locale:ui/locale" \
             --add-data "icon.png:." \
+            --add-data "webpanel/camera:resources/camera" \
             --hidden-import=paramiko \
             --hidden-import=requests \
             --hidden-import OpenGL \
@@ -151,3 +152,10 @@ jobs:
 
             ## Скачать
             - `BedMeshVisualizer_Mac.dmg`
+
+      - name: Оставить только последний релиз macOS
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prune = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/prune-platform-releases.js`);
+            await prune({ github, context, core, platform: 'mac' });

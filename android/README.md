@@ -15,7 +15,7 @@ Android-клиент на **Kotlin + Jetpack Compose**.
 - **Сопло**: выбор диаметра и материала, проверяемые бекапы затронутых конфигураций и полный перезапуск; штатная полная калибровка после загрузки — по отдельному флажку
 - **Принтер**:
   - установка **постоянного SSH** (dropbear в `/useremain/ssh`, автозапуск в `run.sh` — без флешки)
-  - установка **веб-панели gkbridge** (скачивание с GitHub → `/useremain/gkbridge`, порт `8088`)
+  - установка **веб-панели gkbridge** и файлов локальной камеры (скачивание с GitHub → `/useremain/gkbridge`, порт `8088`)
   - встроенный просмотр панели в WebView
 - Проверка обновлений через GitHub Releases (скачивание APK)
 - Иконка: исходник `android/icon.png` (копии в `app/src/main/res/mipmap-*`)
@@ -54,9 +54,12 @@ android/
 
 ## CI / релизы
 
-Тег `v*-android` (например `v0.177-android`) запускает GitHub Actions:
+Тег `v*-android` (например `v0.181-android`) запускает GitHub Actions:
 сборка `assembleRelease` (подпись из `keystore.properties` в репо) и публикация
 `BedMeshVisualizer.apk` в GitHub Release.
+
+После публикации workflow удаляет более старые стабильные релизы того же
+платформенного суффикса. Исторические Git-теги сохраняются для release notes.
 
 Ручная сборка:
 

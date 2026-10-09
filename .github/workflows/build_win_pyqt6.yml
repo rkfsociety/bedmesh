@@ -245,3 +245,10 @@ jobs:
               }
             }
 
+      - name: Оставить только последний релиз Windows
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prune = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/prune-platform-releases.js`);
+            await prune({ github, context, core, platform: 'win' });
+

@@ -302,8 +302,44 @@ class LeftPanel(QWidget):
         self.calibration_status_lbl.setText(f"Статус калибровки: {status}")
 
     def _toggle_advanced(self, is_checked: bool):
+        if is_checked and not self._confirm_advanced_enable():
+            self.chk_advanced.setChecked(False)
+            return
         self.adv_group.setVisible(is_checked)
         self.advanced_toggled.emit(is_checked)
+
+    def _confirm_advanced_enable(self) -> bool:
+        if not self._show_advanced_warning(
+            "ВНИМАНИЕ!",
+            "РАСШИРЕННЫЕ НАСТРОЙКИ МОГУТ ИЗМЕНИТЬ РАБОТУ ПРИНТЕРА.\n\n"
+            "ВСЁ, ЧТО ВЫ ДЕЛАЕТЕ В ЭТОМ РЕЖИМЕ, ВЫ ДЕЛАЕТЕ НА СВОЙ СТРАХ И РИСК.\n\n"
+            "АВТОР ПРОГРАММЫ НИКАКОЙ ОТВЕТСТВЕННОСТИ ЗА ПОСЛЕДСТВИЯ НЕ НЕСЁТ.\n\n"
+            "ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ ПРОДОЛЖИТЬ?",
+        ):
+            return False
+        if not self._show_advanced_warning(
+            "ТОЧНО УВЕРЕНЫ?",
+            "ЭТИ НАСТРОЙКИ МОГУТ ПОВРЕДИТЬ КОНФИГУРАЦИЮ ИЛИ НАРУШИТЬ РАБОТУ ПРИНТЕРА.\n\n"
+            "НУ СМОТРИТЕ САМИ. ВАС ПРЕДУПРЕДИЛИ.\n\n"
+            "ТОЧНО ХОТИТЕ ВКЛЮЧИТЬ РАСШИРЕННЫЕ НАСТРОЙКИ?",
+        ):
+            return False
+        return self._show_advanced_warning(
+            "ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ!",
+            "ПОСЛЕ ВКЛЮЧЕНИЯ ВЫ САМИ ОТВЕЧАЕТЕ ЗА ВСЕ ИЗМЕНЕНИЯ.\n\n"
+            "НЕ МЕНЯЙТЕ ПАРАМЕТРЫ, ЕСЛИ НЕ ПОНИМАЕТЕ, ЗА ЧТО ОНИ ОТВЕЧАЮТ.\n\n"
+            "ВАС ПРЕДУПРЕДИЛИ. ВКЛЮЧИТЬ РАСШИРЕННЫЕ НАСТРОЙКИ?",
+        )
+
+    def _show_advanced_warning(self, title: str, message: str) -> bool:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(title)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setText(message)
+        yes_button = dialog.addButton("ДА, Я УВЕРЕН", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("НЕТ, ОТМЕНА", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        return dialog.clickedButton() is yes_button
 
     def _collect_ssh_data(self) -> dict:
         return {

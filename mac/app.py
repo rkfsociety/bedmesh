@@ -301,6 +301,7 @@ class BedMeshApp(QMainWindow):
                 self.center_tabs.update_mesh_views(data)
                 stats = self._calculate_advanced_stats(data)
                 self.right_panel.update_all(stats)
+                self.right_panel.update_shaper(self.parser.parse_input_shaper_text(raw_content))
                 self.logger.info("✅ Mesh загружен: %sx%s", data.x_count, data.y_count)
                 self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                 return True
@@ -325,6 +326,10 @@ class BedMeshApp(QMainWindow):
                         self.center_tabs.update_mesh_views(alt_data)
                         stats = self._calculate_advanced_stats(alt_data)
                         self.right_panel.update_all(stats)
+                        alt_shaper = self.parser.parse_input_shaper_text(alt_content)
+                        self.right_panel.update_shaper(
+                            alt_shaper or self.parser.parse_input_shaper_text(raw_content)
+                        )
                         self.center_tabs.tabs.setCurrentWidget(self.center_tabs.mesh_tab)
                         self.logger.info("✅ Mesh загружен из printer_mutable.cfg: %sx%s", alt_data.x_count, alt_data.y_count)
                         return True
