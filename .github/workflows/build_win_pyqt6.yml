@@ -21,7 +21,7 @@ jobs:
       should_release: ${{ steps.release.outputs.should_release }}
     steps:
       - name: Получить исходники
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -109,12 +109,12 @@ jobs:
 
     steps:
       - name: Получить исходники
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
 
       - name: Настроить Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -164,7 +164,7 @@ jobs:
           Set-Content -Path 'dist/Bed.Mesh.Visualizer.exe.sha256' -Value $hash -NoNewline -Encoding ascii
 
       - name: Загрузить артефакт
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BedMeshVisualizer-Win-PyQt6
           path: |
@@ -172,7 +172,7 @@ jobs:
             dist/Bed.Mesh.Visualizer.exe.sha256
 
       - name: Удалить старые ассеты из релиза (до публикации)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         with:
@@ -207,7 +207,7 @@ jobs:
             }
 
       - name: Опубликовать релиз на GitHub
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare-release.outputs.release_tag }}
           files: |
@@ -218,7 +218,7 @@ jobs:
           previous_tag: ${{ needs.prepare-release.outputs.previous_tag_name }}
 
       - name: Удалить старые ассеты из релиза (после публикации)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         with:
