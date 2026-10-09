@@ -11,7 +11,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.rkfsociety.bedmesh.core.KlipperConfig
+import com.rkfsociety.bedmesh.core.NozzleSettings
 import com.rkfsociety.bedmesh.core.displayBedMeshPairValue
+import com.rkfsociety.bedmesh.core.currentAceProLabel
 import com.rkfsociety.bedmesh.core.resolveSection
 import com.rkfsociety.bedmesh.core.probeCountAllowsLagrange
 import com.rkfsociety.bedmesh.ui.vm.UiState
@@ -26,9 +28,35 @@ private data class FieldDef(
 
 /** Те же поля, что в `win/pyqt6/ui/locale/ru.json` → `config.sections.bed_mesh.fields`. */
 private val BED_MESH_WHITELIST = listOf(
+    FieldDef("speed", "Скорость измерения", "300", "300", "Скорость перемещения при построении bed mesh."),
+    FieldDef("horizontal_move_z", "Высота горизонтального перемещения", "3", "3", "Высота подъёма сопла между точками измерения."),
     FieldDef("mesh_min", "Мин. координаты (X,Y)", "5,5", "5,5", "Левый нижний угол области."),
     FieldDef("mesh_max", "Макс. координаты (X,Y)", "245,245", "245,245", "Правый верхний угол области."),
     FieldDef("probe_count", "Кол-во точек (X,Y)", "10,10", "5,5", "Одно число применяется и к X, и к Y. При значении больше 5 используется bicubic."),
+)
+
+private val PROBE_FIELDS = listOf(
+    FieldDef("speed", "Скорость измерения", "4.0", "4.0", "Скорость опускания щупа."),
+    FieldDef("lift_speed", "Скорость подъёма", "4.0", "4.0", "Скорость подъёма щупа."),
+    FieldDef("final_speed", "Финальная скорость", "4.0", "4.0", "Финальная скорость измерения."),
+)
+
+private val PRINTER_FIELDS = listOf(
+    FieldDef("max_z_velocity", "Максимальная скорость Z", "15", "15", "Максимальная скорость оси Z."),
+    FieldDef("max_z_accel", "Максимальное ускорение Z", "1000", "1000", "Максимальное ускорение оси Z."),
+)
+
+private val STEPPER_Z_FIELDS = listOf(
+    FieldDef("homing_speed", "Скорость хоуминга Z", "6", "6", "Скорость первого прохода хоуминга оси Z."),
+    FieldDef("second_homing_speed", "Скорость повторного хоуминга Z", "3", "3", "Скорость повторного прохода хоуминга оси Z."),
+    FieldDef("homing_retract_dist", "Откат при хоуминге Z", "4", "4", "Расстояние отката перед повторным проходом хоуминга."),
+)
+
+private val SAFE_Z_HOME_FIELDS = listOf(
+    FieldDef("z_hop", "Z-hop", "4.0", "4.0", "Высота подъёма перед перемещением к точке хоуминга."),
+    FieldDef("z_hop_speed", "Скорость Z-hop", "8.0", "8.0", "Скорость подъёма Z перед хоумингом."),
+    FieldDef("z_homed_pos", "Позиция Z после хоуминга", "10", "10", "Позиция Z после завершения хоуминга."),
+    FieldDef("z_hop_finish_pos", "Финальная позиция Z-hop", "0", "0", "Позиция Z после завершения подъёма."),
 )
 
 /** Поля секции [leviQ3] — температуры калибровки стола. */
@@ -39,7 +67,7 @@ private val LEVI_Q3_WHITELIST = listOf(
     FieldDef("preheat_leveling",  "Предпрогрев выравнивания (°C)",    "60", "60", "Температура предпрогрева перед выравниванием."),
 )
 
-private val ACE_PRESETS = listOf(100, 150, 200, 250, 300)
+private val ACE_PRESETS = listOf(100, 150, 200, 250, 300, 400, 500)
 
 @Composable
 fun ConfigScreen(
@@ -51,6 +79,10 @@ fun ConfigScreen(
     onRestoreBackup: (String) -> Unit,
     onDeleteBackup: (String) -> Unit,
     onAceProPreset: (Int) -> Unit,
+    onNozzleDiameter: (String) -> Unit,
+    onNozzleMaterial: (String) -> Unit,
+    onNozzleFullCalibration: (Boolean) -> Unit,
+    onApplyNozzle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cfg = state.config
@@ -68,7 +100,7 @@ fun ConfigScreen(
         } else {
             BackupPanel(
                 backups = state.backups,
-                busy = state.busy,
+                busy = state.busy || state.nozzleBusy || state.liveCalibration.running,
                 onRefresh = onRefreshBackups,
                 onCreate = onCreateBackup,
                 onRestore = onRestoreBackup,
@@ -76,7 +108,7 @@ fun ConfigScreen(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = onSave, enabled = !state.busy) {
+                Button(onClick = onSave, enabled = !state.busy && !state.nozzleBusy && !state.liveCalibration.running) {
                     Text(if (state.busy) "Сохранение..." else "Сохранить на принтер")
                 }
                 Text(
@@ -96,6 +128,23 @@ fun ConfigScreen(
                 )
             }
 
+            listOf(
+                Triple("probe", "🔎 Настройки измерительного щупа", PROBE_FIELDS),
+                Triple("printer", "🖨️ Ограничения движения Z", PRINTER_FIELDS),
+                Triple("stepper_z", "🧭 Хоуминг оси Z", STEPPER_Z_FIELDS),
+                Triple("safe_z_home", "🏠 Z-hop и безопасный хоуминг", SAFE_Z_HOME_FIELDS),
+            ).forEach { (name, title, fields) ->
+                val section = cfg.resolveSection(name) ?: return@forEach
+                ConfigFieldsCard(
+                    title = title,
+                    cfg = cfg,
+                    section = section,
+                    fields = fields,
+                    edits = state.configEdits,
+                    onFieldChange = { key, value -> onUpdateField(section, key, value) },
+                )
+            }
+
             val leviSec = cfg.resolveSection("leviQ3")
             if (leviSec != null) {
                 LeviQ3SectionCard(
@@ -107,7 +156,164 @@ fun ConfigScreen(
             }
 
             if (cfg.resolveSection("filament_hub") != null) {
-                FilamentHubAceProCard(onPreset = onAceProPreset)
+                val section = cfg.resolveSection("filament_hub")!!
+                val (currentPercent, currentLabel) = currentAceProLabel(cfg.sections[section].orEmpty())
+                FilamentHubAceProCard(
+                    currentPercent = currentPercent,
+                    currentLabel = currentLabel,
+                    onPreset = onAceProPreset,
+                )
+            }
+
+            NozzleSettingsCard(
+                diameter = state.nozzleDiameter,
+                material = state.nozzleMaterial,
+                runFullCalibration = state.nozzleFullCalibration,
+                busy = state.nozzleBusy || state.busy || state.liveCalibration.running || state.installPanel.busy || state.installSsh.busy,
+                loaded = state.loadedNozzle != null,
+                status = state.nozzleStatus,
+                onDiameter = onNozzleDiameter,
+                onMaterial = onNozzleMaterial,
+                onFullCalibration = onNozzleFullCalibration,
+                onApply = onApplyNozzle,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NozzleSettingsCard(
+    diameter: String,
+    material: String,
+    runFullCalibration: Boolean,
+    busy: Boolean,
+    loaded: Boolean,
+    status: String?,
+    onDiameter: (String) -> Unit,
+    onMaterial: (String) -> Unit,
+    onFullCalibration: (Boolean) -> Unit,
+    onApply: () -> Unit,
+) {
+    var diameterMenu by remember { mutableStateOf(false) }
+    var materialMenu by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf(false) }
+
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("🧩 Сопло", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Сохраняются диаметр и материал. Применение создаёт резервные копии и полностью перезапускает принтер.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ExposedDropdownMenuBox(expanded = diameterMenu, onExpandedChange = { diameterMenu = !diameterMenu }) {
+                OutlinedTextField(
+                    value = "$diameter мм",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = !busy,
+                    label = { Text("Диаметр сопла") },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = diameterMenu) },
+                )
+                ExposedDropdownMenu(expanded = diameterMenu, onDismissRequest = { diameterMenu = false }) {
+                    NozzleSettings.diameters.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text("$option мм") },
+                            onClick = { onDiameter(option); diameterMenu = false },
+                        )
+                    }
+                }
+            }
+            ExposedDropdownMenuBox(expanded = materialMenu, onExpandedChange = { materialMenu = !materialMenu }) {
+                OutlinedTextField(
+                    value = if (material == "hardened_steel") "Hardened Steel" else if (material == "brass") "Brass" else material,
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = !busy,
+                    label = { Text("Материал сопла") },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = materialMenu) },
+                )
+                ExposedDropdownMenu(expanded = materialMenu, onDismissRequest = { materialMenu = false }) {
+                    NozzleSettings.materials.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(if (option == "hardened_steel") "Hardened Steel" else "Brass") },
+                            onClick = { onMaterial(option); materialMenu = false },
+                        )
+                    }
+                }
+            }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(checked = runFullCalibration, onCheckedChange = onFullCalibration, enabled = !busy)
+                Text("Полная калибровка после перезапуска")
+            }
+            if (!loaded) {
+                Text("Сначала загрузите конфигурацию по SSH.", style = MaterialTheme.typography.bodySmall)
+            }
+            if (status != null) Text(status, style = MaterialTheme.typography.bodySmall)
+            Button(
+                onClick = { confirm = true },
+                enabled = loaded && !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (busy) "Сохранение…" else "Сохранить и перезапустить")
+            }
+        }
+    }
+
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Применить сопло?") },
+            text = {
+                Text(
+                    "Будет установлен вариант $material-$diameter мм, созданы резервные копии и выполнен полный перезапуск принтера. " +
+                        if (runFullCalibration) "После загрузки запустится полная калибровка PID, шейперов и стола. Не выполнять во время печати."
+                        else "Полная калибровка после загрузки запускаться не будет. Не выполнять во время печати.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirm = false; onApply() }) { Text("Продолжить") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Отмена") } },
+        )
+    }
+}
+
+@Composable
+private fun ConfigFieldsCard(
+    title: String,
+    cfg: KlipperConfig,
+    section: String,
+    fields: List<FieldDef>,
+    edits: Map<String, String>,
+    onFieldChange: (String, String) -> Unit,
+) {
+    val secMap = cfg.sections[section] ?: return
+    val visibleFields = fields.filter { it.key in secMap }
+    if (visibleFields.isEmpty()) return
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            visibleFields.forEach { def ->
+                val mapKey = "$section.${def.key}"
+                OutlinedTextField(
+                    value = edits[mapKey] ?: secMap[def.key]?.value.orEmpty(),
+                    onValueChange = { onFieldChange(def.key, it) },
+                    label = { Text(def.label) },
+                    placeholder = { Text(def.placeholder) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    supportingText = { Text("${def.hint} По умолчанию: ${def.defaultValue}.") },
+                )
             }
         }
     }
@@ -234,9 +440,14 @@ private fun LeviQ3SectionCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilamentHubAceProCard(onPreset: (Int) -> Unit) {
+private fun FilamentHubAceProCard(
+    currentPercent: Int?,
+    currentLabel: String?,
+    onPreset: (Int) -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
-    var selectedPct by remember { mutableIntStateOf(100) }
+    var selectedPct by remember(currentPercent, currentLabel) { mutableIntStateOf(currentPercent ?: 100) }
+    var observedLabel by remember(currentPercent, currentLabel) { mutableStateOf(currentLabel) }
 
     Card {
         Column(
@@ -251,7 +462,7 @@ private fun FilamentHubAceProCard(onPreset: (Int) -> Unit) {
             )
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = "$selectedPct%",
+                    value = observedLabel ?: "$selectedPct%",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Ускорение Ace Pro") },
@@ -266,6 +477,7 @@ private fun FilamentHubAceProCard(onPreset: (Int) -> Unit) {
                             text = { Text("$pct%") },
                             onClick = {
                                 selectedPct = pct
+                                observedLabel = null
                                 onPreset(pct)
                                 expanded = false
                             },

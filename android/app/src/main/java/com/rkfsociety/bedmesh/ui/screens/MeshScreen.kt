@@ -24,11 +24,12 @@ import com.rkfsociety.bedmesh.ui.widgets.Mesh3DView
 fun MeshScreen(
     state: UiState,
     onCopy: () -> Unit,
+    onCalibrate: () -> Unit,
 ) {
     val mesh = state.mesh
     val ctx = LocalContext.current
     var viewMode by remember { mutableStateOf(UiPrefs.loadMeshViewMode(ctx)) }
-    val scroll = rememberScrollState()
+    var confirmCalibration by remember { mutableStateOf(false) }
 
     fun setMode(mode: String) {
         val m = if (mode == "3d") "3d" else "2d"
@@ -37,7 +38,7 @@ fun MeshScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
@@ -62,6 +63,37 @@ fun MeshScreen(
             }
         }
 
+        Card {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { confirmCalibration = true },
+                    enabled = !state.liveCalibration.running && !state.busy && !state.nozzleBusy &&
+                        !state.installPanel.busy && !state.installSsh.busy && state.ssh.ip.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (state.liveCalibration.running) "Калибровка выполняется…" else "Калибровать стол")
+                }
+                Text(state.liveCalibration.status, style = MaterialTheme.typography.bodySmall)
+                if (state.liveCalibration.running && state.liveCalibration.totalPoints > 0) {
+                    val progress = state.liveCalibration.measuredPoints.toFloat() / state.liveCalibration.totalPoints
+                    LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "Точек: ${state.liveCalibration.measuredPoints}/${state.liveCalibration.totalPoints}" +
+                            (state.liveCalibration.currentPoint?.let { " · $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else if (state.liveCalibration.running) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                state.liveCalibration.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
         if (mesh != null) {
             if (viewMode == "3d") {
                 Mesh3DView(
@@ -79,9 +111,7 @@ fun MeshScreen(
                 )
             }
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scroll),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ScrewRecommendationsPanel(state = state)
@@ -89,6 +119,24 @@ fun MeshScreen(
                 StatsPanel(state = state)
             }
         }
+    }
+
+    if (confirmCalibration) {
+        AlertDialog(
+            onDismissRequest = { confirmCalibration = false },
+            title = { Text("Запустить калибровку стола?") },
+            text = {
+                Text(
+                    "Принтер прогреет стол и сопло, очистит сопло, выполнит G28 Z и измерит точки тензодатчиком. " +
+                        "После измерений приложение отключит нагрев и сохранит только полную карту с резервной копией. " +
+                        "Не запускайте во время печати. Убедитесь, что путь принтера свободен.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmCalibration = false; onCalibrate() }) { Text("Продолжить") }
+            },
+            dismissButton = { TextButton(onClick = { confirmCalibration = false }) { Text("Отмена") } },
+        )
     }
 }
 

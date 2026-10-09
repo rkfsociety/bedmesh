@@ -129,7 +129,11 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                         onUpdateField = { k, v -> vm.updateSshField(k, v) },
                         onDismissError = { vm.clearError() },
                     )
-                    1 -> MeshScreen(state = state, onCopy = { vm.copyMeshToClipboard(ctx) })
+                    1 -> MeshScreen(
+                        state = state,
+                        onCopy = { vm.copyMeshToClipboard(ctx) },
+                        onCalibrate = { vm.startLiveCalibration(ctx) },
+                    )
                     2 -> ConfigScreen(
                         modifier = Modifier.fillMaxWidth(),
                         state = state,
@@ -140,6 +144,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                         onRestoreBackup = { p -> vm.restoreBackup(p) },
                         onDeleteBackup = { p -> vm.deleteBackup(p) },
                         onAceProPreset = { vm.applyAceProPreset(it) },
+                        onNozzleDiameter = { vm.updateNozzleSelection(diameter = it) },
+                        onNozzleMaterial = { vm.updateNozzleSelection(material = it) },
+                        onNozzleFullCalibration = { vm.updateNozzleSelection(fullCalibration = it) },
+                        onApplyNozzle = { vm.applyNozzleSettings() },
                     )
                     3 -> PrinterScreen(
                         state = state,

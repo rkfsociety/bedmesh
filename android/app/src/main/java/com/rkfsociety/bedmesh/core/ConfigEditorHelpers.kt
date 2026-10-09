@@ -42,7 +42,7 @@ fun probeCountAllowsLagrange(value: String): Boolean {
  * Те же коэффициенты и ключи, что `_apply_preset` в `config_editor.py`.
  */
 fun aceProValuesForPercent(percent: Int): Map<String, String> {
-    val pct = percent.coerceIn(100, 300)
+    val pct = percent.coerceIn(100, 500)
     val factor = pct / 100.0
     val useOptimized = pct != 100
 
@@ -72,4 +72,30 @@ fun aceProValuesForPercent(percent: Int): Map<String, String> {
             else standard.getValue("unwind_length_after_triggered")
         ),
     )
+}
+
+/** Same current-preset detection as Windows `_ace_current_label`. */
+fun currentAceProLabel(section: Map<String, KeyRef>): Pair<Int?, String?> {
+    val presets = listOf(100, 150, 200, 250, 300, 400, 500)
+    for (percent in presets) {
+        val expected = aceProValuesForPercent(percent)
+        val observed = expected.mapNotNull { (key, expectedValue) ->
+            section[key]?.value?.toDoubleOrNull()?.let { it to expectedValue.toDouble() }
+        }
+        if (observed.isNotEmpty() && observed.all { (actual, wanted) -> kotlin.math.abs(actual - wanted) <= 0.01 }) {
+            return percent to null
+        }
+    }
+    val standard = mapOf(
+        "v1_unwind_speed" to 20.0,
+        "v2_unwind_speed" to 20.0,
+        "v1_feed_speed" to 30.0,
+        "v2_feed_speed" to 30.0,
+        "unwind_speed_old_ace" to 15.0,
+    )
+    val ratios = standard.mapNotNull { (key, base) ->
+        section[key]?.value?.toDoubleOrNull()?.takeIf { base != 0.0 }?.let { it / base * 100.0 }
+    }
+    if (ratios.isNotEmpty()) return null to "Текущее: ~${ratios.average().roundToInt()}%"
+    return null to "Текущее: нестандартное"
 }

@@ -104,7 +104,7 @@ object SshInstaller {
         }
     }
 
-    private fun downloadGkbridge(context: Context): File {
+    internal fun downloadGkbridge(context: Context): File {
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)

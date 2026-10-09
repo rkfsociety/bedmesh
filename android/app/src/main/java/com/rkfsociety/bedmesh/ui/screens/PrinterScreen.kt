@@ -35,8 +35,7 @@ fun PrinterScreen(
 
         when (tab) {
             0 -> InstallTab(
-                installSsh = state.installSsh,
-                installPanel = state.installPanel,
+                uiState = state,
                 onInstallSsh = onInstallSsh,
                 onInstallPanel = onInstallPanel,
             )
@@ -47,8 +46,7 @@ fun PrinterScreen(
 
 @Composable
 private fun InstallTab(
-    installSsh: InstallState,
-    installPanel: InstallState,
+    uiState: UiState,
     onInstallSsh: () -> Unit,
     onInstallPanel: () -> Unit,
 ) {
@@ -64,8 +62,9 @@ private fun InstallTab(
             title = "Постоянный SSH",
             description = "Копирует dropbear с флешки в /useremain/ssh и прописывает автозапуск в run.sh. " +
                     "После установки принтер будет доступен по SSH без флешки.",
-            state = installSsh,
+            state = uiState.installSsh,
             buttonText = "Установить SSH",
+            enabled = !uiState.busy && !uiState.liveCalibration.running && !uiState.nozzleBusy && !uiState.installPanel.busy,
             onInstall = onInstallSsh,
         )
 
@@ -74,8 +73,9 @@ private fun InstallTab(
             title = "Веб-панель (gkbridge)",
             description = "Скачивает gkbridge с GitHub и устанавливает на принтер. " +
                     "Доступна по http://<IP>:8088 — статус печати, температуры, управление, камера.",
-            state = installPanel,
+            state = uiState.installPanel,
             buttonText = "Установить веб-панель",
+            enabled = !uiState.busy && !uiState.liveCalibration.running && !uiState.nozzleBusy && !uiState.installSsh.busy,
             onInstall = onInstallPanel,
         )
     }
@@ -87,6 +87,7 @@ private fun InstallCard(
     description: String,
     state: InstallState,
     buttonText: String,
+    enabled: Boolean,
     onInstall: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -99,7 +100,7 @@ private fun InstallCard(
 
             Button(
                 onClick = onInstall,
-                enabled = !state.busy,
+                enabled = enabled && !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.busy) {

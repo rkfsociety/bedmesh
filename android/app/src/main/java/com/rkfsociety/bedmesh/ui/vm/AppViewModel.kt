@@ -15,8 +15,12 @@ import com.rkfsociety.bedmesh.BuildConfig
 import com.rkfsociety.bedmesh.core.GithubUpdater
 import com.rkfsociety.bedmesh.core.InputShaperData
 import com.rkfsociety.bedmesh.core.KlipperConfig
+import com.rkfsociety.bedmesh.core.LiveBedMesh
+import com.rkfsociety.bedmesh.core.LiveMeshProgress
 import com.rkfsociety.bedmesh.core.MeshParser
 import com.rkfsociety.bedmesh.core.MeshStatsCalculator
+import com.rkfsociety.bedmesh.core.NozzleSelection
+import com.rkfsociety.bedmesh.core.NozzleSettings
 import com.rkfsociety.bedmesh.core.SshClient
 import com.rkfsociety.bedmesh.core.SshBackups
 import com.rkfsociety.bedmesh.core.SshConfig
@@ -44,6 +48,15 @@ data class InstallState(
     val done: Boolean = false,
 )
 
+data class LiveCalibrationState(
+    val running: Boolean = false,
+    val status: String = "Калибровка не запущена.",
+    val measuredPoints: Int = 0,
+    val totalPoints: Int = 0,
+    val currentPoint: String? = null,
+    val error: String? = null,
+)
+
 data class UiState(
     val ssh: SshConfig = SshPrefs.defaultConfig(),
     val busy: Boolean = false,
@@ -53,6 +66,13 @@ data class UiState(
     val shaper: InputShaperData? = null,
     val config: KlipperConfig? = null,
     val configEdits: Map<String, String> = emptyMap(),
+    val loadedNozzle: NozzleSelection? = null,
+    val nozzleDiameter: String = "0.40",
+    val nozzleMaterial: String = "brass",
+    val nozzleFullCalibration: Boolean = false,
+    val nozzleBusy: Boolean = false,
+    val nozzleStatus: String? = null,
+    val liveCalibration: LiveCalibrationState = LiveCalibrationState(),
     val backups: List<String> = emptyList(),
     val update: UpdateState = UpdateState(currentVersion = BuildConfig.VERSION_NAME),
     val lastError: String? = null,
@@ -68,6 +88,7 @@ private data class SshDownloadOutcome(
     val config: KlipperConfig,
     val backups: List<String>,
     val parseWarning: String?,
+    val nozzle: NozzleSelection,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -114,45 +135,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val parsedCfg = KlipperConfig.parse(text)
                     val backups = runCatching { SshBackups.listBackups(cfg) }.getOrDefault(emptyList())
 
+                    val mutablePath = "/userdata/app/gk/printer_mutable.cfg"
+                    val mutableText = runCatching {
+                        SshClient.downloadFile(appCtx, cfg, mutablePath).readText()
+                    }.getOrNull()
+                    val nozzleMetadata = runCatching {
+                        SshClient.downloadFile(appCtx, cfg, "/userdata/app/gk/config/nozzle.cfg").readText()
+                    }.getOrNull()
+
                     // mirror Windows behavior: if no mesh points found in printer.cfg, try printer_mutable.cfg
                     var parsed = MeshParser.parseText(text)
                     var rawText = text
                     var shaper = MeshParser.parseInputShaper(text)
                     if (parsed == null && cfg.path.endsWith("printer.cfg")) {
-                        val mutablePath = "/userdata/app/gk/printer_mutable.cfg"
-                        val alt = SshClient.downloadFile(appCtx, cfg, mutablePath)
-                        val altText = alt.readText()
-                        val altParsed = MeshParser.parseText(altText)
+                        val altText = mutableText.orEmpty()
+                        val altParsed = if (altText.isNotBlank()) MeshParser.parseText(altText) else null
                         if (altParsed != null) {
                             parsed = altParsed
                             rawText = altText
                         }
                         // Шейпер ищем в mutable, потом в основном файле
-                        if (shaper == null) shaper = MeshParser.parseInputShaper(altText)
+                        if (shaper == null && altText.isNotBlank()) shaper = MeshParser.parseInputShaper(altText)
                     }
 
-                    val stats = if (parsed != null) {
-                        val s = MeshStatsCalculator.compute(parsed)
-                        mapOf(
-                            "min" to String.format("%+.3f", s.min),
-                            "max" to String.format("%+.3f", s.max),
-                            "range" to String.format("%.3f", s.range),
-                            "mean" to String.format("%+.3f", s.mean),
-                            "var" to String.format("%.3f", s.variance),
-                            "rms" to String.format("%.3f", s.rms),
-                            "front_left_mm" to String.format("%+.3f", s.frontLeft),
-                            "front_left_turns" to String.format("%.2f", s.turnsFor(s.frontLeft)),
-                            "front_left_dir" to if (s.frontLeft < 0) "ВВЕРХ" else "ВНИЗ",
-                            "front_right_mm" to String.format("%+.3f", s.frontRight),
-                            "front_right_turns" to String.format("%.2f", s.turnsFor(s.frontRight)),
-                            "front_right_dir" to if (s.frontRight < 0) "ВВЕРХ" else "ВНИЗ",
-                            "back_center_mm" to String.format("%+.3f", s.backCenter),
-                            "back_center_turns" to String.format("%.2f", s.turnsFor(s.backCenter)),
-                            "back_center_dir" to if (s.backCenter < 0) "ВВЕРХ" else "ВНИЗ",
-                        )
-                    } else {
-                        emptyMap()
-                    }
+                    val stats = parsed?.let(::formatMeshStats) ?: emptyMap()
 
                     SshDownloadOutcome(
                         rawText = rawText,
@@ -162,6 +168,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         config = parsedCfg,
                         backups = backups,
                         parseWarning = if (parsed == null) "Не найден bed_mesh в файле" else null,
+                        nozzle = NozzleSettings.readSelection(text, mutableText, nozzleMetadata),
                     )
                 }
 
@@ -175,6 +182,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         config = outcome.config,
                         configEdits = emptyMap(),
                         backups = outcome.backups,
+                        loadedNozzle = outcome.nozzle,
+                        nozzleDiameter = outcome.nozzle.diameter,
+                        nozzleMaterial = outcome.nozzle.material,
+                        nozzleFullCalibration = false,
+                        nozzleStatus = null,
                         lastError = outcome.parseWarning,
                     )
                 }
@@ -193,7 +205,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 !probeCountAllowsLagrange(value)
             ) {
                 val algorithmKey = "$section.algorithm"
-                val current = edits[algorithmKey] ?: st.config?.sections?.get(section)?.get("algorithm")?.value
+                val current = edits[algorithmKey] ?: st.config.sections[section]?.get("algorithm")?.value
                 if (current?.trim()?.equals("lagrange", ignoreCase = true) == true) {
                     edits = edits + (algorithmKey to "bicubic")
                 }
@@ -202,7 +214,137 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Как пресет Ace Pro в Windows `config_editor.py` (100%…300%). */
+    fun updateNozzleSelection(diameter: String? = null, material: String? = null, fullCalibration: Boolean? = null) {
+        _uiState.update { state ->
+            state.copy(
+                nozzleDiameter = diameter ?: state.nozzleDiameter,
+                nozzleMaterial = material ?: state.nozzleMaterial,
+                nozzleFullCalibration = fullCalibration ?: state.nozzleFullCalibration,
+                nozzleStatus = null,
+            )
+        }
+    }
+
+    fun applyNozzleSettings() {
+        val state = _uiState.value
+        val loaded = state.loadedNozzle ?: run {
+            _uiState.update { it.copy(nozzleStatus = "Сначала загрузите printer.cfg по SSH.") }
+            return
+        }
+        val selection = NozzleSelection(state.nozzleDiameter, state.nozzleMaterial)
+        if (selection == loaded) {
+            _uiState.update { it.copy(nozzleStatus = "Эти параметры уже установлены.") }
+            return
+        }
+        if (state.nozzleBusy || state.liveCalibration.running || state.busy || state.installPanel.busy || state.installSsh.busy) return
+        val cfg = state.ssh
+        viewModelScope.launch {
+            _uiState.update { it.copy(nozzleBusy = true, nozzleStatus = "Сохраняю и проверяю настройки сопла…") }
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    NozzleSettings.applyAndReboot(cfg, selection, state.nozzleFullCalibration)
+                }
+                _uiState.update {
+                    it.copy(
+                        nozzleBusy = false,
+                        loadedNozzle = result.selection,
+                        nozzleDiameter = result.selection.diameter,
+                        nozzleMaterial = result.selection.material,
+                        nozzleStatus = if (result.calibrationRequested)
+                            "Настройки сохранены. Запрошен полный перезапуск и калибровка."
+                        else "Настройки сохранены. Запрошен полный перезапуск.",
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(nozzleBusy = false, nozzleStatus = "Ошибка: ${e.formatDiagnostic()}")
+                }
+            }
+        }
+    }
+
+    fun startLiveCalibration(context: Context) {
+        val state = _uiState.value
+        if (state.liveCalibration.running || state.nozzleBusy || state.busy || state.installPanel.busy || state.installSsh.busy) return
+        if (state.ssh.ip.isBlank()) {
+            _uiState.update { it.copy(liveCalibration = LiveCalibrationState(error = "Укажите IP принтера в разделе SSH.")) }
+            return
+        }
+        val cfg = state.ssh
+        val appCtx = context.applicationContext
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(liveCalibration = LiveCalibrationState(running = true, status = "Подключение к принтеру…"))
+            }
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    LiveBedMesh.run(appCtx, cfg) { progress -> applyLiveMeshProgress(progress) }
+                }
+                val stats = formatMeshStats(result.data)
+                _uiState.update {
+                    it.copy(
+                        mesh = result.data,
+                        stats = stats,
+                        liveCalibration = LiveCalibrationState(
+                            status = "Получено и сохранено точек: ${result.measuredPoints}. Карта записана в printer_mutable.cfg.",
+                            measuredPoints = result.measuredPoints,
+                            totalPoints = result.totalPoints,
+                        ),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        liveCalibration = it.liveCalibration.copy(
+                            running = false,
+                            status = "Калибровка не завершена.",
+                            error = e.formatDiagnostic(),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun applyLiveMeshProgress(progress: LiveMeshProgress) {
+        _uiState.update { state ->
+            val data = progress.data
+            state.copy(
+                mesh = data ?: state.mesh,
+                stats = data?.let(::formatMeshStats) ?: state.stats,
+                liveCalibration = LiveCalibrationState(
+                    running = true,
+                    status = progress.status,
+                    measuredPoints = progress.measuredPoints,
+                    totalPoints = progress.totalPoints,
+                    currentPoint = progress.currentPoint,
+                ),
+            )
+        }
+    }
+
+    private fun formatMeshStats(mesh: BedMeshData): Map<String, String> {
+        val s = MeshStatsCalculator.compute(mesh)
+        return mapOf(
+            "min" to String.format("%+.3f", s.min),
+            "max" to String.format("%+.3f", s.max),
+            "range" to String.format("%.3f", s.range),
+            "mean" to String.format("%+.3f", s.mean),
+            "var" to String.format("%.3f", s.variance),
+            "rms" to String.format("%.3f", s.rms),
+            "front_left_mm" to String.format("%+.3f", s.frontLeft),
+            "front_left_turns" to String.format("%.2f", s.turnsFor(s.frontLeft)),
+            "front_left_dir" to if (s.frontLeft < 0) "ВВЕРХ" else "ВНИЗ",
+            "front_right_mm" to String.format("%+.3f", s.frontRight),
+            "front_right_turns" to String.format("%.2f", s.turnsFor(s.frontRight)),
+            "front_right_dir" to if (s.frontRight < 0) "ВВЕРХ" else "ВНИЗ",
+            "back_center_mm" to String.format("%+.3f", s.backCenter),
+            "back_center_turns" to String.format("%.2f", s.turnsFor(s.backCenter)),
+            "back_center_dir" to if (s.backCenter < 0) "ВВЕРХ" else "ВНИЗ",
+        )
+    }
+
+    /** Как пресет Ace Pro в Windows `config_editor.py` (100%…500%). */
     fun applyAceProPreset(percent: Int) {
         val st = _uiState.value
         val base = st.config ?: return
@@ -356,7 +498,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun installPersistentSsh(context: Context) {
-        if (_uiState.value.installSsh.busy) return
+        val state = _uiState.value
+        if (state.installSsh.busy || state.liveCalibration.running || state.nozzleBusy || state.busy || state.installPanel.busy) return
         val cfg = _uiState.value.ssh
         val appCtx = context.applicationContext
         viewModelScope.launch {
@@ -377,7 +520,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun installWebPanel(context: Context) {
-        if (_uiState.value.installPanel.busy) return
+        val state = _uiState.value
+        if (state.installPanel.busy || state.liveCalibration.running || state.nozzleBusy || state.busy || state.installSsh.busy) return
         val cfg = _uiState.value.ssh
         val appCtx = context.applicationContext
         viewModelScope.launch {
